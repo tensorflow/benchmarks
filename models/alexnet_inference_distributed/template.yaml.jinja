@@ -1,0 +1,93 @@
+{%- set name = "alexnet" -%}
+{%- set image = "gcr.io/tensorflow/alexnet_inference_distributed:latest" -%}
+{%- set worker_replicas = 1 -%}
+{%- set ps_replicas = 2 -%}
+{%- set script = "/benchmark_alexnet.py" -%}
+{%- set csv_output = "gs://benchmark/alexnet.csv" -%}
+{%- set credential_secret_name = "credential" -%}
+{%- set credential_secret_key = "your_gcs_service_account.json" -%}
+
+{%- set port = 5000 -%}
+{%- set replicas = {"worker": worker_replicas, "ps": ps_replicas} -%}
+
+{%- macro worker_hosts() -%}
+  {%- for i in range(worker_replicas) -%}
+    {%- if not loop.first -%},{%- endif -%}
+    {{ name }}-worker-{{ i }}:{{ port }}
+  {%- endfor -%}
+{%- endmacro -%}
+
+{%- macro ps_hosts() -%}
+  {%- for i in range(ps_replicas) -%}
+    {%- if not loop.first -%},{%- endif -%}
+    {{ name }}-ps-{{ i }}:{{ port }}
+  {%- endfor -%}
+{%- endmacro -%}
+
+{%- for job in ["worker", "ps"] -%}
+{%- for i in range(replicas[job]) -%}
+kind: Service
+apiVersion: v1
+metadata:
+  name: {{ name }}-{{ job }}-{{ i }}
+spec:
+  selector:
+    name: {{ name }}
+    job: {{ job }}
+    task: "{{ i }}"
+  ports:
+  - port: {{ port }}
+---
+kind: ReplicaSet
+apiVersion: extensions/v1beta1
+metadata:
+  name: {{ name }}-{{ job }}-{{ i }}
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: {{ name }}
+        job: {{ job }}
+        task: "{{ i }}"
+    spec:
+      containers:
+      - name: tensorflow
+        image: {{ image }}
+{% if credential_secret_name != "" %}
+        env:
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: "/etc/credential/{{ credential_secret_key }}"
+{% endif %}
+        ports:
+        - containerPort: {{ port }}
+{% if job == "tensorboard" %}
+        command:
+        - "tensorboard"
+        args:
+        - "--logdir={{ train_dir }}"
+{% else %}
+        command:
+        - "/usr/bin/python"
+        - "{{ script }}"
+        args:
+        - "--task_index={{ i }}"
+        - "--job_name={{ job }}"
+        - "--worker_hosts={{ worker_hosts() }}"
+        - "--ps_hosts={{ ps_hosts() }}"
+        - "--data_format=NHWC"
+        - "--csv_file={{ csv_output }}"
+{% endif %}
+{% if credential_secret_name != "" %}
+        volumeMounts:
+        - name: credential
+          mountPath: /etc/credential
+          readOnly: true
+      volumes:
+      - name: credential
+        secret:
+          secretName: {{ credential_secret_name }}
+{% endif %}
+---
+{% endfor %}
+{%- endfor -%}
