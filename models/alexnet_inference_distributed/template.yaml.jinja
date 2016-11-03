@@ -5,7 +5,7 @@
 {%- set script = "/benchmark_alexnet.py" -%}
 {%- set csv_output = "gs://benchmark/alexnet.csv" -%}
 {%- set credential_secret_name = "credential" -%}
-{%- set credential_secret_key = "TensorFlow-b55d161891c2.json" -%}
+{%- set credential_secret_key = "your_gcs_service_account.json" -%}
 
 {%- set port = 5000 -%}
 {%- set replicas = {"worker": worker_replicas, "ps": ps_replicas} -%}
