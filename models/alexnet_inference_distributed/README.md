@@ -7,6 +7,7 @@ or on Google Container Engine.
 `gcr.io/tensorflow/alexnet_inference_distributed`.
 
 3. Edit the template file `template.yaml.jinja` with your docker image name, csv output and GCS credentials.
+The output should be on some shared storage like GCS. See [this page](https://github.com/tensorflow/ecosystem/tree/master/kubernetes) on how to get GCS credentials.
 
 4. You need the [`render_template.py`](https://github.com/tensorflow/ecosystem/blob/master/render_template.py)
 script to expand the template to a real Kubernetes config file.
