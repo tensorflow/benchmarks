@@ -1,11 +1,11 @@
 {%- set name = "alexnet" -%}
 {%- set image = "gcr.io/tensorflow/alexnet_inference_distributed:latest" -%}
-{%- set worker_replicas = 2 -%}
+{%- set worker_replicas = 1 -%}
 {%- set ps_replicas = 2 -%}
 {%- set script = "/benchmark_alexnet.py" -%}
-{%- set csv_output = "gs://benchmark/alexnet" -%}
+{%- set csv_output = "gs://benchmark/alexnet.csv" -%}
 {%- set credential_secret_name = "credential" -%}
-{%- set credential_secret_key = "TensorFlow-3720164e2423.json" -%}
+{%- set credential_secret_key = "TensorFlow-b55d161891c2.json" -%}
 
 {%- set port = 5000 -%}
 {%- set replicas = {"worker": worker_replicas, "ps": ps_replicas} -%}

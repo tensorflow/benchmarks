@@ -216,6 +216,7 @@ def run_benchmark(master_target, cluster_spec):
 
     if run_forward:
       # Run the forward benchmark.
+      tf.logging.info("Running forward pass")
       timing_entries.append(time_tensorflow_run(sess, last_layer, "Forward"))
 
     if run_forward_backward:
@@ -224,13 +225,16 @@ def run_benchmark(master_target, cluster_spec):
       # Compute the gradient with respect to all the parameters.
       grad = tf.gradients(objective, parameters)
       # Run the backward benchmark.
+      tf.logging.info("Running forward and backward pass")
       timing_entries.append(time_tensorflow_run(sess, grad, "Forward-backward"))
 
   if FLAGS.csv_file:
+    tf.logging.info("Writing timing entries to %s", FLAGS.csv_file)
     store_data_in_csv(timing_entries)
 
 
 def main(_):
+  tf.logging.set_verbosity(tf.logging.DEBUG)
   # Construct the cluster and start the server
   ps_spec = FLAGS.ps_hosts.split(",")
   worker_spec = FLAGS.worker_hosts.split(",")
@@ -252,6 +256,7 @@ def main(_):
 
   sys.stdout.flush()
   sys.stderr.flush()
+  # Keep the worker running so that we can still inspect its output
   server.join()
 
 
