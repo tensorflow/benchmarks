@@ -1,4 +1,4 @@
-FROM tensorflow/tensorflow:0.11.0rc1
+FROM tensorflow/tensorflow:nightly
 
 COPY benchmark_alexnet.py /
 ENTRYPOINT ["python", "/benchmark_alexnet.py"]

@@ -13,7 +13,7 @@ FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_integer('batch_size', 128,
                             """Batch size.""")
-tf.app.flags.DEFINE_integer('num_batches', 10,
+tf.app.flags.DEFINE_integer('num_batches', 100,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_boolean('forward_only', False,
                             """Only run the forward pass.""")
@@ -110,7 +110,7 @@ def loss(logits, labels):
     batch_size = tf.size(labels)
     labels = tf.expand_dims(labels, 1)
     indices = tf.expand_dims(tf.range(0, batch_size, 1), 1)
-    concated = tf.concat_v2([indices, labels], 1)
+    concated = tf.concat([indices, labels], 1)
     onehot_labels = tf.sparse_to_dense(
         concated, tf.stack([batch_size, 1000]), 1.0, 0.0)
     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=logits,
@@ -228,16 +228,9 @@ def run_benchmark(master_target, cluster_spec):
       tf.logging.info("Running forward and backward pass")
       timing_entries.append(time_tensorflow_run(sess, grad, "Forward-backward"))
 
-  tf.logging.info('Sleeping after forward pass')
-  time.sleep(360)
-  # try:
-  #   if FLAGS.csv_file:
-  #     tf.logging.info("Writing timing entries to %s", FLAGS.csv_file)
-  #     store_data_in_csv(timing_entries)
-  # except Exception as e:
-  #   tf.logging.warning('error occured: {}'.format(e))
-  # tf.logging.info('Sleeping after storing data')
-  # time.sleep(360)
+  if FLAGS.csv_file:
+    tf.logging.info("Writing timing entries to %s", FLAGS.csv_file)
+    store_data_in_csv(timing_entries)
 
 
 def main(_):
