@@ -6,6 +6,7 @@
 {%- set csv_output = "gs://benchmark/alexnet.csv" -%}
 {%- set credential_secret_name = "credential" -%}
 {%- set credential_secret_key = "your_gcs_service_account.json" -%}
+{%- set restartPolicy = "Never" -%}
 
 {%- set port = 5000 -%}
 {%- set replicas = {"worker": worker_replicas, "ps": ps_replicas} -%}
@@ -54,6 +55,7 @@ spec:
       containers:
       - name: tensorflow
         image: {{ image }}
+        imagePullPolicy: Always
 {% if credential_secret_name != "" %}
         env:
         - name: GOOGLE_APPLICATION_CREDENTIALS

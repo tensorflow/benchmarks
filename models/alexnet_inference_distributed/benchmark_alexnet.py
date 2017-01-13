@@ -110,11 +110,11 @@ def loss(logits, labels):
     batch_size = tf.size(labels)
     labels = tf.expand_dims(labels, 1)
     indices = tf.expand_dims(tf.range(0, batch_size, 1), 1)
-    concated = tf.concat(1, [indices, labels])
+    concated = tf.concat_v2([indices, labels], 1)
     onehot_labels = tf.sparse_to_dense(
-        concated, tf.pack([batch_size, 1000]), 1.0, 0.0)
-    cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits,
-                                                            onehot_labels,
+        concated, tf.stack([batch_size, 1000]), 1.0, 0.0)
+    cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=logits,
+                                                            labels=onehot_labels,
                                                             name='xentropy')
     loss = tf.reduce_mean(cross_entropy, name='xentropy_mean')
     return loss
@@ -161,7 +161,7 @@ def time_tensorflow_run(session, target, info_string):
   return TimingEntry(info_string, datetime.now(), FLAGS.num_batches, mn, sd)
 
 def store_data_in_csv(timing_entries):
-  with gFile.Open(FLAGS.csv_file, 'wb') as csvfile:
+  with gfile.Open(FLAGS.csv_file, 'wb') as csvfile:
     writer = csv.writer(csvfile)
     for timing_entry in timing_entries:
       writer.writerow(
