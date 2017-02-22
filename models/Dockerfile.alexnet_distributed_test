@@ -5,4 +5,4 @@ COPY alexnet_inference_distributed/benchmark_alexnet.py /
 RUN mkdir /util/
 COPY util/__init__.py /util/
 COPY util/benchmark_util.py /util/
-ENTRYPOINT ["python", "-m", "/benchmark_alexnet.py"]
+ENTRYPOINT ["python", "-m", "benchmark_alexnet"]
