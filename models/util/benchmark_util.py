@@ -36,9 +36,9 @@ _TEST_NAME_ENV_VAR = 'TF_DIST_BENCHMARK_NAME'
 # Represents a single stat_value entry where
 #  - name is a unique identifier for this specific measurement.
 #  - stat_value is the measurement to track (for e.g. mean time per iter).
-#  - iters is the number of iterations that stat_value is averaged over.
+#  - num_samples is the number of samples that stat_value is averaged over.
 StatEntry = namedtuple(
-    'StatEntry', ['name', 'stat_value', 'iters'])
+    'StatEntry', ['name', 'stat_value', 'num_samples'])
 
 
 def store_data_in_json(stat_entries, timestamp, output_file=None):
@@ -75,7 +75,7 @@ def store_data_in_json(stat_entries, timestamp, output_file=None):
   for stat_entry in stat_entries:
     test_result.entries.entry.add(
         name=stat_entry.name,
-        iters=stat_entry.iters,
+        iters=stat_entry.num_samples,
         wall_time=stat_entry.stat_value
     )
   json_test_results = json_format.MessageToJson(test_result)
