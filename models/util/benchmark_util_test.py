@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.tools.dist_test.python.benchmark_util."""
+"""Tests for benchmark_util."""
 
 from __future__ import absolute_import
 from __future__ import division
