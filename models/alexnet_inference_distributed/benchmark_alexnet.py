@@ -5,15 +5,18 @@ import math
 import sys
 import time
 
+# benchmark_util.py should be copied into the same directory
+# as this file in a docker image.
+import util.benchmark_util
 import tensorflow.python.platform
 import tensorflow as tf
 from tensorflow.python.platform import gfile
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_integer('batch_size', 128,
+tf.app.flags.DEFINE_integer('batch_size', 16, #128,
                             """Batch size.""")
-tf.app.flags.DEFINE_integer('num_batches', 100,
+tf.app.flags.DEFINE_integer('num_batches', 1, #00,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_boolean('forward_only', False,
                             """Only run the forward pass.""")
@@ -46,8 +49,6 @@ conv_counter = 1
 pool_counter = 1
 affine_counter = 1
 
-TimingEntry = namedtuple(
-    'TimingEntry', ['info_string', 'timestamp', 'num_batches', 'mean', 'sd'])
 
 def _conv(inpOp, nIn, nOut, kH, kW, dH, dW, padType):
     global conv_counter
@@ -158,7 +159,7 @@ def time_tensorflow_run(session, target, info_string):
   sd = math.sqrt(vr)
   tf.logging.info('%s: %s across %d steps, %.3f +/- %.3f sec / batch' %
                   (datetime.now(), info_string, FLAGS.num_batches, mn, sd))
-  return TimingEntry(info_string, datetime.now(), FLAGS.num_batches, mn, sd)
+  return StatEntry(info_string, mn, FLAGS.num_batches)
 
 def store_data_in_csv(timing_entries):
   with gfile.Open(FLAGS.csv_file, 'wb') as csvfile:
@@ -228,6 +229,7 @@ def run_benchmark(master_target, cluster_spec):
       tf.logging.info("Running forward and backward pass")
       timing_entries.append(time_tensorflow_run(sess, grad, "Forward-backward"))
 
+  benchmark_util.store_data_in_json(timing_entries, datetime.now())
   if FLAGS.csv_file:
     tf.logging.info("Writing timing entries to %s", FLAGS.csv_file)
     store_data_in_csv(timing_entries)
