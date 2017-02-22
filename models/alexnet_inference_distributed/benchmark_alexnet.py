@@ -5,8 +5,6 @@ import math
 import sys
 import time
 
-# benchmark_util.py should be copied into the same directory
-# as this file in a docker image.
 import util.benchmark_util
 import tensorflow.python.platform
 import tensorflow as tf
@@ -14,9 +12,9 @@ from tensorflow.python.platform import gfile
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_integer('batch_size', 16, #128,
+tf.app.flags.DEFINE_integer('batch_size', 128,
                             """Batch size.""")
-tf.app.flags.DEFINE_integer('num_batches', 1, #00,
+tf.app.flags.DEFINE_integer('num_batches', 100,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_boolean('forward_only', False,
                             """Only run the forward pass.""")
