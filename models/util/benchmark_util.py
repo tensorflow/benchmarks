@@ -34,9 +34,9 @@ _TEST_NAME_ENV_VAR = 'TF_DIST_BENCHMARK_NAME'
 
 
 # Represents a single stat_value entry where
-#  - name is a string
-#  - stat_value is the latency to track (for e.g. mean time per iter)
-#  - iters is the number of iterations
+#  - name is a unique identifier for this specific measurement.
+#  - stat_value is the measurement to track (for e.g. mean time per iter).
+#  - iters is the number of iterations that stat_value is averaged over.
 StatEntry = namedtuple(
     'StatEntry', ['name', 'stat_value', 'iters'])
 
@@ -48,8 +48,10 @@ def store_data_in_json(stat_entries, timestamp, output_file=None):
     stat_entries: list of StatEntry objects.
     timestamp: (datetime) start time of the test run.
     output_file: if specified, writes benchmark results to output_file.
-      If not specified, writes results to the file specified by
-      BENCHMARK_RESULTS_FILE environment variable.
+      Otherwise, if TF_DIST_BENCHMARK_RESULTS_FILE environment variable is set,
+      writes to file specified by this environment variable. If neither
+      output_file is passed in, nor TF_DIST_BENCHMARK_RESULTS_FILE is set,
+      does nothing.
 
   Raises:
     ValueError: when neither output_file is passed in nor
