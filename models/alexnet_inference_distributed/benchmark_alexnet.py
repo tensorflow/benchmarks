@@ -31,8 +31,8 @@ tf.app.flags.DEFINE_string('csv_file', '',
                            """)
 
 # Flags for configuring the task
-tf.app.flags.DEFINE_integer("task_index", None,
-                            "Worker task index, should be >= 0. task_index=0 "
+tf.app.flags.DEFINE_integer("task_id", None,
+                            "Worker task index, should be >= 0. task_id=0 "
                             "is the master worker task the performs the "
                             "variable initialization.")
 tf.app.flags.DEFINE_string("ps_hosts", None,
@@ -244,9 +244,9 @@ def main(_):
       "worker": worker_spec})
 
   server = tf.train.Server(
-      cluster, job_name=FLAGS.job_name, task_index=FLAGS.task_index)
+      cluster, job_name=FLAGS.job_name, task_index=FLAGS.task_id)
 
-  chief_worker = (FLAGS.job_name == "worker" and FLAGS.task_index == 0)
+  chief_worker = (FLAGS.job_name == "worker" and FLAGS.task_id == 0)
   if not chief_worker:
     server.join()
 
