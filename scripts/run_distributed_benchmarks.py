@@ -61,14 +61,16 @@ def _RunBenchmark(name, yaml_file):
   kubectl_util.DeletePods(name, yaml_file)
 
 
-def _BuildDockerImage(docker_client, docker_file, name, tag):
-  """Builds a docker image.
+def _BuildAndPushDockerImage(
+    docker_client, docker_file, name, tag, push_to_gcloud=False):
+  """Builds a docker image and optionally pushes it to gcloud.
 
   Args:
     docker_client: docker.Client object.
     docker_file: Dockerfile path.
     name: name of the benchmark to build a docker image for.
     tag: tag for docker image.
+    push_to_gcloud: whether to push the image to google cloud.
 
   Returns:
     Docker image identifier.
@@ -88,8 +90,9 @@ def _BuildDockerImage(docker_client, docker_file, name, tag):
       path=docker_context, dockerfile=docker_file_name,
       tag=local_docker_image_with_tag)
   built_image.tag(remote_docker_image, tag=tag)
-  subprocess.check_call(
-      ['gcloud', 'docker', '--', 'push', remote_docker_image_with_tag])
+  if push_to_gcloud:
+    subprocess.check_call(
+        ['gcloud', 'docker', '--', 'push', remote_docker_image_with_tag])
   return remote_docker_image_with_tag
 
 
@@ -114,8 +117,9 @@ def main():
     if name in benchmark_name_to_docker_image:
       docker_image = benchmark_name_to_docker_image[name]
     else:
-      docker_image = _BuildDockerImage(
-          docker_client, config['docker_file'], name, time_tag)
+      docker_image = _BuildAndPushDockerImage(
+          docker_client, config['docker_file'], name, time_tag,
+          FLAGS.store_docker_image_in_gcloud)
       benchmark_name_to_docker_image[name] = docker_image
     env_vars = {
         _OUTPUT_FILE_ENV_VAR: os.path.join(
@@ -158,6 +162,9 @@ if __name__ == '__main__':
       '--docker_context_dir', type=str, default='',
       help='Directory to use as a docker context. By default, docker context '
            'will be set to the directory containing a docker file.')
+  parser.add_argument(
+      '--store_docker_image_in_gcloud', type='bool', nargs='?', const=True,
+      default=False, help='Push docker images to google cloud.')
   FLAGS, _ = parser.parse_known_args()
   logging.basicConfig(level=logging.DEBUG)
   main()
