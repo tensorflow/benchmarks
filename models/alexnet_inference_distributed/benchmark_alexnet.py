@@ -5,10 +5,9 @@ import math
 import sys
 import time
 
-import util.benchmark_util
-import tensorflow.python.platform
 import tensorflow as tf
 from tensorflow.python.platform import gfile
+from util import benchmark_util
 
 FLAGS = tf.app.flags.FLAGS
 
