@@ -101,6 +101,9 @@ def main():
 
   docker_client = docker.from_env()
   time_tag = datetime.now().strftime('%d_%m_%Y_%H_%M')
+  # Create directories to store kubernetes yaml configs in.
+  if not os.path.isdir(FLAGS.config_output_file_dir):
+    os.makedirs(FLAGS.config_output_file_dir)
   # Keeps track of already built docker images in case multiple benchmarks
   # use the same docker image.
   benchmark_name_to_docker_image = {}
@@ -119,7 +122,7 @@ def main():
             FLAGS.benchmark_results_dir, name + '.json'),
         _TEST_NAME_ENV_VAR: name
     }
-    env_vars.update(config['env_vars'])
+    env_vars.update(config.get('env_vars', {}))
     args = config.get('args', {})
     kubernetes_config = k8s_tensorflow_lib.GenerateConfig(
         config['worker_count'],
@@ -152,8 +155,9 @@ if __name__ == '__main__':
       '--benchmark_results_dir', type=str, default=None, required=True,
       help='Directory to store benchmark results at.')
   parser.add_argument(
-      '--docker_context_dir', type=str, default='./',
-      help='Directory to use as a docker context.')
+      '--docker_context_dir', type=str, default='',
+      help='Directory to use as a docker context. By default, docker context '
+           'will be set to the directory containing a docker file.')
   FLAGS, _ = parser.parse_known_args()
   logging.basicConfig(level=logging.DEBUG)
   main()
