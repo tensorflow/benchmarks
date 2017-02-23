@@ -157,7 +157,7 @@ def time_tensorflow_run(session, target, info_string):
   sd = math.sqrt(vr)
   tf.logging.info('%s: %s across %d steps, %.3f +/- %.3f sec / batch' %
                   (datetime.now(), info_string, FLAGS.num_batches, mn, sd))
-  return StatEntry(info_string, mn, FLAGS.num_batches)
+  return benchmark_util.StatEntry(info_string, mn, FLAGS.num_batches)
 
 def store_data_in_csv(timing_entries):
   with gfile.Open(FLAGS.csv_file, 'wb') as csvfile:
