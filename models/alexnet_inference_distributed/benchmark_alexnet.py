@@ -239,8 +239,6 @@ def main(_):
 
   sys.stdout.flush()
   sys.stderr.flush()
-  # Keep the worker running so that we can still inspect its output
-  server.join()
 
 
 if __name__ == '__main__':
