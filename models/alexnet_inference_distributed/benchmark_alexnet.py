@@ -1,6 +1,5 @@
 from collections import namedtuple
 from datetime import datetime
-import csv
 import math
 import sys
 import time
@@ -22,11 +21,6 @@ tf.app.flags.DEFINE_boolean('forward_backward_only', False,
 tf.app.flags.DEFINE_string('data_format', 'NCHW',
                            """The data format for Convnet operations.
                            Can be either NHWC or NCHW.
-                           """)
-tf.app.flags.DEFINE_string('csv_file', '',
-                           """File to output timing information to in csv
-                           format. If not file is passed in, csv file will
-                           not be cteated.
                            """)
 
 # Flags for configuring the task
@@ -158,13 +152,6 @@ def time_tensorflow_run(session, target, info_string):
                   (datetime.now(), info_string, FLAGS.num_batches, mn, sd))
   return benchmark_util.StatEntry(info_string, mn, FLAGS.num_batches)
 
-def store_data_in_csv(timing_entries):
-  with gfile.Open(FLAGS.csv_file, 'wb') as csvfile:
-    writer = csv.writer(csvfile)
-    for timing_entry in timing_entries:
-      writer.writerow(
-          [timing_entry.info_string, timing_entry.timestamp,
-           timing_entry.num_batches, timing_entry.mean, timing_entry.sd])
 
 def run_benchmark(master_target, cluster_spec):
   global parameters
@@ -227,9 +214,6 @@ def run_benchmark(master_target, cluster_spec):
       timing_entries.append(time_tensorflow_run(sess, grad, "Forward-backward"))
 
   benchmark_util.store_data_in_json(timing_entries, datetime.now())
-  if FLAGS.csv_file:
-    tf.logging.info("Writing timing entries to %s", FLAGS.csv_file)
-    store_data_in_csv(timing_entries)
 
 
 def main(_):
