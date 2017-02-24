@@ -1,14 +1,12 @@
 from collections import namedtuple
 from datetime import datetime
-import csv
 import math
 import sys
 import time
 
-import util.benchmark_util
-import tensorflow.python.platform
 import tensorflow as tf
 from tensorflow.python.platform import gfile
+from util import benchmark_util
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -24,15 +22,10 @@ tf.app.flags.DEFINE_string('data_format', 'NCHW',
                            """The data format for Convnet operations.
                            Can be either NHWC or NCHW.
                            """)
-tf.app.flags.DEFINE_string('csv_file', '',
-                           """File to output timing information to in csv
-                           format. If not file is passed in, csv file will
-                           not be cteated.
-                           """)
 
 # Flags for configuring the task
-tf.app.flags.DEFINE_integer("task_index", None,
-                            "Worker task index, should be >= 0. task_index=0 "
+tf.app.flags.DEFINE_integer("task_id", None,
+                            "Worker task index, should be >= 0. task_id=0 "
                             "is the master worker task the performs the "
                             "variable initialization.")
 tf.app.flags.DEFINE_string("ps_hosts", None,
@@ -157,15 +150,8 @@ def time_tensorflow_run(session, target, info_string):
   sd = math.sqrt(vr)
   tf.logging.info('%s: %s across %d steps, %.3f +/- %.3f sec / batch' %
                   (datetime.now(), info_string, FLAGS.num_batches, mn, sd))
-  return StatEntry(info_string, mn, FLAGS.num_batches)
+  return benchmark_util.StatEntry(info_string, mn, FLAGS.num_batches)
 
-def store_data_in_csv(timing_entries):
-  with gfile.Open(FLAGS.csv_file, 'wb') as csvfile:
-    writer = csv.writer(csvfile)
-    for timing_entry in timing_entries:
-      writer.writerow(
-          [timing_entry.info_string, timing_entry.timestamp,
-           timing_entry.num_batches, timing_entry.mean, timing_entry.sd])
 
 def run_benchmark(master_target, cluster_spec):
   global parameters
@@ -228,9 +214,6 @@ def run_benchmark(master_target, cluster_spec):
       timing_entries.append(time_tensorflow_run(sess, grad, "Forward-backward"))
 
   benchmark_util.store_data_in_json(timing_entries, datetime.now())
-  if FLAGS.csv_file:
-    tf.logging.info("Writing timing entries to %s", FLAGS.csv_file)
-    store_data_in_csv(timing_entries)
 
 
 def main(_):
@@ -244,9 +227,9 @@ def main(_):
       "worker": worker_spec})
 
   server = tf.train.Server(
-      cluster, job_name=FLAGS.job_name, task_index=FLAGS.task_index)
+      cluster, job_name=FLAGS.job_name, task_index=FLAGS.task_id)
 
-  chief_worker = (FLAGS.job_name == "worker" and FLAGS.task_index == 0)
+  chief_worker = (FLAGS.job_name == "worker" and FLAGS.task_id == 0)
   if not chief_worker:
     server.join()
 
@@ -256,8 +239,6 @@ def main(_):
 
   sys.stdout.flush()
   sys.stderr.flush()
-  # Keep the worker running so that we can still inspect its output
-  server.join()
 
 
 if __name__ == '__main__':

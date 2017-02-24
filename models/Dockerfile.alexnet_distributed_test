@@ -1,8 +1,6 @@
 FROM tensorflow/tensorflow:nightly
 
-COPY alexnet_inference_distributed/benchmark_alexnet.py /
-
-RUN mkdir /util/
-COPY util/__init__.py /util/
-COPY util/benchmark_util.py /util/
+COPY alexnet_inference_distributed/benchmark_alexnet.py ./
+RUN mkdir ./util/
+COPY util/ ./util/
 ENTRYPOINT ["python", "-m", "benchmark_alexnet"]
