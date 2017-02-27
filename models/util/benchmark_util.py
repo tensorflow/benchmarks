@@ -63,7 +63,8 @@ def store_data_in_json(stat_entries, timestamp, output_file=None):
     if _OUTPUT_FILE_ENV_VAR not in os.environ:
       logging.warning(
           'Skipping storing json output, since we could not determine '
-          'location to store results at.')
+          'location to store results at. Either output_file argument or '
+          '%s environment variable needs to be set.', _OUTPUT_FILE_ENV_VAR)
       return
     output_file = os.environ[_OUTPUT_FILE_ENV_VAR]
 
