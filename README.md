@@ -1,21 +1,20 @@
-# Adding distributed benchmarks to continuous run.
+# Instructions for adding distributed benchmarks to continuous run:
 
 1. You can add your benchmark file under
-   [tensorflow/benchmarks/models](https://github.com/tensorflow/benchmarks/tree/master/models)
+   [tensorflow/benchmarks/models](https://github.com/tensorflow/benchmarks/tree/master/models) directory.
 2. Report benchmark values by calling `store_data_in_json` from your benchmark
    code. This function is defined in
-   [`benchmark_util.py`](https://github.com/tensorflow/benchmarks/blob/master/models/util/benchmark_util.py)
+   [benchmark\_util.py](https://github.com/tensorflow/benchmarks/blob/master/models/util/benchmark_util.py)
 3. Create a Dockerfile that sets up dependencies and runs your benchmark. For
-   example, see [alexnet
-   Dockerfile](https://github.com/tensorflow/benchmarks/blob/master/models/Dockerfile.alexnet_distributed_test)
+   example, see [Dockerfile.alexnet\_distributed\_test](https://github.com/tensorflow/benchmarks/blob/master/models/Dockerfile.alexnet_distributed_test)
 4. Add the benchmark to
-   [`benchmark_configs.yml`](https://github.com/tensorflow/benchmarks/blob/master/scripts/benchmark_configs.yml)
+   [benchmark\_configs.yml](https://github.com/tensorflow/benchmarks/blob/master/scripts/benchmark_configs.yml)
    * Set `benchmark_name` to a descriptive name for your benchmark and make sure
      it is unique.
    * Set `worker_count` and `ps_count`.
    * Set `docker_file` to the Dockerfile path starting with `benchmarks/`
      directory.
    * Optionally, you can pass flags to your benchmark by adding `args` list.
-5. Send PR with the changes to annarev@.
+5. Send PR with the changes to annarev.
 
 For any questions, please contact annarev@google.com.
