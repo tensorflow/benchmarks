@@ -2,12 +2,13 @@
 
 1. You can add your benchmark file under
    [tensorflow/benchmarks/models](https://github.com/tensorflow/benchmarks/tree/master/models) directory. The benchmark should accept `task_id`, `job_name`, `ps_hosts` and `worker_hosts` flags. You can copy-paste the following flag definitions:
-   ```python
-   tf.app.flags.DEFINE_integer("task_id", None, "Task index, should be >= 0.")
-   tf.app.flags.DEFINE_string("job_name", None, "job name: worker or ps")
-   tf.app.flags.DEFINE_string("ps_hosts", None, "Comma-separated list of hostname:port pairs")
-   tf.app.flags.DEFINE_string("worker_hosts", None, "Comma-separated list of hostname:port pairs")
-   ```
+
+    ```python
+    tf.app.flags.DEFINE_integer("task_id", None, "Task index, should be >= 0.")
+    tf.app.flags.DEFINE_string("job_name", None, "job name: worker or ps")
+    tf.app.flags.DEFINE_string("ps_hosts", None, "Comma-separated list of hostname:port pairs")
+    tf.app.flags.DEFINE_string("worker_hosts", None, "Comma-separated list of hostname:port pairs")
+    ```
 2. Report benchmark values by calling `store_data_in_json` from your benchmark
    code. This function is defined in
    [benchmark\_util.py](https://github.com/tensorflow/benchmarks/blob/master/models/util/benchmark_util.py)
