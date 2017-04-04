@@ -88,7 +88,8 @@ def _BuildAndPushDockerImage(
 
   built_image = docker_client.images.build(
       path=docker_context, dockerfile=docker_file_name,
-      tag=local_docker_image_with_tag)
+      tag=local_docker_image_with_tag,
+      pull=True)
   built_image.tag(remote_docker_image, tag=tag)
   if push_to_gcloud:
     subprocess.check_call(
