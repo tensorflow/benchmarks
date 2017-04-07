@@ -1,3 +1,18 @@
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Benchmark script for tensorflow.
 
  This is a mashup and extension of Soumith's convnet benchmark scripts,
@@ -15,9 +30,6 @@
 # SyncReplicaOptimizers and combine all gradients in a conditional accumulator
 # before applying them (for distributed send_recv and distributed_replicated).
 # Current cross-replica-sync has each server's gradients applied independently.
-#
-# TODO(huangyp): clear up the port appending logic so that it won't leak to
-# opensource. Maybe move the logic to internal borg.
 """
 
 from __future__ import print_function
@@ -154,7 +166,6 @@ tf.flags.DEFINE_string(
 # Distributed training flags.
 tf.flags.DEFINE_string('job_name', '',
                        'One of "ps", "worker", "".  Empty for local training')
-tf.flags.DEFINE_string('local_port', -1, 'Port to which to bind locally')
 tf.flags.DEFINE_string('ps_hosts', '', 'Comma-separated list of target hosts')
 tf.flags.DEFINE_string('worker_hosts', '',
                        'Comma-separated list of target hosts')
@@ -971,17 +982,15 @@ class BenchmarkCNN(object):
         summary_str = benchmark_one_step(
             sess, fetches, local_step, self.batch_size, step_train_times,
             self.trace_filename, fetch_summary)
-        # TODO(huangyp): enable this.  Currently fails with:
-        #   RuntimeError: Writing a summary requires a summary writer.
-        # if summary_str is not None:
-        # sv.summary_computed(sess, summary_str)
+        if summary_str is not None and is_chief:
+          sv.summary_computed(sess, summary_str)
         local_step += 1
       log_fn('-' * 64)
       log_fn('total images/sec: %s' %
              (global_step_watcher.steps_per_second() * self.batch_size))
       log_fn('-' * 64)
       # Save the model checkpoint.
-      if FLAGS.train_dir is not None:
+      if FLAGS.train_dir is not None and is_chief:
         checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
         if not gfile.Exists(FLAGS.train_dir):
           gfile.MakeDirs(FLAGS.train_dir)
