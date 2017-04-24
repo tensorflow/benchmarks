@@ -24,10 +24,11 @@
 # docker_file: (required) docker file to build a docker image for.
 #   Path to the docker file should be relative to Jenkins build folder.
 #   'benchmarks' github repo will be cloned to 'benchmarks' folder.
-
-- benchmark_name: "benchmark_alexnet"
-  args:
-    data_format: "NHWC"
-  worker_count: 1
-  ps_count: 2
-  docker_file: "benchmarks/models/Dockerfile.alexnet_distributed_test"
+#
+# Example:
+# - benchmark_name: "benchmark_alexnet"
+#   args:
+#     data_format: "NHWC"
+#   worker_count: 1
+#   ps_count: 2
+#   docker_file: "benchmarks/models/Dockerfile.alexnet_distributed_test"
