@@ -49,12 +49,11 @@ def get_model_config(model):
   elif model == 'inception4':
     mc = inception_model.Inceptionv4Model()
   elif model == 'resnet50':
-    mc = resnet_model.Resnetv1Model(model, (2, 3, 5, 3))
+    mc = resnet_model.Resnetv1Model(model, (3, 4, 6, 3))
   elif model == 'resnet101':
-    mc = resnet_model.Resnetv1Model(model, (2, 3, 22, 3))
+    mc = resnet_model.Resnetv1Model(model, (3, 4, 23, 3))
   elif model == 'resnet152':
-    mc = resnet_model.Resnetv1Model(model, (2, 7, 35, 3))
+    mc = resnet_model.Resnetv1Model(model, (3, 8, 36, 3))
   else:
     raise KeyError('Invalid model name \'%s\'' % model)
   return mc
-

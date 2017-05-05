@@ -56,13 +56,13 @@ class Resnetv1Model(model_lib.Model):
     cnn.mpool(3, 3, 2, 2)
     for _ in xrange(self.layer_counts[0]):
       cnn.resnet_bottleneck_v1(256, 64, 1)
-    cnn.resnet_bottleneck_v1(256, 64, 2)
-    for _ in xrange(self.layer_counts[1]):
-      cnn.resnet_bottleneck_v1(512, 128, 1)
-    cnn.resnet_bottleneck_v1(512, 128, 2)
-    for _ in xrange(self.layer_counts[2]):
-      cnn.resnet_bottleneck_v1(1024, 256, 1)
-    cnn.resnet_bottleneck_v1(1024, 256, 2)
-    for _ in xrange(self.layer_counts[3]):
-      cnn.resnet_bottleneck_v1(2048, 512, 1)
+    for i in xrange(self.layer_counts[1]):
+      stride = 2 if i == 0 else 1
+      cnn.resnet_bottleneck_v1(512, 128, stride)
+    for i in xrange(self.layer_counts[2]):
+      stride = 2 if i == 0 else 1
+      cnn.resnet_bottleneck_v1(1024, 256, stride)
+    for i in xrange(self.layer_counts[3]):
+      stride = 2 if i == 0 else 1
+      cnn.resnet_bottleneck_v1(2048, 512, stride)
     cnn.spatial_mean()

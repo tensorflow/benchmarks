@@ -463,11 +463,15 @@ class ConvNetBuilder(object):
             activation=None,
             input_layer=input_layer,
             num_channels_in=in_size)
-      self.conv(depth_bottleneck, 1, 1, 1, 1,
-                input_layer=input_layer,
-                num_channels_in=in_size)
       self.conv(
-          depth_bottleneck, 3, 3, stride, stride, mode='SAME_RESNET')
+          depth_bottleneck,
+          1,
+          1,
+          stride,
+          stride,
+          input_layer=input_layer,
+          num_channels_in=in_size)
+      self.conv(depth_bottleneck, 3, 3, 1, 1, mode='SAME_RESNET')
       res = self.conv(depth, 1, 1, 1, 1, activation=None)
       output = tf.nn.relu(shortcut + res)
       self.top_layer = output
