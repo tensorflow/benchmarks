@@ -31,6 +31,8 @@ References:
   arXiv:1606.00915 (2016)
 """
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
+
 import model as model_lib
 
 
