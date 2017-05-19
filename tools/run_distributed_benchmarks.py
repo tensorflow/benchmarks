@@ -98,9 +98,7 @@ def _BuildAndPushDockerImage(
 
 
 def main():
-  config_file = os.path.join(
-      os.path.dirname(os.path.realpath(__file__)), 'benchmark_configs.yml')
-  config_text = open(config_file, 'r').read()
+  config_text = open(FLAGS.benchmark_configs_file, 'r').read()
   configs = yaml.load(config_text)
 
   docker_client = docker.from_env()
@@ -153,6 +151,9 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.register(
       'type', 'bool', lambda v: v.lower() in ('true', 't', 'y', 'yes'))
+  parser.add_argument(
+      '--benchmark_configs_file', type=str, default=None, required=True,
+      help='YAML file with benchmark configs.')
   parser.add_argument(
       '--config_output_file_dir', type=str, default=None, required=True,
       help='Directory to write generated kubernetes configs to.')

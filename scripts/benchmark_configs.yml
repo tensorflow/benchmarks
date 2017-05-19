@@ -32,3 +32,11 @@
 #   worker_count: 1
 #   ps_count: 2
 #   docker_file: "benchmarks/models/Dockerfile.alexnet_distributed_test"
+
+- benchmark_name: "tf_cnn_benchmark_trivial"
+  args:
+    data_format: "NHWC"
+    model: "trivial"
+  worker_count: 2
+  ps_count: 2
+  docker_file: "benchmarks/scripts/Dockerfile.tf_cnn_benchmarks"
