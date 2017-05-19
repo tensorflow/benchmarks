@@ -116,15 +116,15 @@ class K8sTensorflowTest(unittest.TestCase):
     self.assertTrue('"--ps_hosts=abc-ps0:5000"' in config)
 
   def testWorkerHosts(self):
-    self.assertEquals(
+    self.assertEqual(
         'test_prefix-worker0:1234',
         k8s_tensorflow_lib.WorkerHosts(1, 1234, 'test_prefix'))
-    self.assertEquals(
+    self.assertEqual(
         'test_prefix-worker0:1234,test_prefix-worker1:1234',
         k8s_tensorflow_lib.WorkerHosts(2, 1234, 'test_prefix'))
 
   def testPsHosts(self):
-    self.assertEquals(
+    self.assertEqual(
         'test_prefix-ps0:1234,test_prefix-ps1:1234',
         k8s_tensorflow_lib.PsHosts(2, 1234, 'test_prefix'))
 

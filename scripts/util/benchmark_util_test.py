@@ -34,23 +34,26 @@ class BenchmarkUtilTest(unittest.TestCase):
       timing_entries = []
       benchmark_util.store_data_in_json(
           timing_entries, datetime.date(2017, 1, 1), temp_file.name)
-      json_output = json.loads(open(temp_file.name, 'r').read())
-      self.assertEquals('TestBenchmark', json_output['name'])
-      self.assertEquals(u'1483228800', json_output['startTime'])
+      with open(temp_file.name, 'r') as json_file:
+        json_output = json.loads(json_file.read())
+        self.assertEqual('TestBenchmark', json_output['name'])
+        self.assertEqual(u'1483228800', json_output['startTime'])
 
   def testStoreDataWithEntries(self):
-    with tempfile.TemporaryFile() as temp_file:
+    with tempfile.NamedTemporaryFile() as temp_file:
       timing_entries = [benchmark_util.StatEntry('test', 0.1, 1)]
+      print("File name: %s" % temp_file.name)
       benchmark_util.store_data_in_json(
           timing_entries, datetime.date(2017, 1, 1), temp_file.name)
-      json_output = json.loads(open(temp_file.name, 'r').read())
 
-      self.assertEquals(1, len(json_output['entries']['entry']))
-      self.assertEquals('test', json_output['entries']['entry'][0]['name'])
-      self.assertEquals(0.1, json_output['entries']['entry'][0]['wallTime'])
-      self.assertEquals(u'1', json_output['entries']['entry'][0]['iters'])
-      self.assertEquals(u'1483228800', json_output['startTime'])
-      self.assertEquals('TestBenchmark', json_output['name'])
+      with open(temp_file.name, 'r') as json_file:
+        json_output = json.loads(json_file.read())
+        self.assertEqual(1, len(json_output['entries']['entry']))
+        self.assertEqual('test', json_output['entries']['entry'][0]['name'])
+        self.assertEqual(0.1, json_output['entries']['entry'][0]['wallTime'])
+        self.assertEqual(u'1', json_output['entries']['entry'][0]['iters'])
+        self.assertEqual(u'1483228800', json_output['startTime'])
+        self.assertEqual('TestBenchmark', json_output['name'])
 
 
 if __name__ == '__main__':

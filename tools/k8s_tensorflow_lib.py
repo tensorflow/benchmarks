@@ -180,7 +180,7 @@ def GenerateConfig(num_workers,
   for worker in range(num_workers):
     worker_args = {
         'job_name': 'worker',
-        'task_id': worker
+        'task_index': worker
     }
     worker_args.update(common_args)
     worker_args.update(additional_args)
@@ -209,7 +209,7 @@ def GenerateConfig(num_workers,
   for param_server in range(num_param_servers):
     ps_args = {
         'job_name': 'ps',
-        'task_id': param_server
+        'task_index': param_server
     }
     ps_args.update(common_args)
     ps_args.update(additional_args)
