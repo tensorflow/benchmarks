@@ -42,7 +42,6 @@ class BenchmarkUtilTest(unittest.TestCase):
   def testStoreDataWithEntries(self):
     with tempfile.NamedTemporaryFile() as temp_file:
       timing_entries = [benchmark_util.StatEntry('test', 0.1, 1)]
-      print("File name: %s" % temp_file.name)
       benchmark_util.store_data_in_json(
           timing_entries, datetime.date(2017, 1, 1), temp_file.name)
 
