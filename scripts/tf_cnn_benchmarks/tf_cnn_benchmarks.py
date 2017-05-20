@@ -1268,7 +1268,7 @@ class BenchmarkCNN(object):
 
       param_refs = self.variable_mgr.trainable_variables_on_device(
           device_num, writable=True)
-      gradvars = zip(grads, param_refs)
+      gradvars = list(zip(grads, param_refs))
       return (loss, gradvars)
 
   def add_sync_queues_and_barrier(self, name_prefix,
