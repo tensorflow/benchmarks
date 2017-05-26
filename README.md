@@ -1,19 +1,19 @@
 # Instructions for adding distributed benchmarks to continuous run:
 
 1. You can add your benchmark file under
-   [tensorflow/benchmarks/models](https://github.com/tensorflow/benchmarks/tree/master/models) directory. The benchmark should accept `task_id`, `job_name`, `ps_hosts` and `worker_hosts` flags. You can copy-paste the following flag definitions:
+   [tensorflow/benchmarks/scripts](https://github.com/tensorflow/benchmarks/tree/master/scripts) directory. The benchmark should accept `task_index`, `job_name`, `ps_hosts` and `worker_hosts` flags. You can copy-paste the following flag definitions:
 
     ```python
-    tf.app.flags.DEFINE_integer("task_id", None, "Task index, should be >= 0.")
+    tf.app.flags.DEFINE_integer("task_index", None, "Task index, should be >= 0.")
     tf.app.flags.DEFINE_string("job_name", None, "job name: worker or ps")
     tf.app.flags.DEFINE_string("ps_hosts", None, "Comma-separated list of hostname:port pairs")
     tf.app.flags.DEFINE_string("worker_hosts", None, "Comma-separated list of hostname:port pairs")
     ```
 2. Report benchmark values by calling `store_data_in_json` from your benchmark
    code. This function is defined in
-   [benchmark\_util.py](https://github.com/tensorflow/benchmarks/blob/master/models/util/benchmark_util.py)
+   [benchmark\_util.py](https://github.com/tensorflow/benchmarks/blob/master/scripts/util/benchmark_util.py)
 3. Create a Dockerfile that sets up dependencies and runs your benchmark. For
-   example, see [Dockerfile.alexnet\_distributed\_test](https://github.com/tensorflow/benchmarks/blob/master/models/Dockerfile.alexnet_distributed_test)
+   example, see [Dockerfile.tf\_cnn\_benchmarks](https://github.com/tensorflow/benchmarks/blob/master/scripts/Dockerfile.tf_cnn_benchmarks)
 4. Add the benchmark to
    [benchmark\_configs.yml](https://github.com/tensorflow/benchmarks/blob/master/scripts/benchmark_configs.yml)
    * Set `benchmark_name` to a descriptive name for your benchmark and make sure
