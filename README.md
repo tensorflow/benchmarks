@@ -11,7 +11,7 @@
     ```
 2. Report benchmark values by calling `store_data_in_json` from your benchmark
    code. This function is defined in
-   [benchmark\_util.py](https://github.com/tensorflow/benchmarks/blob/master/scripts/util/benchmark_util.py)
+   [benchmark\_util.py](https://github.com/tensorflow/benchmarks/blob/master/scripts/util/benchmark_util.py).
 3. Create a Dockerfile that sets up dependencies and runs your benchmark. For
    example, see [Dockerfile.tf\_cnn\_benchmarks](https://github.com/tensorflow/benchmarks/blob/master/scripts/Dockerfile.tf_cnn_benchmarks).
 4. Add the benchmark to
