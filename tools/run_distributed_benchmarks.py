@@ -171,7 +171,8 @@ def main():
             FLAGS.benchmark_results_dir, name + '.json'),
         _TEST_NAME_ENV_VAR: name
     }
-    gpu_count = config['gpus_per_machine']
+    gpu_count = (0 if 'gpus_per_machine' not in config
+                 else config['gpus_per_machine'])
     volumes = {}
     if gpu_count > 0:
       volumes = get_gpu_volume_mounts()

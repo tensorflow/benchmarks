@@ -50,7 +50,7 @@ spec:
         ports:
         - containerPort: {port}
         env: [{env_vars}]
-        resources: {limits: {resource_limits}}
+        resources: {{limits: {resource_limits} }}
         volumeMounts: [{volume_mounts}]
       volumes: [{volumes}]
 """)
@@ -185,8 +185,13 @@ def GenerateConfig(num_workers,
   config = ''
   common_args = GetCommonArgs(
       num_workers, num_param_servers, port, name_prefix, use_cluster_spec)
+
   if use_shared_volume:
     volumes.update(_SHARED_VOLUME_INFO)
+  volumes_str = ', '.join([_VOLUME_TEMPLATE % (name, location[0])
+                          for name, location in volumes.items()])
+  volume_mounts_str = ', '.join([_VOLUME_MOUNT_TEMPLATE % (name, location[1])
+                                 for name, location in volumes.items()])
 
   for worker in range(num_workers):
     worker_args = {
@@ -198,17 +203,13 @@ def GenerateConfig(num_workers,
     arg_str = ', '.join([_ARG_TEMPLATE % (name, value)
                          for name, value in worker_args.items()])
 
-    volume_str = ', '.join([_VOLUME_TEMPLATE % (name, location[0])
-                            for name, location in volumes.items()])
-    volume_mounts_str = ', '.join(_VOLUME_MOUNT_TEMPLATE % (name, location[2])
-                                  for name, location in volumes.items()])
     config += WORKER_RC.format(
         port=port,
         worker_id=worker,
         docker_image=docker_image,
         name_prefix=name_prefix,
-        volume_mounts=volume_str,
-        volumes=volume_mounts_str,
+        volume_mounts=volume_mounts_str,
+        volumes=volumes_str,
         args=arg_str,
         env_vars=env_str,
         resource_limits=_GPU_TEMPLATE % gpu_limit if gpu_limit > 0 else '')
@@ -237,8 +238,8 @@ def GenerateConfig(num_workers,
         param_server_id=param_server,
         docker_image=docker_image,
         name_prefix=name_prefix,
-        volume_mounts=VOLUME_MOUNTS if use_shared_volume else '',
-        volumes=VOLUMES if use_shared_volume else '',
+        volume_mounts=volume_mounts_str,
+        volumes=volumes_str,
         args=arg_str,
         env_vars=env_str)
     config += '---\n'
