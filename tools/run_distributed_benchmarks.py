@@ -97,6 +97,46 @@ def _BuildAndPushDockerImage(
   return remote_docker_image_with_tag
 
 
+def _GetMostRecentDockerImageFromGcloud(docker_image):
+  """Get most recent <docker_image>:tag for this docker_image.
+ 
+  Args:
+    docker_image: (string) docker image on Google Cloud.
+  
+  Returns:
+    docker_image:tag if at least one tag was found for docker_image.
+    Otherwise, returns None.
+  """
+  tag = subprocess.check_output(
+      ['gcloud', 'container', 'images', 'list-tags',
+       docker_image, '--limit=1', '--format=value(tags[0])'])
+  tag = tag.strip()
+  if not tag:
+    return None 
+  return '%s:%s' % (docker_image, tag)
+ 
+
+def get_gpu_volume_mounts():
+  """Get volume specs to add to Kubernetes config.
+
+  Returns:
+    Volume specs in the format: volume_name: (hostPath, podPath). 
+  """
+  volume_specs = {}
+
+  if FLAGS.nvidia_lib_dir:
+    volume_specs['nvidia-libraries'] = (FLAGS.nvidia_lib_dir, '/usr/lib/nvidia')
+
+  if FLAGS.cuda_lib_dir:
+    cuda_library_files = ['libcuda.so', 'libcuda.so.1', 'libcudart.so']
+    for cuda_library_file in cuda_library_files:
+      lib_name = cuda_library_file.split('.')[0]
+      volume_specs['cuda-libraries-%s' % lib_name] = (
+          os.path.join(FLAGS.cuda_lib_dir, cuda_library_file),
+          os.path.join('/usr/lib/cuda/', cuda_library_file))
+  return volume_specs
+
+
 def main():
   config_text = open(FLAGS.benchmark_configs_file, 'r').read()
   configs = yaml.load(config_text)
@@ -115,16 +155,28 @@ def main():
     name = _ConvertToValidName(str(config['benchmark_name']))
     if name in benchmark_name_to_docker_image:
       docker_image = benchmark_name_to_docker_image[name]
-    else:
+    elif FLAGS.build_docker_image:
       docker_image = _BuildAndPushDockerImage(
           docker_client, config['docker_file'], name, time_tag,
           FLAGS.store_docker_image_in_gcloud)
       benchmark_name_to_docker_image[name] = docker_image
+    else:
+      docker_image = _GetMostRecentDockerImageFromGcloud(
+          _DOCKER_IMAGE_PATTERN % name)
+      if not docker_image:
+        raise NoImageFoundError('No tags found for image %s.' % docker_image)
+
     env_vars = {
         _OUTPUT_FILE_ENV_VAR: os.path.join(
             FLAGS.benchmark_results_dir, name + '.json'),
         _TEST_NAME_ENV_VAR: name
     }
+    gpu_count = config['gpus_per_machine']
+    volumes = {}
+    if gpu_count > 0:
+      volumes = get_gpu_volume_mounts()
+      env_vars['LD_LIBRARY_PATH'] = '/usr/lib/cuda:/usr/lib/nvidia'
+
     env_vars.update(config.get('env_vars', {}))
     args = config.get('args', {})
     kubernetes_config = k8s_tensorflow_lib.GenerateConfig(
@@ -136,8 +188,10 @@ def main():
         name_prefix=name,
         additional_args=args,
         env_vars=env_vars,
+        volumes=volumes,
         use_shared_volume=False,
-        use_cluster_spec=False)
+        use_cluster_spec=False,
+        gpu_limit=gpu_count)
 
     kubernetes_config_path = os.path.join(
         FLAGS.config_output_file_dir, name + '.yaml')
@@ -165,8 +219,17 @@ if __name__ == '__main__':
       help='Directory to use as a docker context. By default, docker context '
            'will be set to the directory containing a docker file.')
   parser.add_argument(
+      '--build_docker_image', type='bool', nargs='?', const=True, default=True,
+      help='Whether to build a new docker image or try to use existing one.') 
+  parser.add_argument(
       '--store_docker_image_in_gcloud', type='bool', nargs='?', const=True,
       default=False, help='Push docker images to google cloud.')
+  parser.add_argument(
+      '--cuda_lib_dir', type=str, default=None, required=False,
+      help='Directory where cuda library files are located on gcloud node.')
+  parser.add_argument(
+      '--nvidia_lib_dir', type=str, default=None, required=False,
+      help='Directory where nvidia library files are located on gcloud node.')
   FLAGS, _ = parser.parse_known_args()
   logging.basicConfig(level=logging.DEBUG)
   main()
