@@ -195,7 +195,12 @@ tf.flags.DEFINE_string('eval_dir', '/tmp/tf_cnn_benchmarks/eval',
                        """Directory where to write eval event logs.""")
 tf.flags.DEFINE_string('pretrain_dir', None,
                        """Path to pretrained session checkpoints.""")
-
+tf.flags.DEFINE_string('result_storage', None,
+                       """Specifies storage option for benchmark results.
+                       None means results won't be stored.
+                       'cbuild_benchmark_datastore' means results will be stored
+                       in cbuild datastore (note: this option requires special
+                       pemissions and meant to be used from cbuilds).""")
 FLAGS = tf.flags.FLAGS
 
 log_fn = print   # tf.logging.info
