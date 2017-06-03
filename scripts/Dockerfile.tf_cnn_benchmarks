@@ -1,5 +1,6 @@
-FROM tensorflow/tensorflow:nightly
+FROM tensorflow/tensorflow:nightly-gpu
 
+RUN apt-get update && apt-get install -y python-pip && pip install google-cloud
 RUN mkdir ./tf_cnn_benchmarks/
 COPY tf_cnn_benchmarks/*.py ./tf_cnn_benchmarks/
 RUN mkdir ./util/
