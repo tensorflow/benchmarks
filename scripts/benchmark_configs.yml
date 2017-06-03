@@ -21,6 +21,8 @@
 # env_vars: (optional) environment variables to set for benchmark jobs.
 # worker_count: (required) number of worker jobs to run
 # ps_count: (required) number of ps jobs to run.
+# gpus_per_machine: (optional) number of required gpus per worker
+#   (currently only supporting <= 1).
 # docker_file: (required) docker file to build a docker image for.
 #   Path to the docker file should be relative to Jenkins build folder.
 #   'benchmarks' github repo will be cloned to 'benchmarks' folder.
@@ -33,10 +35,12 @@
 #   ps_count: 2
 #   docker_file: "benchmarks/models/Dockerfile.alexnet_distributed_test"
 
-- benchmark_name: "tf_cnn_benchmark_trivial"
+- benchmark_name: "tf_cnn_benchmark_resnet50"
   args:
     data_format: "NHWC"
-    model: "trivial"
+    model: "resnet50"
+    result_storage: "cbuild_benchmark_datastore"
   worker_count: 2
   ps_count: 2
+  gpus_per_machine: 1
   docker_file: "benchmarks/scripts/Dockerfile.tf_cnn_benchmarks"
