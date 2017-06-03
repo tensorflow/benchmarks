@@ -50,6 +50,7 @@ spec:
         ports:
         - containerPort: {port}
         env: [{env_vars}]
+        resources: {{limits: {resource_limits} }}
         volumeMounts: [{volume_mounts}]
       volumes: [{volumes}]
 """)
@@ -131,11 +132,12 @@ spec:
   selector:
     tf-ps: "{param_server_id}"
 """)
-VOLUME_MOUNTS = '{name: shared, mountPath: /shared}'
-VOLUMES = '{name: shared, hostPath: {path: /shared}}'
 _ENV_VAR_TEMPLATE = '{name: "%s", value: "%s"}'
 _ARG_TEMPLATE = '"--%s=%s"'
-
+_SHARED_VOLUME_INFO = {'shared': ('/shared', '/shared')}
+_VOLUME_MOUNT_TEMPLATE = '{name: %s, mountPath: %s}'
+_VOLUME_TEMPLATE = '{name: %s, hostPath: {path: %s}}'
+_GPU_TEMPLATE = '{alpha.kubernetes.io/nvidia-gpu: %d}'
 
 def GenerateConfig(num_workers,
                    num_param_servers,
@@ -145,8 +147,10 @@ def GenerateConfig(num_workers,
                    name_prefix,
                    additional_args=None,
                    env_vars=None,
+                   volumes=None,
                    use_shared_volume=True,
-                   use_cluster_spec=True):
+                   use_cluster_spec=True,
+                   gpu_limit=0):
   """Generate configuration strings.
 
   Args:
@@ -160,10 +164,14 @@ def GenerateConfig(num_workers,
     additional_args: dictionary mapping argument names to argument values
       to pass to pods.
     env_vars: dictionary of environment variables to set.
+    volumes: dictionary mapping from volume name to a tuple of values
+      (src_location, dst_location). This volumes will be added in addition
+      to /shared volume if use_shared_volume is True.
     use_shared_volume: whether to add hostPath to /shared directory
       to the kubernetes config.
     use_cluster_spec: if true, pass --cluster_spec to worker and ps jobs.
       If false, pass --worker_hosts and --ps_hosts to worker and ps jobs.
+    gpu_limit: Add a requirement to worker jobs for this many gpu's.
 
   Returns:
     Kubernetes yaml config.
@@ -177,6 +185,14 @@ def GenerateConfig(num_workers,
   config = ''
   common_args = GetCommonArgs(
       num_workers, num_param_servers, port, name_prefix, use_cluster_spec)
+
+  if use_shared_volume:
+    volumes.update(_SHARED_VOLUME_INFO)
+  volumes_str = ', '.join([_VOLUME_TEMPLATE % (name, location[0])
+                          for name, location in volumes.items()])
+  volume_mounts_str = ', '.join([_VOLUME_MOUNT_TEMPLATE % (name, location[1])
+                                 for name, location in volumes.items()])
+
   for worker in range(num_workers):
     worker_args = {
         'job_name': 'worker',
@@ -186,15 +202,17 @@ def GenerateConfig(num_workers,
     worker_args.update(additional_args)
     arg_str = ', '.join([_ARG_TEMPLATE % (name, value)
                          for name, value in worker_args.items()])
+
     config += WORKER_RC.format(
         port=port,
         worker_id=worker,
         docker_image=docker_image,
         name_prefix=name_prefix,
-        volume_mounts=VOLUME_MOUNTS if use_shared_volume else '',
-        volumes=VOLUMES if use_shared_volume else '',
+        volume_mounts=volume_mounts_str,
+        volumes=volumes_str,
         args=arg_str,
-        env_vars=env_str)
+        env_vars=env_str,
+        resource_limits=_GPU_TEMPLATE % gpu_limit if gpu_limit > 0 else '')
     config += '---\n'
     if request_load_balancer:
       config += WORKER_LB_SVC.format(port=port,
@@ -220,8 +238,8 @@ def GenerateConfig(num_workers,
         param_server_id=param_server,
         docker_image=docker_image,
         name_prefix=name_prefix,
-        volume_mounts=VOLUME_MOUNTS if use_shared_volume else '',
-        volumes=VOLUMES if use_shared_volume else '',
+        volume_mounts=volume_mounts_str,
+        volumes=volumes_str,
         args=arg_str,
         env_vars=env_str)
     config += '---\n'

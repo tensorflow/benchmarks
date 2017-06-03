@@ -545,8 +545,7 @@ class ConvNetBuilder(object):
     with tf.variable_scope(name):
       if not self.phase_train:
         keep_prob = 1.0
-      keep_prob_tensor = tf.constant(keep_prob, dtype=self.data_type)
-      dropout = core_layers.dropout(input_layer, keep_prob_tensor)
+      dropout = core_layers.dropout(input_layer, keep_prob)
       self.top_layer = dropout
       return dropout
 
