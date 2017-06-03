@@ -38,6 +38,7 @@ from tensorflow.python.layers import core as core_layers
 from tensorflow.python.layers import pooling as pooling_layers
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import gfile
+import benchmark_storage
 import cnn_util
 import datasets
 import model_config
@@ -1025,10 +1026,12 @@ class BenchmarkCNN(object):
       # Waits for the global step to be done, regardless of done_fn.
       while not global_step_watcher.done():
         time.sleep(.25)
+      images_per_sec = global_step_watcher.steps_per_second() * self.batch_size
       log_fn('-' * 64)
-      log_fn('total images/sec: %.2f' %
-             (global_step_watcher.steps_per_second() * self.batch_size))
+      log_fn('total images/sec: %.2f' % images_per_sec)
       log_fn('-' * 64)
+      if is_chief:
+        store_benchmarks({'total_images_per_sec': images_per_sec})
       # Save the model checkpoint.
       if FLAGS.train_dir is not None and is_chief:
         checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
@@ -1306,6 +1309,11 @@ class BenchmarkCNN(object):
           sync_queues[self.task_index].dequeue_many(len(sync_queues) - 1))
 
       return tf.group(*queue_ops)
+
+
+def store_benchmarks(names_to_values):
+  if FLAGS.result_storage:
+    benchmark_storage.store_benchmark(names_to_values, FLAGS.result_storage)
 
 
 def main(_):
