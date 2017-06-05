@@ -55,7 +55,7 @@ def _GetPodNames(pod_name_prefix, job_name=None):
     List of pod names.
   """
   pod_list_command = [
-      _KUBECTL, 'get', 'pods', '-o', 'name',
+      _KUBECTL, 'get', 'pods', '-o', 'name', '-a',
       '-l', _GetJobSelector(pod_name_prefix, job_name)]
   logging.info('Command to get pod names: %s', ' '.join(pod_list_command))
   output = subprocess.check_output(pod_list_command, universal_newlines=True)
@@ -133,11 +133,11 @@ def WaitForCompletion(pod_name_prefix, job_name='worker', timeout=2*60*60):
   # and the other one has an exit code of 0 would look like: ,0,
   last_state_query = (
       'jsonpath=\'{range .items[*]}'
-      '{.status.containerStatuses[?(@.lastState.terminated)]'
-      '.lastState.terminated.exitCode},{end}\'')
+      '{.status.containerStatuses[?(@.state.terminated)]'
+      '.state.terminated.exitCode},{end}\'')
   status_command = [
       _KUBECTL, 'get', '-o', last_state_query,
-      'pods', '-l', _GetJobSelector(pod_name_prefix, job_name)
+      'pods', '-l', _GetJobSelector(pod_name_prefix, job_name), '-a'
   ]
 
   exit_codes = []
