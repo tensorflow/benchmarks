@@ -25,34 +25,29 @@ from __future__ import print_function
 # machine that launches a TensorFlow k8s cluster does not have to have the
 # Python package of TensorFlow installed on it.
 
-# TODO(cais): Consider adding resource requests/limits to the pods.
-
 # Worker pods will mount host volume /shared, as a convenient way to create
 # shared storage among workers during local tests.
-WORKER_RC = (
+WORKER_POD = (
     """apiVersion: v1
-kind: ReplicationController
+kind: Pod
 metadata:
   name: {name_prefix}-worker{worker_id}
+  labels:
+    tf-worker: "{worker_id}"
+    name-prefix: "{name_prefix}"
+    job: "worker"
 spec:
-  replicas: 1
-  template:
-    metadata:
-      labels:
-        tf-worker: "{worker_id}"
-        name-prefix: "{name_prefix}"
-        job: "worker"
-    spec:
-      containers:
-      - name: tf-worker{worker_id}
-        image: {docker_image}
-        args: [{args}]
-        ports:
-        - containerPort: {port}
-        env: [{env_vars}]
-        resources: {{limits: {resource_limits} }}
-        volumeMounts: [{volume_mounts}]
-      volumes: [{volumes}]
+  restartPolicy: OnFailure
+  containers:
+  - name: tf-worker{worker_id}
+    image: {docker_image}
+    args: [{args}]
+    ports:
+    - containerPort: {port}
+    env: [{env_vars}]
+    resources: {{limits: {resource_limits} }}
+    volumeMounts: [{volume_mounts}]
+  volumes: [{volumes}]
 """)
 WORKER_SVC = (
     """apiVersion: v1
@@ -82,29 +77,26 @@ spec:
   selector:
     tf-worker: "{worker_id}"
 """)
-PARAM_SERVER_RC = (
+PARAM_SERVER_POD = (
     """apiVersion: v1
-kind: ReplicationController
+kind: Pod
 metadata:
   name: {name_prefix}-ps{param_server_id}
+  labels:
+    tf-ps: "{param_server_id}"
+    name-prefix: "{name_prefix}"
+    job: "ps"
 spec:
-  replicas: 1
-  template:
-    metadata:
-      labels:
-        tf-ps: "{param_server_id}"
-        name-prefix: "{name_prefix}"
-        job: "ps"
-    spec:
-      containers:
-      - name: tf-ps{param_server_id}
-        image: {docker_image}
-        args: [{args}]
-        ports:
-        - containerPort: {port}
-        env: [{env_vars}]
-        volumeMounts: [{volume_mounts}]
-      volumes: [{volumes}]
+  restartPolicy: OnFailure
+  containers:
+  - name: tf-ps{param_server_id}
+    image: {docker_image}
+    args: [{args}]
+    ports:
+    - containerPort: {port}
+    env: [{env_vars}]
+    volumeMounts: [{volume_mounts}]
+  volumes: [{volumes}]
 """)
 PARAM_SERVER_SVC = (
     """apiVersion: v1
@@ -186,6 +178,8 @@ def GenerateConfig(num_workers,
   common_args = GetCommonArgs(
       num_workers, num_param_servers, port, name_prefix, use_cluster_spec)
 
+  if volumes is None:
+    volumes = {}
   if use_shared_volume:
     volumes.update(_SHARED_VOLUME_INFO)
   volumes_str = ', '.join([_VOLUME_TEMPLATE % (name, location[0])
@@ -203,7 +197,7 @@ def GenerateConfig(num_workers,
     arg_str = ', '.join([_ARG_TEMPLATE % (name, value)
                          for name, value in worker_args.items()])
 
-    config += WORKER_RC.format(
+    config += WORKER_POD.format(
         port=port,
         worker_id=worker,
         docker_image=docker_image,
@@ -233,7 +227,7 @@ def GenerateConfig(num_workers,
     ps_args.update(additional_args)
     arg_str = ', '.join([_ARG_TEMPLATE % (name, value)
                          for name, value in ps_args.items()])
-    config += PARAM_SERVER_RC.format(
+    config += PARAM_SERVER_POD.format(
         port=port,
         param_server_id=param_server,
         docker_image=docker_image,

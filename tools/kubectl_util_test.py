@@ -38,7 +38,7 @@ class KubectlUtilTest(unittest.TestCase):
     mock_check_call.assert_called_once_with(
         ['kubectl', 'create', '--filename=test.yaml'])
     mock_check_output.assert_called_once_with(
-        ['kubectl', 'get', 'pods', '-o', 'name', '-l',
+        ['kubectl', 'get', 'pods', '-o', 'name', '-a', '-l',
          'name-prefix in (test_pod)'], universal_newlines=True)
 
   @mock.patch.object(subprocess, 'check_output')
@@ -49,7 +49,7 @@ class KubectlUtilTest(unittest.TestCase):
     mock_check_call.assert_called_once_with(
         ['kubectl', 'delete', '--filename=test.yaml'])
     mock_check_output.assert_called_once_with(
-        ['kubectl', 'get', 'pods', '-o', 'name', '-l',
+        ['kubectl', 'get', 'pods', '-o', 'name', '-a', '-l',
          'name-prefix in (test_pod)'], universal_newlines=True)
 
   @mock.patch.object(subprocess, 'check_output')
