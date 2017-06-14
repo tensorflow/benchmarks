@@ -1,4 +1,5 @@
 FROM tensorflow/tensorflow:nightly-gpu
+FROM nvidia/cuda:8.0-cudnn6-runtime-ubuntu16.04
 
 RUN apt-get update && apt-get install -y python-pip && pip install google-cloud
 RUN mkdir ./tf_cnn_benchmarks/
