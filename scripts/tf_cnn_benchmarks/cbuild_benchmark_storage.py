@@ -83,7 +83,8 @@ def upload_to_benchmark_datastore(data, test_name=None, start_time=None):
   test_result = json.dumps(
       {'name': test_name,
        'startTime': (start_time - datetime(1970, 1, 1)).total_seconds(),
-       'entries': {'entry': entries}})
+       'entries': {'entry': entries},
+       'runConfiguration': {'argument': sys.argv[1:]}})
   t_key = client.key('Test')
   t_val = datastore.Entity(t_key, exclude_from_indexes=['info'])
   t_val.update({
