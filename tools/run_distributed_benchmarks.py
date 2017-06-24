@@ -23,6 +23,7 @@ import logging
 import os
 from string import maketrans
 import subprocess
+import sys
 
 import docker
 import k8s_tensorflow_lib
@@ -57,8 +58,9 @@ def _RunBenchmark(name, yaml_file):
   """
   kubectl_util.DeletePods(name, yaml_file)
   kubectl_util.CreatePods(name, yaml_file)
-  kubectl_util.WaitForCompletion(name)
+  success = kubectl_util.WaitForCompletion(name)
   kubectl_util.DeletePods(name, yaml_file)
+  return success
 
 
 def _BuildAndPushDockerImage(
@@ -176,7 +178,8 @@ def main():
     volumes = {}
     if gpu_count > 0:
       volumes = get_gpu_volume_mounts()
-      env_vars['LD_LIBRARY_PATH'] = '/usr/lib/cuda:/usr/lib/nvidia'
+      env_vars['LD_LIBRARY_PATH'] = (
+          '/usr/lib/cuda:/usr/lib/nvidia:/usr/lib/x86_64-linux-gnu')
 
     env_vars.update(config.get('env_vars', {}))
     args = config.get('args', {})
@@ -199,7 +202,9 @@ def main():
     with open(kubernetes_config_path, 'w') as output_config_file:
       output_config_file.write(kubernetes_config)
 
-    _RunBenchmark(name, kubernetes_config_path)
+    success = _RunBenchmark(name, kubernetes_config_path)
+    if not success:
+      sys.exit(1)
 
 
 if __name__ == '__main__':
