@@ -41,7 +41,8 @@ StatEntry = namedtuple(
     'StatEntry', ['name', 'stat_value', 'num_samples'])
 
 
-def store_data_in_json(stat_entries, timestamp, output_file=None):
+def store_data_in_json(
+    stat_entries, timestamp, output_file=None, test_name=None):
   """Stores benchmark results in JSON format.
 
   Args:
@@ -52,10 +53,12 @@ def store_data_in_json(stat_entries, timestamp, output_file=None):
       writes to file specified by this environment variable. If neither
       output_file is passed in, nor TF_DIST_BENCHMARK_RESULTS_FILE is set,
       does nothing.
+    test_name: benchmark name. This argument is required if
+      TF_DIST_BENCHMARK_NAME environment variable is not set.
 
   Raises:
-    ValueError: when neither output_file is passed in nor
-      BENCHMARK_RESULTS_FILE is set.
+    ValueError: when neither test_name is passed in nor
+      TF_DIST_BENCHMARK_NAME is set.
   """
   test_result = test_log_pb2.TestResults(
       start_time=calendar.timegm(timestamp.timetuple()))
@@ -68,10 +71,14 @@ def store_data_in_json(stat_entries, timestamp, output_file=None):
       return
     output_file = os.environ[_OUTPUT_FILE_ENV_VAR]
 
-  if _TEST_NAME_ENV_VAR in os.environ:
+  if test_name is not None:
+    test_result.name = test_name
+  elif _TEST_NAME_ENV_VAR in os.environ:
     test_result.name = os.environ[_TEST_NAME_ENV_VAR]
   else:
-    test_result.name = 'TestBenchmark'
+    raise ValueError(
+        'Could not determine test name. test_name argument is not passed in '
+        'and TF_DIST_BENCHMARK_NAME environment variable is not set.')
 
   for stat_entry in stat_entries:
     test_result.entries.entry.add(
