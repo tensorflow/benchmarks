@@ -43,7 +43,7 @@ updateFilter = function(e){
 <span id="filter_label">Filter</span>
 <input type="text" id="filter_input" onkeyup="updateFilter(this)" placeholder=""/>
 <ul id="benchmark_list">
-{% for test_name, encoded_test_name in tests.items() %}
+{% for test_name, encoded_test_name in tests %}
 <li><a href="{{ url_for('test', test_id=encoded_test_name) }}">{{ test_name }}</a></li>
 {% endfor %}
 </ul>
