@@ -24,9 +24,12 @@
 <div class="outer_div">
 <h2>Performance plots for {{ test_id }}</h2>
 
+{% if arguments %}
 <div id="arguments_label"><span>Arguments:</span></div>
-<table>
 <div>{{ arguments }}</div>
+{% endif %}
+
+
 {% for entry in entries %}
 <svg width="1000" height="500"
   onload="new BenchmarkLatencyChart(this, '{{ test_id }}', '{{ entry.id }}').makeChart()">

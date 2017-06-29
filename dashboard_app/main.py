@@ -18,6 +18,7 @@ from datetime import datetime
 from datetime import timedelta
 import json
 import logging
+from operator import itemgetter
 import re
 import urllib
 
@@ -27,6 +28,8 @@ from google.cloud import datastore
 
 app = Flask(__name__)
 
+# How much data to fetch for graphing.
+_DAYS_TO_FETCH = 30
 # Don't show a benchmark in benchmark list if it hasn't been run
 # for this many days.
 _MAX_DAYS_WITHOUT_RUN = 14
@@ -65,11 +68,16 @@ def index(pattern=None):
   query.add_filter('start', '>', min_time_to_lookup)
 
   fetched = list(query.fetch())
-  test_names = {}  # test name to encoded test name
+  test_names = {}  # maps test name to encoded test name
   for fetched_result in fetched:
+    if fetched_result['test'] in test_names:
+      continue  # already added
     if not filter_regex or re.search(pattern, fetched_result['test']):
       test_names[fetched_result['test']] = urllib.parse.quote(
           fetched_result['test'], safe='')
+
+  # convert test_names to list and sort
+  test_names = sorted(test_names.items(), key=itemgetter(1), reverse=True)
 
   return render_template('index.html', tests=test_names)
 
@@ -126,7 +134,7 @@ def benchmark_data():
   """Returns benchmark data in json format for graphing."""
   test_id = urllib.parse.unquote(request.args.get('test'))
   entry_id = urllib.parse.unquote(request.args.get('entry'))
-  min_time_to_lookup = datetime.now() - timedelta(days=15)
+  min_time_to_lookup = datetime.now() - timedelta(days=_DAYS_TO_FETCH)
 
   client = datastore.Client()
   timing_query = client.query(kind='Entry')
