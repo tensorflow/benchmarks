@@ -65,7 +65,7 @@ def get_data_from_csv(csv_reader):
 def main():
   with open(FLAGS.input_csv_file, 'r') as csvfile:
     csv_reader = csv.reader(csvfile)
-    timestamp, stat_entries = convert_to_json(csv_reader)
+    timestamp, stat_entries = get_data_from_csv(csv_reader)
     benchmark_util.store_data_in_json(
         stat_entries, timestamp,
         output_file=FLAGS.output_json_file,
