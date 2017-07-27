@@ -29,7 +29,7 @@ from google.cloud import datastore
 app = Flask(__name__)
 
 # How much data to fetch for graphing.
-_DAYS_TO_FETCH = 30
+_DAYS_TO_FETCH = 90
 # Don't show a benchmark in benchmark list if it hasn't been run
 # for this many days.
 _MAX_DAYS_WITHOUT_RUN = 14
