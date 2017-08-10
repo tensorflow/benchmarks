@@ -202,7 +202,11 @@ class VariableMgr(object):
     else:
       params = tf.trainable_variables()
     return params
-
+  def get_variables_to_save(self):
+    """ it decides what variables collection will be used to save to checkpoint 
+         tf.global_variables() as default 
+    """  
+    return tf.global_variables()
 
 class VariableMgrIndependent(VariableMgr):
   """VariableMgr that implements the --independent mode for local jobs.
@@ -639,7 +643,8 @@ class VariableMgrDistributedReplicated(VariableMgr):
 
   def get_devices(self):
     return self.benchmark_cnn.raw_devices
-
+  def get_variables_to_save(self):
+    return tf.local_variables()
 
 def sum_grad_and_var_all_reduce(grad_and_vars, devices):
   # Note that each grad_and_vars looks like the following:
