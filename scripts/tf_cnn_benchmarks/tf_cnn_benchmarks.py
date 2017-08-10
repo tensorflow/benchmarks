@@ -698,7 +698,7 @@ def get_perf_timing_str(batch_size, step_train_times, scale=1):
 def load_checkpoint(saver, sess, ckpt_dir):
   ckpt = tf.train.get_checkpoint_state(ckpt_dir)
   if ckpt and ckpt.model_checkpoint_path:
-    if os.path.isabs(ckpt.model_checkpoint_path):
+    if os.path.isabs(ckpt.model_checkpoint_path) or ckpt.model_checkpoint_path.startswith('hdfs'):
       # Restores from checkpoint with absolute path.
       model_checkpoint_path = ckpt.model_checkpoint_path
     else:
@@ -858,7 +858,8 @@ class BenchmarkCNN(object):
     log_fn('Model:       %s' % self.model)
     log_fn('Mode:        %s' % get_mode_from_flags())
     log_fn('Batch size:  %s global' % self.batch_size)
-    log_fn('             %s per device' % (self.batch_size / len(self.devices)))
+    if self.devices:
+      log_fn('             %s per device' % (self.batch_size / len(self.devices)))
     log_fn('Devices:     %s' % self.raw_devices)
     log_fn('Data format: %s' % self.data_format)
     log_fn('Optimizer:   %s' % FLAGS.optimizer)
@@ -876,7 +877,7 @@ class BenchmarkCNN(object):
       log_fn('Running parameter server %s' % self.task_index)
       self.server.join()
       return
-
+ 
     with tf.Graph().as_default():
       if FLAGS.eval:
         self._eval_cnn()
@@ -886,11 +887,14 @@ class BenchmarkCNN(object):
   def _eval_cnn(self):
     """Evaluate the model from a checkpoint using validation dataset."""
     (enqueue_ops, fetches) = self._build_model()
-    saver = tf.train.Saver(tf.global_variables())
+    variables_to_save =self.variable_mgr.get_variables_to_save() 
+    saver = tf.train.Saver(variables_to_save)
     summary_writer = tf.summary.FileWriter(FLAGS.eval_dir,
                                            tf.get_default_graph())
-    target = ''
+
+    target = self.server.target if self.server else ''
     with tf.Session(target=target, config=create_config_proto()) as sess:
+      sess.run(tf.local_variables_initializer())
       for i in xrange(len(enqueue_ops)):
         sess.run(enqueue_ops[:(i+1)])
       if FLAGS.train_dir is None:
@@ -959,10 +963,11 @@ class BenchmarkCNN(object):
     # passing in None for summary_op to avoid a summary_thread being started.
     # Running summaries and training operations in parallel could run out of
     # GPU memory.
+    saver=tf.train.Saver(self.variable_mgr.get_variables_to_save())
     sv = tf.train.Supervisor(
         is_chief=is_chief,
         logdir=FLAGS.train_dir,
-        saver=tf.train.Saver(tf.global_variables()),
+        saver=saver,
         global_step=global_step,
         summary_op=None,
         save_model_secs=FLAGS.save_model_secs,
