@@ -36,14 +36,15 @@ References:
 
   Inception v4 and Resnet V2 architectures: http://arxiv.org/abs/1602.07261
 """
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import model
 
 
 class Inceptionv3Model(model.Model):
 
-  def __init__(self):
+  def __init__(self, auxiliary=False):
+    self._auxiliary = auxiliary
     super(Inceptionv3Model, self).__init__('inception3', 299, 32, 0.005)
 
   def add_inference(self, cnn):
@@ -85,27 +86,39 @@ class Inceptionv3Model(model.Model):
                ('conv', 192, 1, 1)]]
       cnn.inception_module('incept_v3_e', cols)
 
+    def incept_v3_aux(cnn):
+      assert cnn.aux_top_layer is None
+      cnn.aux_top_layer = cnn.top_layer
+      cnn.aux_top_size = cnn.top_size
+      with cnn.switch_to_aux_top_layer():
+        cnn.apool(5, 5, 3, 3, mode='VALID')
+        cnn.conv(128, 1, 1, mode='SAME')
+        cnn.conv(768, 5, 5, mode='VALID', stddev=0.01)
+        cnn.reshape([-1, 768])
+
     cnn.use_batch_norm = True
-    cnn.conv(32, 3, 3, 2, 2, mode='VALID')
-    cnn.conv(32, 3, 3, 1, 1, mode='VALID')
-    cnn.conv(64, 3, 3, 1, 1, mode='SAME')
-    cnn.mpool(3, 3, 2, 2, mode='VALID')
-    cnn.conv(80, 1, 1, 1, 1, mode='VALID')
-    cnn.conv(192, 3, 3, 1, 1, mode='VALID')
-    cnn.mpool(3, 3, 2, 2, 'VALID')
-    inception_v3_a(cnn, 32)
-    inception_v3_a(cnn, 64)
-    inception_v3_a(cnn, 64)
-    inception_v3_b(cnn)
-    inception_v3_c(cnn, 128)
-    inception_v3_c(cnn, 160)
-    inception_v3_c(cnn, 160)
-    inception_v3_c(cnn, 192)
-    inception_v3_d(cnn)
-    inception_v3_e(cnn, 'avg')
-    inception_v3_e(cnn, 'max')
-    cnn.apool(8, 8, 1, 1, 'VALID')
-    cnn.reshape([-1, 2048])
+    cnn.conv(32, 3, 3, 2, 2, mode='VALID')   # 299 x 299 x 3
+    cnn.conv(32, 3, 3, 1, 1, mode='VALID')   # 149 x 149 x 32
+    cnn.conv(64, 3, 3, 1, 1, mode='SAME')    # 147 x 147 x 64
+    cnn.mpool(3, 3, 2, 2, mode='VALID')      # 147 x 147 x 64
+    cnn.conv(80, 1, 1, 1, 1, mode='VALID')   # 73 x 73 x 80
+    cnn.conv(192, 3, 3, 1, 1, mode='VALID')  # 71 x 71 x 192
+    cnn.mpool(3, 3, 2, 2, 'VALID')           # 35 x 35 x 192
+    inception_v3_a(cnn, 32)                  # 35 x 35 x 256 mixed.
+    inception_v3_a(cnn, 64)                  # 35 x 35 x 288 mixed_1.
+    inception_v3_a(cnn, 64)                  # 35 x 35 x 288 mixed_2
+    inception_v3_b(cnn)                      # 17 x 17 x 768 mixed_3
+    inception_v3_c(cnn, 128)                 # 17 x 17 x 768 mixed_4
+    inception_v3_c(cnn, 160)                 # 17 x 17 x 768 mixed_5
+    inception_v3_c(cnn, 160)                 # 17 x 17 x 768 mixed_6
+    inception_v3_c(cnn, 192)                 # 17 x 17 x 768 mixed_7
+    if self._auxiliary:
+      incept_v3_aux(cnn)                     # Auxillary Head logits
+    inception_v3_d(cnn)                      # 17 x 17 x 1280 mixed_8
+    inception_v3_e(cnn, 'avg')               # 8 x 8 x 2048 mixed_9
+    inception_v3_e(cnn, 'max')               # 8 x 8 x 2048 mixed_10
+    cnn.apool(8, 8, 1, 1, 'VALID')           # 8 x 8 x 2048
+    cnn.reshape([-1, 2048])                  # 1 x 1 x 2048
 
 
 # Stem functions

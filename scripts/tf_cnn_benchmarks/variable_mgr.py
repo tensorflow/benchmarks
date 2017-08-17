@@ -32,6 +32,12 @@ PS_SHADOW_VAR_PREFIX = 'ps_var'
 
 # To be used with custom_getter on tf.get_variable.
 class OverrideCachingDevice(object):
+  """Variable getter which caches variables on the least loaded device.
+
+  Variables smaller than a certain threshold are cached on a single specific
+  device, as specified in the constructor. All other variables are load balanced
+  across a pool of devices, by caching each variable on the least loaded device.
+  """
 
   def __init__(self, devices, device_for_small_variables,
                small_variable_size_threshold):
@@ -136,22 +142,25 @@ class VariableMgr(object):
     """Preprocess the device gradients prior to applying them.
 
     Args:
-      device_grads: a list of gradients each of which calculated by a device.
+      device_grads: List of lists of (gradient, variable) tuples.
+        device_grads[t][g] = (gradient, variable), where t is the index of the
+        tower and g is the index of the gradient-variable pair.
 
-    Returns: a tuple of (apply_gradients_devices, gradient_state), where
-      gradients will then be applied to each entry in apply_gradients_devices,
-      and gradient is passed to later calls to get_gradients_to_apply and
-      append_apply_gradients_ops.
+    Returns: a tuple of (apply_gradients_devices, gradient_state).
+      gradient_state is an opaque structure that should be passed to
+      get_gradients_to_apply() and append_apply_gradients_ops() (in that order).
+      apply_gradients_devices is a list of devices where the gradients will be
+      applied with get_gradients_to_apply() and append_apply_gradients_ops().
     """
     del device_grads  # unused by this implementation
     assert False, 'Must be implemented in subclass'
 
   def get_gradients_to_apply(self, device_num, gradient_state):
-    """Returns the [(gradient, variable] to apply for device_num.
+    """Returns the [(gradient, variable)] list to apply for device_num.
 
     Args:
-      device_num: indexes ino the apply_gradients_devices returned by an earlier
-                  call to preprocess_device_grads.
+      device_num: indexes into apply_gradients_devices, which was returned by an
+        earlier call to preprocess_device_grads.
       gradient_state: from previous call to apply_gradients_devices.
     """
     del device_num, gradient_state  # unused by this implementation
@@ -182,6 +191,10 @@ class VariableMgr(object):
   def get_devices(self):
     """Returns devices to use for computation; includes replica selection."""
     assert False, 'Must be implemented in subclass'
+
+  def savable_variables(self):
+    """Return the set of variables used for saving/loading the model."""
+    return tf.global_variables()
 
   def trainable_variables_on_device(self, device_num, writable=False):
     """Return the set of trainable variables on device.
@@ -223,9 +236,7 @@ class VariableMgrIndependent(VariableMgr):
 
   def get_gradients_to_apply(self, device_num, gradient_state):
     device_grads = gradient_state
-    # Note that each grad_and_vars looks like the following:
-    #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
-    return [grad_and_vars[device_num] for grad_and_vars in zip(*device_grads)]
+    return device_grads[device_num]
 
   def get_devices(self):
     return self.benchmark_cnn.raw_devices
@@ -318,7 +329,7 @@ class StagedModelVariable(object):
           [self.var_stage_get.dtype], shapes=[self.var_stage_get.shape])
       delta_put_op = delta_staging_area.put([delta])
       self.variable_mgr.staging_delta_ops.append(delta_put_op)
-      delta_get_op = delta_staging_area.get()
+      delta_get_op = delta_staging_area.get()[0]
     # Return the actual updates. The colocation constraint will be reapplied.
     return self.real_var.assign_sub(delta_get_op)
 
@@ -379,12 +390,12 @@ class StagedVariableGetter(object):
           self.variable_mgr.staged_vars_on_cpu[name] = cpu_var
       var_to_stage = cpu_var
     else:
-      var_to_stage = real_var
+      var_to_stage = tf.identity(real_var)  # de-reference the variable.
 
     with tf.device(self.devices[self.device_num]):
       staging_area = data_flow_ops.StagingArea([dtype], shapes=[shape])
       put_op = staging_area.put([var_to_stage])
-      get_op = staging_area.get()
+      get_op = staging_area.get()[0]
       staging_ops[name] = (put_op, get_op)
     if trainable:
       # For trainable variables, they are managed separatedly through
@@ -464,8 +475,7 @@ class VariableMgrLocalReplicated(VariableMgr):
 
   def preprocess_device_grads(self, device_grads):
     if self._use_nccl:
-      aggregated_device_grads = sum_gradients_all_reduce(
-          device_grads, self.benchmark_cnn.devices)
+      aggregated_device_grads = sum_gradients_all_reduce(device_grads)
     else:
       agg_grads = aggregate_gradients_using_copy_with_device_selection(
           self.benchmark_cnn, device_grads, use_mean=False)
@@ -477,9 +487,7 @@ class VariableMgrLocalReplicated(VariableMgr):
 
   def get_gradients_to_apply(self, device_num, gradient_state):
     device_grads = gradient_state
-    # Note that each grad_and_vars looks like the following:
-    #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
-    return [grad_and_vars[device_num] for grad_and_vars in zip(*device_grads)]
+    return device_grads[device_num]
 
   def get_post_init_ops(self):
     # Copy initialized values for variables on GPU 0 to other GPUs.
@@ -488,12 +496,22 @@ class VariableMgrLocalReplicated(VariableMgr):
     post_init_ops = []
     for v in global_vars:
       split_name = v.name.split('/')
+      # TODO(b/62630508): use more specific prefix than v or v0.
       if split_name[0] == 'v0' or not v.name.startswith('v'):
         continue
       split_name[0] = 'v0'
       copy_from = var_by_name['/'.join(split_name)]
       post_init_ops.append(v.assign(copy_from.read_value()))
     return post_init_ops
+
+  def savable_variables(self):
+    """Return the set of variables used for saving/loading the model."""
+    params = []
+    for v in tf.global_variables():
+      split_name = v.name.split('/')
+      if split_name[0] == 'v0' or not v.name.startswith('v'):
+        params.append(v)
+    return params
 
   def get_devices(self):
     return self.benchmark_cnn.raw_devices
@@ -588,7 +606,8 @@ class VariableMgrDistributedReplicated(VariableMgr):
     avg_grads = aggregate_gradients_using_copy_with_device_selection(
         self.benchmark_cnn, device_grads, use_mean=True)
 
-    # Make shadow variable for each original trainable variable.
+    # Make shadow variable on a parameter server for each original trainable
+    # variable.
     for i, (g, v) in enumerate(avg_grads):
       my_name = PS_SHADOW_VAR_PREFIX + '/' + v.name
       if my_name.endswith(':0'): my_name = my_name[:-2]
@@ -616,19 +635,22 @@ class VariableMgrDistributedReplicated(VariableMgr):
             training_ops.append(
                 device_grads[my_d][i][1].assign(updated_value))
 
+  def _strip_port(self, s):
+    if s.endswith(':0'):
+      return s[:-2]
+    return s
+
   def get_post_init_ops(self):
     # Copy initialized variables for variables on the parameter server
     # to the local copy of the variable.
-    def strip_port(s):
-      if s.endswith(':0'):
-        return s[:-2]
-      return s
+
     local_vars = tf.local_variables()
-    local_var_by_name = dict([(strip_port(v.name), v) for v in local_vars])
+    local_var_by_name = dict(
+        [(self._strip_port(v.name), v) for v in local_vars])
     post_init_ops = []
     for v in tf.global_variables():
       if v.name.startswith(PS_SHADOW_VAR_PREFIX + '/v0/'):
-        prefix = strip_port(
+        prefix = self._strip_port(
             v.name[len(PS_SHADOW_VAR_PREFIX + '/v0'):])
         for i in range(self.benchmark_cnn.num_gpus):
           name = 'v%s%s' % (i, prefix)
@@ -637,28 +659,37 @@ class VariableMgrDistributedReplicated(VariableMgr):
             post_init_ops.append(copy_to.assign(v.read_value()))
     return post_init_ops
 
+  def savable_variables(self):
+    """Return the set of variables used for saving/loading the model."""
+    params = []
+    for v in tf.global_variables():
+      if (v.name.startswith(PS_SHADOW_VAR_PREFIX + '/v0/') or
+          not v.name.startswith(PS_SHADOW_VAR_PREFIX)):
+        print('save variable %s' % v.name)
+        params.append(v)
+    return params
+
   def get_devices(self):
     return self.benchmark_cnn.raw_devices
 
 
-def sum_grad_and_var_all_reduce(grad_and_vars, devices):
+def sum_grad_and_var_all_reduce(grad_and_vars):
   # Note that each grad_and_vars looks like the following:
   #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
 
-  scaled_grads = [g for _, (g, _) in zip(devices, grad_and_vars)]
+  scaled_grads = [g for g, _ in grad_and_vars]
   summed_grads = nccl.all_sum(scaled_grads)
 
   result = []
-  for d, (_, v), g in zip(devices, grad_and_vars, summed_grads):
-    with tf.device(d):
-      result.append((g, v))
+  for (_, v), g in zip(grad_and_vars, summed_grads):
+    result.append((g, v))
   return result
 
 
-def sum_gradients_all_reduce(tower_grads, devices):
+def sum_gradients_all_reduce(tower_grads):
   new_tower_grads = []
   for grad_and_vars in zip(*tower_grads):
-    new_tower_grads.append(sum_grad_and_var_all_reduce(grad_and_vars, devices))
+    new_tower_grads.append(sum_grad_and_var_all_reduce(grad_and_vars))
   return list(zip(*new_tower_grads))
 
 
@@ -669,12 +700,12 @@ def aggregate_gradients_using_copy_with_device_selection(
   Args:
     benchmark_cnn: benchmark_cnn class.
     tower_grads: List of lists of (gradient, variable) tuples. The outer list
-      is over individual gradients. The inner list is over the gradient
-      calculation for each tower.
+      is over towers. The inner list is over individual gradients.
     use_mean: if True, mean is taken, else sum of gradients is taken.
   Returns:
     List of pairs of (gradient, variable) where the gradient has been averaged
-     across all towers.
+     across all towers. For each gradient, the variable is chosen from the
+     first tower.
   """
   if benchmark_cnn.local_parameter_device_flag == 'gpu':
     avail_devices = benchmark_cnn.raw_devices
@@ -683,8 +714,8 @@ def aggregate_gradients_using_copy_with_device_selection(
   agg_grads = []
   for i, single_grads in enumerate(zip(*tower_grads)):
     with tf.device(avail_devices[i % len(avail_devices)]):
-      agg_grads.extend(
-          aggregate_gradients_using_copy(zip(single_grads), use_mean))
+      agg_grads.append(
+          aggregate_single_gradient_using_copy(single_grads, use_mean))
   return agg_grads
 
 
@@ -694,23 +725,26 @@ def aggregate_gradients_using_copy_with_variable_colocation(
 
   Args:
     tower_grads: List of lists of (gradient, variable) tuples. The outer list
-      is over individual gradients. The inner list is over the gradient
-      calculation for each tower.
+      is over towers. The inner list is over individual gradients. All variables
+      of the same gradient across towers must be the same (that is,
+      tower_grads[x][a][1] == tower_grads[y][a][1] for all indices x, y, and a)
     use_mean: if True, mean is taken, else sum of gradients is taken.
   Returns:
     List of pairs of (gradient, variable) where the gradient has been averaged
      across all towers.
   """
   agg_grads = []
-  for _, single_grads in enumerate(zip(*tower_grads)):
+  for single_grads in zip(*tower_grads):
+    # Note that each single_grads looks like the following:
+    #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
     var = single_grads[0][1]
 
     for _, v in single_grads:
       assert v == var
 
     with tf.device(var.device):
-      agg_grads.extend(
-          aggregate_gradients_using_copy(zip(single_grads), use_mean))
+      agg_grads.append(
+          aggregate_single_gradient_using_copy(single_grads, use_mean))
   return agg_grads
 
 
@@ -721,28 +755,37 @@ def aggregate_gradients_using_copy(tower_grads, use_mean):
 
   Args:
     tower_grads: List of lists of (gradient, variable) tuples. The outer list
-      is over individual gradients. The inner list is over the gradient
-      calculation for each tower.
+      is over towers. The inner list is over individual gradients.
     use_mean: if True, mean is taken, else sum of gradients is taken.
   Returns:
      List of pairs of (gradient, variable) where the gradient has been averaged
-     across all towers.
+     across all towers. For each gradient, the variable is chosen from the
+     first tower.
   """
-  agg_grads = []
-  for grad_and_vars in zip(*tower_grads):
-    # Note that each grad_and_vars looks like the following:
-    #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
-    grads = []
-    grads = [g for g, _ in grad_and_vars]
-    grad = tf.add_n(grads)
+  return [aggregate_single_gradient_using_copy(single_grads, use_mean)
+          for single_grads in zip(*tower_grads)]
 
-    if use_mean and len(grads) > 1:
-      grad = tf.multiply(grad, 1.0/len(grads))
 
-    # Keep in mind that the Variables are redundant because they are shared
-    # across towers. So .. we will just return the first tower's pointer to
-    # the Variable.
-    v = grad_and_vars[0][1]
-    grad_and_var = (grad, v)
-    agg_grads.append(grad_and_var)
-  return agg_grads
+def aggregate_single_gradient_using_copy(grad_and_vars, use_mean):
+  """Calculate the average gradient for a shared variable across all towers.
+
+  Note that this function provides a synchronization point across all towers.
+
+  Args:
+    grad_and_vars: A list or tuple of (gradient, variable) tuples. Each
+      (gradient, variable) pair within the outer list represents the gradient
+      of the variable calculated for a single tower, and the number of pairs
+      equals the number of towers.
+    use_mean: if True, mean is taken, else sum of gradients is taken.
+  Returns:
+     The pair (average_gradient, variable) where the gradient has been averaged
+     across all towers. The variable is chosen from the first tower.
+  """
+  grads = [g for g, _ in grad_and_vars]
+  grad = tf.add_n(grads)
+
+  if use_mean and len(grads) > 1:
+    grad = tf.multiply(grad, 1.0/len(grads))
+
+  v = grad_and_vars[0][1]
+  return grad, v
