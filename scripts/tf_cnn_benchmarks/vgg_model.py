@@ -23,8 +23,8 @@ References:
      Very Deep Convolutional Networks for Large-Scale Image Recognition
      arXiv:1409.1556 (2014)
 """
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import model
 
 

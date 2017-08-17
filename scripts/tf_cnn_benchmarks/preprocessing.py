@@ -308,18 +308,19 @@ def distort_color(image, thread_id=0, scope=None):
     return image
 
 
-class ImagePreprocessor(object):
-  """Preprocessor for input images."""
+class RecordInputImagePreprocessor(object):
+  """Preprocessor for images with RecordInput format."""
 
   def __init__(self,
                height,
                width,
                batch_size,
                device_count,
-               dtype=tf.float32,
-               train=True,
-               distortions=None,
-               resize_method=None):
+               dtype,
+               train,
+               distortions,
+               resize_method,
+               shift_ratio):
     self.height = height
     self.width = width
     self.batch_size = batch_size
@@ -327,8 +328,7 @@ class ImagePreprocessor(object):
     self.dtype = dtype
     self.train = train
     self.resize_method = resize_method
-    if distortions is None:
-      distortions = FLAGS.distortions
+    self.shift_ratio = shift_ratio
     self.distortions = distortions
     if self.batch_size % self.device_count != 0:
       raise ValueError(
@@ -339,7 +339,6 @@ class ImagePreprocessor(object):
 
   def preprocess(self, image_buffer, bbox, thread_id):
     """Preprocessing image_buffer using thread_id."""
-    # Note: Width and height of image is known only at runtime.
     image = tf.image.decode_jpeg(image_buffer, channels=3,
                                  dct_method='INTEGER_FAST')
     if self.train and self.distortions:
@@ -363,6 +362,7 @@ class ImagePreprocessor(object):
           parallelism=64,
           buffer_size=10000,
           batch_size=self.batch_size,
+          shift_ratio=self.shift_ratio,
           name='record_input')
       records = record_input.get_yield_op()
       records = tf.split(records, self.batch_size, 0)
@@ -378,8 +378,6 @@ class ImagePreprocessor(object):
       for device_index in xrange(self.device_count):
         images[device_index] = tf.parallel_stack(images[device_index])
         label_index_batch[device_index] = tf.concat(labels[device_index], 0)
-
-        # dynamic_pad=True) # HACK TESTING dynamic_pad=True
         images[device_index] = tf.cast(images[device_index], self.dtype)
         depth = 3
         images[device_index] = tf.reshape(
@@ -391,3 +389,190 @@ class ImagePreprocessor(object):
         # tf.summary.image('images', images)
 
       return images, label_index_batch
+
+
+class Cifar10ImagePreprocessor(object):
+  """Preprocessor for Cifar10 input images."""
+
+  def __init__(self,
+               height,
+               width,
+               batch_size,
+               device_count,
+               dtype,
+               train,
+               distortions,
+               resize_method,
+               shift_ratio):
+    # Process images of this size. Depending on the model configuration, the
+    # size of the input layer might differ from the original size of 32 x 32.
+    self.height = height or 32
+    self.width = width or 32
+    self.depth = 3
+    self.batch_size = batch_size
+    self.device_count = device_count
+    self.dtype = dtype
+    self.train = train
+    self.distortions = distortions
+    del resize_method
+    del shift_ratio  # unused, because a RecordInput is not used
+    if self.batch_size % self.device_count != 0:
+      raise ValueError(
+          ('batch_size must be a multiple of device_count: '
+           'batch_size %d, device_count: %d') %
+          (self.batch_size, self.device_count))
+    self.batch_size_per_device = self.batch_size // self.device_count
+
+  def _distort_image(self, image):
+    """Distort one image for training a network.
+
+    Adopted the standard data augmentation scheme that is widely used for
+    this dataset: the images are first zero-padded with 4 pixels on each side,
+    then randomly cropped to again produce distorted images; half of the images
+    are then horizontally mirrored.
+
+    Args:
+      image: input image.
+    Returns:
+      distored image.
+    """
+    image = tf.image.resize_image_with_crop_or_pad(
+        image, self.height + 8, self.width + 8)
+    distorted_image = tf.random_crop(image,
+                                     [self.height, self.width, self.depth])
+    # Randomly flip the image horizontally.
+    distorted_image = tf.image.random_flip_left_right(distorted_image)
+    if FLAGS.summary_verbosity > 0:
+      tf.summary.image('distorted_image', tf.expand_dims(distorted_image, 0))
+    return distorted_image
+
+  def _eval_image(self, image):
+    """Get the image for model evaluation."""
+    distorted_image = tf.image.resize_image_with_crop_or_pad(
+        image, self.width, self.height)
+    if FLAGS.summary_verbosity > 0:
+      tf.summary.image('cropped.image', tf.expand_dims(distorted_image, 0))
+    return distorted_image
+
+  def preprocess(self, raw_image):
+    """Preprocessing raw image."""
+    if FLAGS.summary_verbosity > 0:
+      tf.summary.image('raw.image', tf.expand_dims(raw_image, 0))
+    if self.train and self.distortions:
+      image = self._distort_image(raw_image)
+    else:
+      image = self._eval_image(raw_image)
+    return image
+
+  def minibatch(self, dataset, subset):
+    with tf.name_scope('batch_processing'):
+      all_images, all_labels = dataset.read_data_files(subset)
+      all_images = tf.constant(all_images)
+      all_labels = tf.constant(all_labels)
+      input_image, input_label = tf.train.slice_input_producer(
+          [all_images, all_labels])
+      input_image = tf.cast(input_image, self.dtype)
+      input_label = tf.cast(input_label, tf.int32)
+      # Ensure that the random shuffling has good mixing properties.
+      min_fraction_of_examples_in_queue = 0.4
+      min_queue_examples = int(dataset.num_examples_per_epoch(subset) *
+                               min_fraction_of_examples_in_queue)
+      raw_images, raw_labels = tf.train.shuffle_batch(
+          [input_image, input_label], batch_size=self.batch_size,
+          capacity=min_queue_examples + 3 * self.batch_size,
+          min_after_dequeue=min_queue_examples)
+
+      images = [[] for i in range(self.device_count)]
+      labels = [[] for i in range(self.device_count)]
+
+      # Create a list of size batch_size, each containing one image of the
+      # batch. Without the unstack call, raw_images[i] would still access the
+      # same image via a strided_slice op, but would be slower.
+      raw_images = tf.unstack(raw_images, axis=0)
+      raw_labels = tf.unstack(raw_labels, axis=0)
+      for i in xrange(self.batch_size):
+        device_index = i % self.device_count
+        # The raw image read from data has the format [depth, height, width]
+        # reshape to the format returned by minibatch.
+        raw_image = tf.reshape(raw_images[i],
+                               [dataset.depth, dataset.height, dataset.width])
+        raw_image = tf.transpose(raw_image, [1, 2, 0])
+        image = self.preprocess(raw_image)
+        images[device_index].append(image)
+
+        labels[device_index].append(raw_labels[i])
+
+      for device_index in xrange(self.device_count):
+        images[device_index] = tf.parallel_stack(images[device_index])
+        labels[device_index] = tf.parallel_stack(labels[device_index])
+      return images, labels
+
+
+class TestImagePreprocessor(object):
+  """Preprocessor used for testing.
+
+  set_fake_data() sets which images and labels will be output by minibatch(),
+  and must be called before minibatch(). This allows tests to easily specify
+  a set of images to use for training, without having to create any files.
+
+  Queue runners must be started for this preprocessor to work.
+  """
+
+  def __init__(self,
+               height,
+               width,
+               batch_size,
+               device_count,
+               dtype=None,
+               train=None,
+               distortions=None,
+               resize_method=None,
+               shift_ratio=0):
+    del height, width, dtype, train, distortions, resize_method, shift_ratio
+    self.batch_size = batch_size
+    self.device_count = device_count
+    self.expected_subset = None
+
+  def set_fake_data(self, fake_images, fake_labels):
+    assert len(fake_images.shape) == 4
+    assert len(fake_labels.shape) == 1
+    assert fake_images.shape[0] == fake_labels.shape[0]
+    assert fake_images.shape[0] % self.batch_size == 0
+    self.fake_images = fake_images
+    self.fake_labels = fake_labels
+
+  def minibatch(self, dataset, subset):
+    del dataset
+    if (not hasattr(self, 'fake_images') or
+        not hasattr(self, 'fake_labels')):
+      raise ValueError('Must call set_fake_data() before calling minibatch '
+                       'on TestImagePreprocessor')
+    if self.expected_subset is not None:
+      assert subset == self.expected_subset
+
+    with tf.name_scope('batch_processing'):
+      image_slice = tf.train.slice_input_producer(
+          [self.fake_images],
+          shuffle=False,
+          name='image_slice')
+      raw_images = tf.train.batch(image_slice, self.batch_size,
+                                  name='image_batch')
+      label_slice = tf.train.slice_input_producer(
+          [self.fake_labels],
+          shuffle=False,
+          name='label_slice')
+      raw_labels = tf.train.batch(label_slice, self.batch_size,
+                                  name='label_batch')
+
+      images = [[] for _ in range(self.device_count)]
+      labels = [[] for _ in range(self.device_count)]
+      for i in xrange(self.batch_size):
+        device_index = i % self.device_count
+        images[device_index].append(raw_images[i])
+        labels[device_index].append(raw_labels[i])
+      for device_index in xrange(self.device_count):
+        images[device_index] = tf.parallel_stack(images[device_index])
+        labels[device_index] = tf.parallel_stack(labels[device_index])
+
+      return images, labels
+
