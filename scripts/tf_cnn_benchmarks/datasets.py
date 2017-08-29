@@ -28,6 +28,10 @@ from tensorflow.python.platform import gfile
 import preprocessing
 
 
+IMAGENET_NUM_TRAIN_IMAGES = 1281167
+IMAGENET_NUM_VAL_IMAGES = 50000
+
+
 def create_dataset(data_dir, data_name):
   """Create a Dataset instance based on data_dir and data_name."""
   supported_datasets = {
@@ -59,13 +63,15 @@ class Dataset(object):
   """Abstract class for cnn benchmarks dataset."""
 
   def __init__(self, name, height=None, width=None, depth=None, data_dir=None,
-               queue_runner_required=False):
+               queue_runner_required=False, num_classes=1000):
     self.name = name
     self.height = height
     self.width = width
     self.depth = depth or 3
+
     self.data_dir = data_dir
     self._queue_runner_required = queue_runner_required
+    self._num_classes = num_classes
 
   def tf_record_pattern(self, subset):
     return os.path.join(self.data_dir, '%s-*-of-*' % subset)
@@ -73,9 +79,13 @@ class Dataset(object):
   def reader(self):
     return tf.TFRecordReader()
 
-  @abstractmethod
+  @property
   def num_classes(self):
-    pass
+    return self._num_classes
+
+  @num_classes.setter
+  def num_classes(self, val):
+    self._num_classes = val
 
   @abstractmethod
   def num_examples_per_epoch(self, subset):
@@ -90,6 +100,9 @@ class Dataset(object):
   def queue_runner_required(self):
     return self._queue_runner_required
 
+  def use_synthetic_gpu_images(self):
+    return False
+
 
 class ImagenetData(Dataset):
   """Configuration for Imagenet dataset."""
@@ -99,14 +112,11 @@ class ImagenetData(Dataset):
       raise ValueError('Data directory not specified')
     super(ImagenetData, self).__init__('imagenet', 300, 300, data_dir=data_dir)
 
-  def num_classes(self):
-    return 1000
-
   def num_examples_per_epoch(self, subset='train'):
     if subset == 'train':
-      return 1281167
+      return IMAGENET_NUM_TRAIN_IMAGES
     elif subset == 'validation':
-      return 50000
+      return IMAGENET_NUM_VAL_IMAGES
     else:
       raise ValueError('Invalid data subset "%s"' % subset)
 
@@ -120,8 +130,11 @@ class SyntheticData(Dataset):
   def __init__(self, unused_data_dir):
     super(SyntheticData, self).__init__('synthetic')
 
-  def num_classes(self):
-    return 1000
+  def get_image_preprocessor(self):
+    return preprocessing.SyntheticImagePreprocessor
+
+  def use_synthetic_gpu_images(self):
+    return True
 
 
 class Cifar10Data(Dataset):
@@ -134,7 +147,8 @@ class Cifar10Data(Dataset):
     if data_dir is None:
       raise ValueError('Data directory not specified')
     super(Cifar10Data, self).__init__('cifar10', 32, 32, data_dir=data_dir,
-                                      queue_runner_required=True)
+                                      queue_runner_required=True,
+                                      num_classes=10)
 
   def read_data_files(self, subset='train'):
     """Reads from data file and return images and labels in a numpy array."""
@@ -157,9 +171,6 @@ class Cifar10Data(Dataset):
     all_labels = np.concatenate(
         [each_input['labels'] for each_input in inputs])
     return all_images, all_labels
-
-  def num_classes(self):
-    return 10
 
   def num_examples_per_epoch(self, subset='train'):
     if subset == 'train':

@@ -16,10 +16,10 @@
 """Image pre-processing utilities.
 """
 import glob
-import sys
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+from tensorflow.python.layers import utils
 from tensorflow.python.ops import data_flow_ops
 import cnn_util
 
@@ -97,15 +97,17 @@ def parse_example_proto(example_serialized):
   return features['image/encoded'], label, bbox, features['image/class/text']
 
 
-def get_image_resize_method(resize_method, thread_id=0):
+def get_image_resize_method(resize_method, batch_position=0):
   """Get tensorflow resize method.
 
-  If method is 'round_robin', return different methods for different threads
-  based on round-robin fashion.
+  If method is 'round_robin', return different methods based on batch position
+  in a round-robin fashion. NOTE: If the batch size is not a multiple of the
+  number of methods, then the distribution of methods will not be uniform.
 
   Args:
     resize_method: (string) nearest, bilinear, bicubic, area, or round_robin.
-    thread_id: an integer id for the thread.
+    batch_position: position of the image in a batch. NOTE: this argument can
+      be an integer or a tensor
   Returns:
     one of resize type defined in tf.image.ResizeMethod.
   """
@@ -116,12 +118,30 @@ def get_image_resize_method(resize_method, thread_id=0):
       'area': tf.image.ResizeMethod.AREA
   }
 
-  if resize_method == 'round_robin':
-    # return one of resize methods based round-robin fashion.
-    resize_methods = resize_methods_map.values()
-    return resize_methods[thread_id % len(resize_methods)]
+  if resize_method != 'round_robin':
+    return resize_methods_map[resize_method]
 
-  return resize_methods_map[resize_method]
+  # return a resize method based on batch position in a round-robin fashion.
+  resize_methods = resize_methods_map.values()
+  def lookup(index):
+    return resize_methods[index]
+
+  def resize_method_0():
+    return utils.smart_cond(batch_position % len(resize_methods) == 0,
+                            lambda: lookup(0), resize_method_1)
+
+  def resize_method_1():
+    return utils.smart_cond(batch_position % len(resize_methods) == 1,
+                            lambda: lookup(1), resize_method_2)
+
+  def resize_method_2():
+    return utils.smart_cond(batch_position % len(resize_methods) == 2,
+                            lambda: lookup(2), lambda: lookup(3))
+
+  # NOTE(jsimsa): Unfortunately, we cannot use a single recursive function here
+  # because TF would not be able to construct a finite graph.
+
+  return resize_method_0()
 
 
 def decode_jpeg(image_buffer, scope=None):  # , dtype=tf.float32):
@@ -149,54 +169,76 @@ def decode_jpeg(image_buffer, scope=None):  # , dtype=tf.float32):
     return image
 
 
-def eval_image(image, height, width, bbox, thread_id, resize_method):
-  """Get the image for model evaluation."""
+def eval_image(image, height, width, batch_position, resize_method):
+  """Get the image for model evaluation.
+
+  We preprocess the image simiarly to Slim, see
+  https://github.com/tensorflow/models/blob/master/slim/preprocessing/vgg_preprocessing.py
+  Validation images do not have bounding boxes, so to crop the image, we first
+  resize the image such that the aspect ratio is maintained and the resized
+  height and width are both at least 1.15 times `height` and `width`
+  respectively. Then, we do a central crop to size (`height`, `width`).
+
+  TODO(b/64579165): Determine if we should use different evaluation
+  prepossessing steps.
+
+  Args:
+    image: 3-D float Tensor representing the image.
+    height: The height of the image that will be returned.
+    width: The width of the image that will be returned.
+    batch_position: position of the image in a batch, which affects how images
+      are distorted and resized. NOTE: this argument can be an integer or a
+      tensor
+    resize_method: one of the strings 'round_robin', 'nearest', 'bilinear',
+      'bicubic', or 'area'.
+  Returns:
+    An image of size (output_height, output_width, 3) that is resized and
+    cropped as described above.
+  """
+  # TODO(reedwm): Currently we resize then crop. Investigate if it's faster to
+  # crop then resize.
   with tf.name_scope('eval_image'):
-    if not thread_id and FLAGS.summary_verbosity >= 2:
+    if FLAGS.summary_verbosity >= 2:
       tf.summary.image(
           'original_image', tf.expand_dims(image, 0))
 
-    if resize_method == 'crop':
-      # Note: This is much slower than crop_to_bounding_box
-      #         It seems that the redundant pad step has huge overhead
-      # distorted_image = tf.image.resize_image_with_crop_or_pad(image,
-      #                                                         height, width)
-      shape = tf.shape(image)
-      y0 = (shape[0] - height) // 2
-      x0 = (shape[1] - width) // 2
-      # distorted_image = tf.slice(image, [y0,x0,0], [height,width,3])
-      distorted_image = tf.image.crop_to_bounding_box(image, y0, x0, height,
-                                                      width)
-    else:
-      sample_distorted_bounding_box = tf.image.sample_distorted_bounding_box(
-          tf.shape(image),
-          bounding_boxes=bbox,
-          min_object_covered=0.1,
-          aspect_ratio_range=[0.75, 1.33],
-          area_range=[0.05, 1.0],
-          max_attempts=100,
-          use_image_if_no_bounding_boxes=True)
-      bbox_begin, bbox_size, _ = sample_distorted_bounding_box
-      # Crop the image to the specified bounding box.
-      distorted_image = tf.slice(image, bbox_begin, bbox_size)
-      # TODO(reedwm): revise this resize method for eval.
-      image_resize_method = get_image_resize_method(resize_method, thread_id)
-      # This resizing operation may distort the images because the aspect
-      # ratio is not respected.
-      if cnn_util.tensorflow_version() >= 11:
-        distorted_image = tf.image.resize_images(
-            distorted_image, [height, width],
-            image_resize_method,
-            align_corners=False)
-      else:
-        distorted_image = tf.image.resize_images(
-            distorted_image,
-            height,
-            width,
-            image_resize_method,
-            align_corners=False)
+    shape = tf.shape(image)
+    image_height = shape[0]
+    image_width = shape[1]
+    image_height_float = tf.cast(image_height, tf.float32)
+    image_width_float = tf.cast(image_width, tf.float32)
+
+    scale_factor = 1.15
+
+    # Compute resize_height and resize_width to be the minimum values such that
+    #   1. The aspect ratio is maintained (i.e. resize_height / resize_width is
+    #      image_height / image_width), and
+    #   2. resize_height >= height * `scale_factor`, and
+    #   3. resize_width >= width * `scale_factor`
+    max_ratio = tf.maximum(height / image_height_float,
+                           width / image_width_float)
+    resize_height = tf.cast(image_height_float * max_ratio * scale_factor,
+                            tf.int32)
+    resize_width = tf.cast(image_width_float * max_ratio * scale_factor,
+                           tf.int32)
+
+    # Resize the image to shape (`resize_height`, `resize_width`)
+    image_resize_method = get_image_resize_method(resize_method, batch_position)
+    distorted_image = tf.image.resize_images(image,
+                                             [resize_height, resize_width],
+                                             image_resize_method,
+                                             align_corners=False)
+
+    # Do a central crop of the image to size (height, width).
+    total_crop_height = (resize_height - height)
+    crop_top = total_crop_height // 2
+    total_crop_width = (resize_width - width)
+    crop_left = total_crop_width // 2
+    distorted_image = tf.slice(distorted_image, [crop_top, crop_left, 0],
+                               [height, width, 3])
+
     distorted_image.set_shape([height, width, 3])
-    if not thread_id and FLAGS.summary_verbosity >= 2:
+    if FLAGS.summary_verbosity >= 2:
       tf.summary.image(
           'cropped_resized_image', tf.expand_dims(distorted_image, 0))
     image = distorted_image
@@ -207,7 +249,7 @@ def train_image(image,
                 height,
                 width,
                 bbox,
-                thread_id,
+                batch_position,
                 resize_method,
                 distortions,
                 scope=None):
@@ -224,7 +266,9 @@ def train_image(image,
     bbox: 3-D float Tensor of bounding boxes arranged [1, num_boxes, coords]
       where each coordinate is [0, 1) and the coordinates are arranged
       as [ymin, xmin, ymax, xmax].
-    thread_id: integer indicating the preprocessing thread.
+    batch_position: position of the image in a batch, which affects how images
+      are distorted and resized. NOTE: this argument can be an integer or a
+      tensor
     resize_method: round_robin, nearest, bilinear, bicubic, or area.
     distortions: If true, apply full distortions for image colors.
     scope: Optional scope for op_scope.
@@ -243,8 +287,8 @@ def train_image(image,
       # adjust_* ops all require this range for dtype float.
       image = tf.image.convert_image_dtype(image, dtype=tf.float32)
 
-      # Display the bounding box in the first thread only.
-      if not thread_id and FLAGS.summary_verbosity >= 2:
+      # Display the bounding box.
+      if FLAGS.summary_verbosity >= 2:
         image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
                                                       bbox)
         tf.summary.image(
@@ -278,7 +322,7 @@ def train_image(image,
 
     # This resizing operation may distort the images because the aspect
     # ratio is not respected.
-    image_resize_method = get_image_resize_method(resize_method, thread_id)
+    image_resize_method = get_image_resize_method(resize_method, batch_position)
     if cnn_util.tensorflow_version() >= 11:
       distorted_image = tf.image.resize_images(
           distorted_image, [height, width],
@@ -304,7 +348,7 @@ def train_image(image,
 
     if distortions:
       # Randomly distort the colors.
-      distorted_image = distort_color(distorted_image, thread_id)
+      distorted_image = distort_color(distorted_image, batch_position)
 
       # Note: This ensures the scaling matches the output of eval_image
       distorted_image *= 256
@@ -316,17 +360,18 @@ def train_image(image,
     return distorted_image
 
 
-def distort_color(image, thread_id=0, scope=None):
+def distort_color(image, batch_position=0, scope=None):
   """Distort the color of the image.
 
   Each color distortion is non-commutative and thus ordering of the color ops
   matters. Ideally we would randomly permute the ordering of the color ops.
   Rather then adding that level of complication, we select a distinct ordering
-  of color ops for each preprocessing thread.
+  of color ops based on the position of the image in a batch.
 
   Args:
     image: Tensor containing single image.
-    thread_id: preprocessing thread ID.
+    batch_position: the position of the image in a batch. NOTE: this argument
+      can be an integer or a tensor
     scope: Optional scope for op_scope.
   Returns:
     color-distorted image
@@ -334,19 +379,23 @@ def distort_color(image, thread_id=0, scope=None):
   # with tf.op_scope([image], scope, 'distort_color'):
   # with tf.name_scope(scope, 'distort_color', [image]):
   with tf.name_scope(scope or 'distort_color'):
-    color_ordering = thread_id % 2
 
-    if color_ordering == 0:
+    def distort_fn_0(image=image):
       image = tf.image.random_brightness(image, max_delta=32. / 255.)
       image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
       image = tf.image.random_hue(image, max_delta=0.2)
       image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
-    elif color_ordering == 1:
+      return image
+
+    def distort_fn_1(image=image):
       image = tf.image.random_brightness(image, max_delta=32. / 255.)
       image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
       image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
       image = tf.image.random_hue(image, max_delta=0.2)
+      return image
 
+    image = utils.smart_cond(batch_position % 2 == 0, distort_fn_0,
+                             distort_fn_1)
     # The random_* ops do not necessarily clamp.
     image = tf.clip_by_value(image, 0.0, 1.0)
     return image
@@ -359,7 +408,7 @@ class RecordInputImagePreprocessor(object):
                height,
                width,
                batch_size,
-               device_count,
+               num_splits,
                dtype,
                train,
                distortions,
@@ -368,28 +417,28 @@ class RecordInputImagePreprocessor(object):
     self.height = height
     self.width = width
     self.batch_size = batch_size
-    self.device_count = device_count
+    self.num_splits = num_splits
     self.dtype = dtype
     self.train = train
     self.resize_method = resize_method
     self.shift_ratio = shift_ratio
     self.distortions = distortions
-    if self.batch_size % self.device_count != 0:
+    if self.batch_size % self.num_splits != 0:
       raise ValueError(
-          ('batch_size must be a multiple of device_count: '
-           'batch_size %d, device_count: %d') %
-          (self.batch_size, self.device_count))
-    self.batch_size_per_device = self.batch_size // self.device_count
+          ('batch_size must be a multiple of num_splits: '
+           'batch_size %d, num_splits: %d') %
+          (self.batch_size, self.num_splits))
+    self.batch_size_per_split = self.batch_size // self.num_splits
 
-  def preprocess(self, image_buffer, bbox, thread_id):
-    """Preprocessing image_buffer using thread_id."""
+  def preprocess(self, image_buffer, bbox, batch_position):
+    """Preprocessing image_buffer as a function of its batch position."""
     image = tf.image.decode_jpeg(image_buffer, channels=3,
                                  dct_method='INTEGER_FAST')
     if self.train:
-      image = train_image(image, self.height, self.width, bbox, thread_id,
+      image = train_image(image, self.height, self.width, bbox, batch_position,
                           self.resize_method, self.distortions)
     else:
-      image = eval_image(image, self.height, self.width, bbox, thread_id,
+      image = eval_image(image, self.height, self.width, batch_position,
                          self.resize_method)
     # Note: image is now float32 [height,width,3] with range [0, 255]
 
@@ -397,40 +446,35 @@ class RecordInputImagePreprocessor(object):
 
     return image
 
-  def parse_and_preprocess(self, value, counter):
+  def parse_and_preprocess(self, value, batch_position):
     image_buffer, label_index, bbox, _ = parse_example_proto(value)
-    image = self.preprocess(image_buffer, bbox, counter % 4)
+    image = self.preprocess(image_buffer, bbox, batch_position)
     return (label_index, image)
 
   def minibatch(self, dataset, subset, use_data_sets):
     with tf.name_scope('batch_processing'):
-      images = [[] for i in range(self.device_count)]
-      labels = [[] for i in range(self.device_count)]
+      images = [[] for _ in range(self.num_splits)]
+      labels = [[] for _ in range(self.num_splits)]
       if use_data_sets:
         file_names = glob.glob(dataset.tf_record_pattern(subset))
-        batch_size_per = self.batch_size / self.device_count
-        num_threads = 10
-        output_buffer_size = num_threads * 2000
-
-        counter = tf.contrib.data.Dataset.range(sys.maxint)
         ds = tf.contrib.data.TFRecordDataset(file_names)
+        counter = tf.contrib.data.Dataset.range(self.batch_size)
+        counter = counter.repeat()
         ds = tf.contrib.data.Dataset.zip((ds, counter))
         ds = ds.map(
             self.parse_and_preprocess,
-            num_threads=num_threads,
-            output_buffer_size=output_buffer_size)
-        shuffle_buffer_size = 10000
-        ds = ds.shuffle(shuffle_buffer_size)
-        repeat_count = -1  # infinite repetition
-        ds = ds.repeat(repeat_count)
-        ds = ds.batch(batch_size_per)
+            num_parallel_calls=self.batch_size,
+            output_buffer_size=self.batch_size)
+        ds = ds.shuffle(buffer_size=10000)
+        ds = ds.repeat()
+        ds = ds.batch(batch_size=(self.batch_size / self.num_splits))
         ds_iterator = ds.make_one_shot_iterator()
 
-        for d in xrange(self.device_count):
+        for d in xrange(self.num_splits):
           labels[d], images[d] = ds_iterator.get_next()
 
       else:
-        # Build final results per device.
+        # Build final results per split.
         record_input = data_flow_ops.RecordInput(
             file_pattern=dataset.tf_record_pattern(subset),
             seed=301,
@@ -442,30 +486,27 @@ class RecordInputImagePreprocessor(object):
         records = record_input.get_yield_op()
         records = tf.split(records, self.batch_size, 0)
         records = [tf.reshape(record, []) for record in records]
-        for i in xrange(self.batch_size):
-          value = records[i]
-          (label_index, image) = self.parse_and_preprocess(value, i % 4)
-          device_index = i % self.device_count
-          images[device_index].append(image)
-          labels[device_index].append(label_index)
+        for idx in xrange(self.batch_size):
+          value = records[idx]
+          (label_index, image) = self.parse_and_preprocess(value, idx)
+          split_index = idx % self.num_splits
+          images[split_index].append(image)
+          labels[split_index].append(label_index)
 
-      label_index_batch = [None] * self.device_count
-      for device_index in xrange(self.device_count):
+      label_index_batch = [None] * self.num_splits
+      for split_index in xrange(self.num_splits):
         if use_data_sets:
-          label_index_batch[device_index] = labels[device_index]
+          label_index_batch[split_index] = labels[split_index]
         else:
-          images[device_index] = tf.parallel_stack(images[device_index])
-          label_index_batch[device_index] = tf.concat(labels[device_index], 0)
-        images[device_index] = tf.cast(images[device_index], self.dtype)
+          images[split_index] = tf.parallel_stack(images[split_index])
+          label_index_batch[split_index] = tf.concat(labels[split_index], 0)
+        images[split_index] = tf.cast(images[split_index], self.dtype)
         depth = 3
-        images[device_index] = tf.reshape(
-            images[device_index],
-            shape=[self.batch_size_per_device, self.height, self.width, depth])
-        label_index_batch[device_index] = tf.reshape(
-            label_index_batch[device_index], [self.batch_size_per_device])
-        if FLAGS.summary_verbosity >= 2:
-          # Display the training images in the visualizer.
-          tf.summary.image('images', images)
+        images[split_index] = tf.reshape(
+            images[split_index],
+            shape=[self.batch_size_per_split, self.height, self.width, depth])
+        label_index_batch[split_index] = tf.reshape(
+            label_index_batch[split_index], [self.batch_size_per_split])
 
       return images, label_index_batch
 
@@ -477,7 +518,7 @@ class Cifar10ImagePreprocessor(object):
                height,
                width,
                batch_size,
-               device_count,
+               num_splits,
                dtype,
                train,
                distortions,
@@ -489,18 +530,18 @@ class Cifar10ImagePreprocessor(object):
     self.width = width or 32
     self.depth = 3
     self.batch_size = batch_size
-    self.device_count = device_count
+    self.num_splits = num_splits
     self.dtype = dtype
     self.train = train
     self.distortions = distortions
     del resize_method
     del shift_ratio  # unused, because a RecordInput is not used
-    if self.batch_size % self.device_count != 0:
+    if self.batch_size % self.num_splits != 0:
       raise ValueError(
-          ('batch_size must be a multiple of device_count: '
-           'batch_size %d, device_count: %d') %
-          (self.batch_size, self.device_count))
-    self.batch_size_per_device = self.batch_size // self.device_count
+          ('batch_size must be a multiple of num_splits: '
+           'batch_size %d, num_splits: %d') %
+          (self.batch_size, self.num_splits))
+    self.batch_size_per_split = self.batch_size // self.num_splits
 
   def _distort_image(self, image):
     """Distort one image for training a network.
@@ -563,8 +604,8 @@ class Cifar10ImagePreprocessor(object):
           capacity=min_queue_examples + 3 * self.batch_size,
           min_after_dequeue=min_queue_examples)
 
-      images = [[] for i in range(self.device_count)]
-      labels = [[] for i in range(self.device_count)]
+      images = [[] for i in range(self.num_splits)]
+      labels = [[] for i in range(self.num_splits)]
 
       # Create a list of size batch_size, each containing one image of the
       # batch. Without the unstack call, raw_images[i] would still access the
@@ -572,21 +613,63 @@ class Cifar10ImagePreprocessor(object):
       raw_images = tf.unstack(raw_images, axis=0)
       raw_labels = tf.unstack(raw_labels, axis=0)
       for i in xrange(self.batch_size):
-        device_index = i % self.device_count
+        split_index = i % self.num_splits
         # The raw image read from data has the format [depth, height, width]
         # reshape to the format returned by minibatch.
         raw_image = tf.reshape(raw_images[i],
                                [dataset.depth, dataset.height, dataset.width])
         raw_image = tf.transpose(raw_image, [1, 2, 0])
         image = self.preprocess(raw_image)
-        images[device_index].append(image)
+        images[split_index].append(image)
 
-        labels[device_index].append(raw_labels[i])
+        labels[split_index].append(raw_labels[i])
 
-      for device_index in xrange(self.device_count):
-        images[device_index] = tf.parallel_stack(images[device_index])
-        labels[device_index] = tf.parallel_stack(labels[device_index])
+      for split_index in xrange(self.num_splits):
+        images[split_index] = tf.parallel_stack(images[split_index])
+        labels[split_index] = tf.parallel_stack(labels[split_index])
       return images, labels
+
+
+class SyntheticImagePreprocessor(object):
+  """Preprocessor used for images and labels."""
+
+  def __init__(self, height, width, batch_size, num_splits,
+               dtype, train, distortions, resize_method, shift_ratio):
+    del train, distortions, resize_method, shift_ratio
+    self.batch_size = batch_size
+    self.height = height
+    self.width = width
+    self.depth = 3
+    self.dtype = dtype
+    self.num_splits = num_splits
+
+  def minibatch(self, dataset, subset, use_data_sets):
+    """Get synthetic image batches."""
+    del subset, use_data_sets
+    input_shape = [self.batch_size, self.height, self.width, self.depth]
+    images = tf.truncated_normal(
+        input_shape,
+        dtype=self.dtype,
+        stddev=1e-1,
+        name='synthetic_images')
+    labels = tf.random_uniform(
+        [self.batch_size],
+        minval=0,
+        maxval=dataset.num_classes - 1,
+        dtype=tf.int32,
+        name='synthetic_labels')
+    # Note: This results in a H2D copy, but no computation
+    # Note: This avoids recomputation of the random values, but still
+    #         results in a H2D copy.
+    images = tf.contrib.framework.local_variable(images, name='images')
+    labels = tf.contrib.framework.local_variable(labels, name='labels')
+    if self.num_splits == 1:
+      images_splits = [images]
+      labels_splits = [labels]
+    else:
+      images_splits = tf.split(images, self.num_splits, 0)
+      labels_splits = tf.split(labels, self.num_splits, 0)
+    return images_splits, labels_splits
 
 
 class TestImagePreprocessor(object):
@@ -603,15 +686,16 @@ class TestImagePreprocessor(object):
                height,
                width,
                batch_size,
-               device_count,
-               dtype=None,
+               num_splits,
+               dtype,
                train=None,
                distortions=None,
                resize_method=None,
                shift_ratio=0):
-    del height, width, dtype, train, distortions, resize_method, shift_ratio
+    del height, width, train, distortions, resize_method, shift_ratio
     self.batch_size = batch_size
-    self.device_count = device_count
+    self.num_splits = num_splits
+    self.dtype = dtype
     self.expected_subset = None
 
   def set_fake_data(self, fake_images, fake_labels):
@@ -632,27 +716,22 @@ class TestImagePreprocessor(object):
       assert subset == self.expected_subset
 
     with tf.name_scope('batch_processing'):
-      image_slice = tf.train.slice_input_producer(
-          [self.fake_images],
+      image_slice, label_slice = tf.train.slice_input_producer(
+          [self.fake_images, self.fake_labels],
           shuffle=False,
           name='image_slice')
-      raw_images = tf.train.batch(image_slice, self.batch_size,
-                                  name='image_batch')
-      label_slice = tf.train.slice_input_producer(
-          [self.fake_labels],
-          shuffle=False,
-          name='label_slice')
-      raw_labels = tf.train.batch(label_slice, self.batch_size,
-                                  name='label_batch')
-
-      images = [[] for _ in range(self.device_count)]
-      labels = [[] for _ in range(self.device_count)]
+      raw_images, raw_labels = tf.train.batch(
+          [image_slice, label_slice], batch_size=self.batch_size,
+          name='image_batch')
+      images = [[] for _ in range(self.num_splits)]
+      labels = [[] for _ in range(self.num_splits)]
       for i in xrange(self.batch_size):
-        device_index = i % self.device_count
-        images[device_index].append(raw_images[i])
-        labels[device_index].append(raw_labels[i])
-      for device_index in xrange(self.device_count):
-        images[device_index] = tf.parallel_stack(images[device_index])
-        labels[device_index] = tf.parallel_stack(labels[device_index])
+        split_index = i % self.num_splits
+        raw_image = tf.cast(raw_images[i], self.dtype)
+        images[split_index].append(raw_image)
+        labels[split_index].append(raw_labels[i])
+      for split_index in xrange(self.num_splits):
+        images[split_index] = tf.parallel_stack(images[split_index])
+        labels[split_index] = tf.parallel_stack(labels[split_index])
 
       return images, labels

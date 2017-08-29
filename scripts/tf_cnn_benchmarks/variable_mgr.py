@@ -180,10 +180,6 @@ class VariableMgr(object):
     apply_gradients_op = opt.apply_gradients(grads)
     training_ops.append(apply_gradients_op)
 
-  def retain_tower_updates(self, device_num):
-    """Return if only updates for the first GPU tower should be applied."""
-    return device_num == 0 and not self.each_tower_has_variables()
-
   def get_post_init_ops(self):
     """Returns ops that should run post-initialization."""
     return []
@@ -193,7 +189,7 @@ class VariableMgr(object):
     assert False, 'Must be implemented in subclass'
 
   def savable_variables(self):
-    """Return the set of variables used for saving/loading the model."""
+    """Returns a list/dict of savable variables to pass to tf.train.Saver."""
     return tf.global_variables()
 
   def trainable_variables_on_device(self, device_num, writable=False):
@@ -659,14 +655,31 @@ class VariableMgrDistributedReplicated(VariableMgr):
             post_init_ops.append(copy_to.assign(v.read_value()))
     return post_init_ops
 
+  def _remove_shadow_var_prefix_if_present(self, var_name):
+    if var_name.startswith(PS_SHADOW_VAR_PREFIX + '/'):
+      return var_name[len(PS_SHADOW_VAR_PREFIX + '/'):]
+    else:
+      return var_name
+
   def savable_variables(self):
-    """Return the set of variables used for saving/loading the model."""
-    params = []
+    """Returns a list/dict of savable variables to pass to tf.train.Saver."""
+    params = {}
     for v in tf.global_variables():
-      if (v.name.startswith(PS_SHADOW_VAR_PREFIX + '/v0/') or
-          not v.name.startswith(PS_SHADOW_VAR_PREFIX)):
-        print('save variable %s' % v.name)
-        params.append(v)
+      assert (v.name.startswith(PS_SHADOW_VAR_PREFIX + '/v0/') or
+              v.name == 'global_step:0')
+      # We store variables in the checkpoint with the shadow variable prefix
+      # removed so we can evaluate checkpoints in non-distributed replicated
+      # mode. The checkpoints can also be loaded for training in
+      # distributed_replicated mode.
+      name = self._strip_port(self._remove_shadow_var_prefix_if_present(v.name))
+      params[name] = v
+    for v in tf.local_variables():
+      # Non-trainable variables, such as batch norm moving averages, do not have
+      # corresponding global shadow variables, so we add them here. Trainable
+      # local variables have corresponding global shadow variables, which were
+      # added in the global variable loop above.
+      if v.name.startswith('v0/') and v not in tf.trainable_variables():
+        params[self._strip_port(v.name)] = v
     return params
 
   def get_devices(self):

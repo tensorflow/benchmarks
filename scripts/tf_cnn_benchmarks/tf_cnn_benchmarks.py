@@ -21,6 +21,7 @@ See the README for more information.
 from __future__ import print_function
 
 import argparse
+import math
 import os
 import threading
 import time
@@ -41,6 +42,7 @@ import convnet_builder
 import datasets
 import model_config
 import variable_mgr
+from cnn_util import log_fn
 
 tf.flags.DEFINE_string('model', 'trivial', 'name of the model to run')
 
@@ -54,12 +56,19 @@ tf.flags.DEFINE_string('model', 'trivial', 'name of the model to run')
 #   the forward-only option, which will only compute the loss function.
 #   forward-only cannot be enabled with eval at the same time.
 tf.flags.DEFINE_boolean('eval', False, 'whether use eval or benchmarking')
+tf.flags.DEFINE_integer('eval_interval_secs', 0,
+                        """How often to run eval on saved checkpoints. Usually
+                        the same as save_model_secs from the corresponding
+                        training run. Pass 0 to eval only once.""")
 tf.flags.DEFINE_boolean('forward_only', False, """whether use forward-only or
                          training for benchmarking""")
 tf.flags.DEFINE_boolean('print_training_accuracy', False, """whether to
                         calculate and print training accuracy during
                         training""")
 tf.flags.DEFINE_integer('batch_size', 0, 'batch size per compute device')
+tf.flags.DEFINE_integer('batch_group_size', 1,
+                        'number of groups of batches processed in the image '
+                        'producer.')
 tf.flags.DEFINE_integer('num_batches', 100,
                         'number of batches to run, excluding warmup')
 tf.flags.DEFINE_integer('num_warmup_batches', None,
@@ -83,14 +92,14 @@ tf.flags.DEFINE_string('resize_method', 'bilinear',
                        The 'crop' mode requires source images to be at least
                        as large as the network input size.
                        The 'round_robin' mode applies different resize methods
-                       based on thread id in a round-robin fashion.
+                       based on position in a batch in a round-robin fashion.
                        Other modes support any sizes and apply random bbox
                        distortions before resizing (even with
                        --nodistortions).""")
 tf.flags.DEFINE_boolean('distortions', True,
-                        """Enable/disable distortions during
-                       image preprocessing. These include bbox and color
-                       distortions.""")
+                        """Enable/disable distortions during image
+                        preprocessing. These include bbox and color
+                        distortions.""")
 tf.flags.DEFINE_boolean('use_data_sets', False,
                         """Enable use of data sets for input pipeline""")
 tf.flags.DEFINE_string('local_parameter_device', 'gpu',
@@ -101,7 +110,7 @@ tf.flags.DEFINE_string('device', 'gpu',
                        """Device to use for computation: cpu or gpu""")
 tf.flags.DEFINE_string('data_format', 'NCHW',
                        """Data layout to use: NHWC (TF native)
-                       or NCHW (cuDNN native).""")
+                       or NCHW (cuDNN native, requires GPU).""")
 tf.flags.DEFINE_integer('num_intra_threads', 1,
                         """Number of threads to use for intra-op
                        parallelism. If set to 0, the system will pick
@@ -122,9 +131,17 @@ tf.flags.DEFINE_string('optimizer', 'sgd',
 tf.flags.DEFINE_float('learning_rate', None,
                       """Initial learning rate for training.""")
 tf.flags.DEFINE_float('num_epochs_per_decay', 0,
-                      """Steps after which learning rate decays.""")
-tf.flags.DEFINE_float('learning_rate_decay_factor', 0.94,
-                      """Learning rate decay factor.""")
+                      """Steps after which learning rate decays. If 0,
+                      the learning rate does not decay.""")
+tf.flags.DEFINE_float('learning_rate_decay_factor', 0,
+                      """Learning rate decay factor. Decay by this factor every
+                      `num_epochs_per_decay` epochs. If 0, learning rate does
+                      not decay.""")
+tf.flags.DEFINE_float('minimum_learning_rate', 0,
+                      """The minimum learning rate. The learning rate will
+                      never decay past this value. Requires  `learning_rate`,
+                      `num_epochs_per_decay` and `learning_rate_decay_factor` to
+                      be set.""")
 tf.flags.DEFINE_float('momentum', 0.9, """Momentum for training.""")
 tf.flags.DEFINE_float('rmsprop_decay', 0.9, """Decay term for RMSProp.""")
 tf.flags.DEFINE_float('rmsprop_momentum', 0.9, """Momentum in RMSProp.""")
@@ -139,7 +156,10 @@ tf.flags.DEFINE_float('gpu_memory_frac_for_testing', 0, """If non-zero, the
                       mode to be run on a single machine. For example, if there
                       are two tasks, each can be allocated ~40% of the
                       memory on a single machine""")
-
+tf.flags.DEFINE_boolean('use_tf_layers', None, """If True, use tf.layers for
+                        neural network layers. If None, use tf.layers if
+                        possible. This should not affect performance or accuracy
+                        in any way.""")
 
 # Performance tuning flags.
 tf.flags.DEFINE_boolean('winograd_nonfused', True,
@@ -154,6 +174,41 @@ tf.flags.DEFINE_boolean('staged_vars', False,
 tf.flags.DEFINE_boolean('force_gpu_compatible', True,
                         """whether to enable force_gpu_compatible in
                         GPU_Options""")
+tf.flags.DEFINE_boolean('xla', False, """whether to enable XLA""")
+
+# Performance tuning specific to MKL.
+tf.flags.DEFINE_boolean('mkl', False,
+                        """If true, set MKL environment variables.""")
+tf.flags.DEFINE_integer('kmp_blocktime', 30,
+                        """The time, in milliseconds, that a thread should
+                        wait, after completing the execution of a parallel
+                        region, before sleeping""")
+tf.flags.DEFINE_string('kmp_affinity', 'granularity=fine,verbose,compact,1,0',
+                       """Restricts execution of certain threads (virtual
+                        execution units) to a subset of the physical processing
+                        units in a multiprocessor computer.""")
+tf.flags.DEFINE_integer('kmp_settings', 1,
+                        """If set to 1, MKL settings will be printed.""")
+
+# fp16 flags. If --use_fp16=False, no other fp16 flags apply.
+tf.flags.DEFINE_boolean('use_fp16', False,
+                        """Use 16-bit floats for certain tensors instead of
+                        32-bit floats. This is currently experimental.""")
+# TODO(reedwm): The default loss scale of 128 causes most models to diverge on
+# the second step with synthetic data. Changing the tf.set_random_seed call to
+# tf.set_random_seed(1235) or most other seed values causes the issue not to
+# occur.
+tf.flags.DEFINE_float('fp16_loss_scale', None, """If fp16 is enabled, the loss
+                      is multiplied by this amount right before gradients are
+                      computed, then each gradient is divided by this amount.
+                      Mathematically, this has no effect, but it helps avoid
+                      fp16 underflow. Set to 1 to effectively disable.""")
+tf.flags.DEFINE_boolean('fp16_vars', False,
+                        """If fp16 is enabled, also use fp16 for variables. If
+                        False, the variables are stored in fp32 and casted to
+                        fp16 when retrieved. Recommended to leave as False.
+                        """)
+
 # The method for managing variables:
 #   parameter_server: variables are stored on a parameter server that holds
 #       the master copy of the variable.  In local execution, a local device
@@ -198,10 +253,11 @@ tf.flags.DEFINE_integer('save_summaries_steps', 0,
                         """How often to save summaries for trained models.
                         Pass 0 to disable summaries.""")
 tf.flags.DEFINE_integer('save_model_secs', 0,
-                        """How often to save trained models. Pass 0 to disable
-                        checkpoints""")
+                        """How often to save trained models. Pass 0 to
+                        disable checkpoints..""")
 tf.flags.DEFINE_string('train_dir', None,
-                       """Path to session checkpoints.""")
+                       """Path to session checkpoints. Pass None to disable
+                       saving checkpoint at the end.""")
 tf.flags.DEFINE_string('eval_dir', '/tmp/tf_cnn_benchmarks/eval',
                        """Directory where to write eval event logs.""")
 tf.flags.DEFINE_string('result_storage', None,
@@ -211,8 +267,6 @@ tf.flags.DEFINE_string('result_storage', None,
                        in cbuild datastore (note: this option requires special
                        pemissions and meant to be used from cbuilds).""")
 FLAGS = tf.flags.FLAGS
-
-log_fn = print   # tf.logging.info
 
 
 class GlobalStepWatcher(threading.Thread):
@@ -261,6 +315,14 @@ class GlobalStepWatcher(threading.Thread):
             (self.finish_time - self.start_time))
 
 
+class CheckpointNotFoundException(Exception):
+  pass
+
+
+def get_data_type():
+  return tf.float16 if FLAGS.use_fp16 else tf.float32
+
+
 def loss_function(logits, labels, aux_logits):
   """Loss function."""
   with tf.name_scope('xentropy'):
@@ -276,51 +338,8 @@ def loss_function(logits, labels, aux_logits):
   return loss
 
 
-def add_image_preprocessing(dataset, image_preprocessor, input_nchan,
-                            image_size, batch_size, num_compute_devices,
-                            input_data_type, train):
-  """Add image Preprocessing ops to tf graph."""
-  nclass = dataset.num_classes() + 1
-  if train:
-    subset = 'train'
-  else:
-    subset = 'validation'
-  if image_preprocessor is not None:
-    images, labels = image_preprocessor.minibatch(
-        dataset, subset=subset, use_data_sets=FLAGS.use_data_sets)
-    images_splits = images
-    labels_splits = labels
-  else:
-    assert isinstance(dataset, datasets.SyntheticData)
-    input_shape = [batch_size, image_size, image_size, input_nchan]
-    images = tf.truncated_normal(
-        input_shape,
-        dtype=input_data_type,
-        stddev=1e-1,
-        name='synthetic_images')
-    labels = tf.random_uniform(
-        [batch_size],
-        minval=1,
-        maxval=nclass,
-        dtype=tf.int32,
-        name='synthetic_labels')
-    # Note: This results in a H2D copy, but no computation
-    # Note: This avoids recomputation of the random values, but still
-    #         results in a H2D copy.
-    images = tf.contrib.framework.local_variable(images, name='images')
-    labels = tf.contrib.framework.local_variable(labels, name='labels')
-    # Change to 0-based (don't use background class like Inception does)
-    labels -= 1
-    if num_compute_devices == 1:
-      images_splits = [images]
-      labels_splits = [labels]
-    else:
-      images_splits = tf.split(images, num_compute_devices, 0)
-      labels_splits = tf.split(labels, num_compute_devices, 0)
-  return nclass, images_splits, labels_splits
-
-
 def create_config_proto():
+  """Returns session config proto."""
   config = tf.ConfigProto()
   config.allow_soft_placement = True
   config.intra_op_parallelism_threads = FLAGS.num_intra_threads
@@ -329,6 +348,9 @@ def create_config_proto():
   if FLAGS.gpu_memory_frac_for_testing > 0:
     config.gpu_options.per_process_gpu_memory_fraction = (
         FLAGS.gpu_memory_frac_for_testing)
+  if FLAGS.xla:
+    config.graph_options.optimizer_options.global_jit_level = (
+        tf.OptimizerOptions.ON_1)
   return config
 
 
@@ -344,8 +366,8 @@ def get_mode_from_flags():
   return 'training'
 
 
-def benchmark_one_step(sess, fetches, step, batch_size,
-                       step_train_times, trace_filename, summary_op=None):
+def benchmark_one_step(sess, fetches, step, batch_size, step_train_times,
+                       trace_filename, image_producer, summary_op=None):
   """Advance one step of benchmarking."""
   if trace_filename is not None and step == -1:
     run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
@@ -365,7 +387,7 @@ def benchmark_one_step(sess, fetches, step, batch_size,
     lossval = results['total_loss']
   else:
     lossval = 0.
-
+  image_producer.notify_image_consumption()
   train_time = time.time() - start_time
   step_train_times.append(train_time)
   if step >= 0 and (step == 0 or (step + 1) % FLAGS.display_every == 0):
@@ -418,7 +440,7 @@ def load_checkpoint(saver, sess, ckpt_dir):
     log_fn('Successfully loaded model from %s.' % ckpt.model_checkpoint_path)
     return global_step
   else:
-    raise RuntimeError('No checkpoint file found.')
+    raise CheckpointNotFoundException('No checkpoint file found.')
 
 
 class BenchmarkCNN(object):
@@ -439,6 +461,37 @@ class BenchmarkCNN(object):
     self.resize_method = FLAGS.resize_method
     self.sync_queue_counter = 0
     self.num_gpus = FLAGS.num_gpus
+    self.use_synthetic_gpu_images = self.dataset.use_synthetic_gpu_images()
+
+    if FLAGS.device == 'cpu' and FLAGS.data_format == 'NCHW':
+      raise ValueError('--device=cpu requires that --data_format=NHWC')
+
+    if ((FLAGS.num_epochs_per_decay or FLAGS.learning_rate_decay_factor) and
+        not (FLAGS.learning_rate and FLAGS.num_epochs_per_decay and
+             FLAGS.learning_rate_decay_factor)):
+      raise ValueError('If one of --num_epochs_per_decay or '
+                       '--learning_rate_decay_factor is set, both must be set'
+                       'and --learning_rate must be set')
+    if (FLAGS.minimum_learning_rate and
+        not (FLAGS.learning_rate and FLAGS.num_epochs_per_decay and
+             FLAGS.learning_rate_decay_factor)):
+      raise ValueError('--minimum_learning_rate requires --learning_rate,'
+                       '--num_epochs_per_decay, and '
+                       '--learning_rate_decay_factor to be set')
+
+    if (FLAGS.use_fp16 and FLAGS.fp16_vars and
+        'replicated' in FLAGS.variable_update and FLAGS.use_nccl):
+      raise ValueError('fp16 variables are not supported with NCCL')
+
+    if FLAGS.use_tf_layers and FLAGS.use_fp16:
+      raise ValueError('FLAGS.use_tf_layers and FLAGS.use_fp16 cannot both be '
+                       'True, because tf.layers does not fully support fp16 '
+                       'yet.')
+
+    if FLAGS.use_tf_layers is None:
+      self.use_tf_layers = not FLAGS.use_fp16
+    else:
+      self.use_tf_layers = FLAGS.use_tf_layers
 
     # Use the batch size from the command line if specified, otherwise use the
     # model's default batch size.  Scale the benchmark's batch size by the
@@ -446,12 +499,13 @@ class BenchmarkCNN(object):
     if FLAGS.batch_size > 0:
       self.model.set_batch_size(FLAGS.batch_size)
     self.batch_size = self.model.get_batch_size() * self.num_gpus
+    self.batch_group_size = FLAGS.batch_group_size
 
-    # Use the learning rate from the command line if specified, otherwise use
-    # the model's default learning rate, which must always be set.
-    assert self.model.get_learning_rate() > 0.0
-    if FLAGS.learning_rate is not None:
-      self.model.set_learning_rate(FLAGS.learning_rate)
+    if FLAGS.use_fp16:
+      self.loss_scale = (FLAGS.fp16_loss_scale or
+                         self.model.get_fp16_loss_scale())
+    else:
+      self.loss_scale = 1.
 
     self.job_name = FLAGS.job_name  # "" for local training
     self.ps_hosts = FLAGS.ps_hosts.split(',')
@@ -547,10 +601,14 @@ class BenchmarkCNN(object):
     log_fn('Mode:        %s' % get_mode_from_flags())
     log_fn('Batch size:  %s global' % self.batch_size)
     log_fn('             %s per device' % (self.batch_size / len(self.devices)))
+    if self.batch_group_size > 1:
+      log_fn('             %d batches per prepocessing group' %
+             self.batch_group_size)
     log_fn('Devices:     %s' % self.raw_devices)
     log_fn('Data format: %s' % self.data_format)
     log_fn('Optimizer:   %s' % FLAGS.optimizer)
     log_fn('Variables:   %s' % FLAGS.variable_update)
+    log_fn('Data type:   %s' % get_data_type().name)
     if FLAGS.variable_update == 'replicated':
       log_fn('Use NCCL:    %s' % FLAGS.use_nccl)
     if self.job_name:
@@ -572,8 +630,8 @@ class BenchmarkCNN(object):
         self._benchmark_cnn()
 
   def _eval_cnn(self):
-    """Evaluate the model from a checkpoint using validation dataset."""
-    (enqueue_ops, fetches) = self._build_model()
+    """Evaluate a model every FLAGS.eval_interval_secs."""
+    (image_producer_ops, enqueue_ops, fetches) = self._build_model()
     saver = tf.train.Saver(self.variable_mgr.savable_variables())
     summary_writer = tf.summary.FileWriter(FLAGS.eval_dir,
                                            tf.get_default_graph())
@@ -583,28 +641,56 @@ class BenchmarkCNN(object):
     with tf.control_dependencies([local_var_init_op]):
       variable_mgr_init_ops.extend(self.variable_mgr.get_post_init_ops())
     local_var_init_op_group = tf.group(*variable_mgr_init_ops)
+    summary_op = tf.summary.merge_all()
+    while True:
+      self._eval_once(
+          saver, summary_writer, target, local_var_init_op_group,
+          image_producer_ops, enqueue_ops, fetches, summary_op)
+      if FLAGS.eval_interval_secs <= 0:
+        break
+      time.sleep(FLAGS.eval_interval_secs)
+
+  def _eval_once(self, saver, summary_writer, target,
+                 local_var_init_op_group, image_producer_ops, enqueue_ops,
+                 fetches, summary_op):
+    """Evaluate the model from a checkpoint using validation dataset."""
     with tf.Session(target=target, config=create_config_proto()) as sess:
       if FLAGS.train_dir is None:
         raise ValueError('Trained model directory not specified')
-      global_step = load_checkpoint(saver, sess, FLAGS.train_dir)
+      try:
+        global_step = load_checkpoint(saver, sess, FLAGS.train_dir)
+      except CheckpointNotFoundException:
+        log_fn('Checkpoint not found in %s' % FLAGS.train_dir)
+        return
       sess.run(local_var_init_op_group)
       if self.dataset.queue_runner_required():
         tf.train.start_queue_runners(sess=sess)
+      image_producer = cnn_util.ImageProducer(sess, image_producer_ops,
+                                              self.batch_group_size)
+      image_producer.start()
       for i in xrange(len(enqueue_ops)):
         sess.run(enqueue_ops[:(i+1)])
+        image_producer.notify_image_consumption()
       start_time = time.time()
       top_1_accuracy_sum = 0.0
       top_5_accuracy_sum = 0.0
       total_eval_count = self.num_batches * self.batch_size
       for step in xrange(self.num_batches):
-        results = sess.run(fetches)
+        if (FLAGS.save_summaries_steps > 0 and
+            (step + 1) % FLAGS.save_summaries_steps == 0):
+          results, summary_str = sess.run([fetches, summary_op])
+          summary_writer.add_summary(summary_str)
+        else:
+          results = sess.run(fetches)
         top_1_accuracy_sum += results['top_1_accuracy']
         top_5_accuracy_sum += results['top_5_accuracy']
         if (step + 1) % FLAGS.display_every == 0:
           duration = time.time() - start_time
-          examples_per_sec = self.batch_size * self.num_batches / duration
+          examples_per_sec = self.batch_size * FLAGS.display_every / duration
           log_fn('%i\t%.1f examples/sec' % (step + 1, examples_per_sec))
           start_time = time.time()
+        image_producer.notify_image_consumption()
+      image_producer.done()
       precision_at_1 = top_1_accuracy_sum / self.num_batches
       recall_at_5 = top_5_accuracy_sum / self.num_batches
       summary = tf.Summary()
@@ -616,7 +702,7 @@ class BenchmarkCNN(object):
 
   def _benchmark_cnn(self):
     """Run cnn in benchmark mode. When forward_only on, it forwards CNN."""
-    (enqueue_ops, fetches) = self._build_model()
+    (image_producer_ops, enqueue_ops, fetches) = self._build_model()
     fetches_list = nest.flatten(list(fetches.values()))
     main_fetch_group = tf.group(*fetches_list)
     execution_barrier = None
@@ -649,14 +735,37 @@ class BenchmarkCNN(object):
       summary_writer = tf.summary.FileWriter(FLAGS.train_dir,
                                              tf.get_default_graph())
 
+    # We want to start the benchmark timer right after a image_producer barrier
+    # and avoids undesired wating times on barriers.
+    if ((self.num_warmup_batches + len(enqueue_ops) - 1) %
+        self.batch_group_size) != 0:
+      self.num_warmup_batches = int(
+          math.ceil((self.num_warmup_batches + len(enqueue_ops) - 1.0) /
+                    self.batch_group_size) * self.batch_group_size
+          - len(enqueue_ops) + 1)
+      log_fn('Round up warm up steps to %d to match batch_group_size' %
+             self.num_warmup_batches)
+      assert ((self.num_warmup_batches + len(enqueue_ops) - 1) %
+              self.batch_group_size) == 0
     # We run the summaries in the same thread as the training operations by
     # passing in None for summary_op to avoid a summary_thread being started.
     # Running summaries and training operations in parallel could run out of
     # GPU memory.
     saver = tf.train.Saver(self.variable_mgr.savable_variables())
+    ready_for_local_init_op = None
+    if self.job_name:
+      # In distributed mode, we don't want to run local_var_init_op_group until
+      # the global variables are initialized, because local_var_init_op_group
+      # may use global variables (such as in distributed replicated mode). We
+      # don't set this in non-distributed mode, because in non-distributed mode,
+      # local_var_init_op_group may itself initialize global variables (such as
+      # in replicated mode).
+      ready_for_local_init_op = tf.report_uninitialized_variables(
+          tf.global_variables())
     sv = tf.train.Supervisor(
         is_chief=is_chief,
         logdir=FLAGS.train_dir,
+        ready_for_local_init_op=ready_for_local_init_op,
         local_init_op=local_var_init_op_group,
         saver=saver,
         global_step=global_step,
@@ -671,8 +780,12 @@ class BenchmarkCNN(object):
         master=self.server.target if self.server else '',
         config=create_config_proto(),
         start_standard_services=start_standard_services) as sess:
+      image_producer = cnn_util.ImageProducer(sess, image_producer_ops,
+                                              self.batch_group_size)
+      image_producer.start()
       for i in xrange(len(enqueue_ops)):
         sess.run(enqueue_ops[:(i+1)])
+        image_producer.notify_image_consumption()
       self.init_global_step, = sess.run([global_step])
       global_step_watcher = GlobalStepWatcher(
           sess, global_step,
@@ -707,7 +820,7 @@ class BenchmarkCNN(object):
             sess.run([execution_barrier])
 
           header_str = 'Step\tImg/sec\tloss'
-          if FLAGS.print_training_accuracy:
+          if FLAGS.print_training_accuracy or FLAGS.forward_only:
             header_str += '\ttop_1_accuracy\ttop_5_accuracy'
           log_fn(header_str)
           assert len(step_train_times) == self.num_warmup_batches
@@ -719,7 +832,7 @@ class BenchmarkCNN(object):
           fetch_summary = None
         summary_str = benchmark_one_step(
             sess, fetches, local_step, self.batch_size, step_train_times,
-            self.trace_filename, fetch_summary)
+            self.trace_filename, image_producer, fetch_summary)
         if summary_str is not None and is_chief:
           sv.summary_computed(sess, summary_str)
         local_step += 1
@@ -730,6 +843,7 @@ class BenchmarkCNN(object):
       log_fn('-' * 64)
       log_fn('total images/sec: %.2f' % images_per_sec)
       log_fn('-' * 64)
+      image_producer.done()
       if is_chief:
         store_benchmarks({'total_images_per_sec': images_per_sec})
       # Save the model checkpoint.
@@ -747,10 +861,6 @@ class BenchmarkCNN(object):
 
   def _build_model(self):
     """Build the TensorFlow graph."""
-    image_size = self.model.get_image_size()
-    data_type = tf.float32
-    input_data_type = tf.float32
-    input_nchan = 3
     tf.set_random_seed(1234)
     np.random.seed(4321)
     phase_train = not (FLAGS.eval or FLAGS.forward_only)
@@ -762,21 +872,36 @@ class BenchmarkCNN(object):
     all_top_1_ops = []
     all_top_5_ops = []
     enqueue_ops = []
-    gpu_copy_stage_ops = []
     gpu_compute_stage_ops = []
     gpu_grad_stage_ops = []
-
-    use_synthetic_gpu_images = self.image_preprocessor is None
 
     with tf.device(self.global_step_device):
       global_step = tf.contrib.framework.get_or_create_global_step()
 
     # Build the processing and model for the worker.
     with tf.device(self.cpu_device):
-      nclass, images_splits, labels_splits = add_image_preprocessing(
-          self.dataset, self.image_preprocessor, input_nchan, image_size,
-          self.batch_size, len(self.devices), input_data_type, not FLAGS.eval)
+      if FLAGS.eval:
+        subset = 'validation'
+      else:
+        subset = 'train'
+      image_producer_ops = []
+      image_producer_stages = []
+      images_splits, labels_splits = self.image_preprocessor.minibatch(
+          self.dataset, subset=subset, use_data_sets=FLAGS.use_data_sets)
+      images_shape = images_splits[0].get_shape()
+      labels_shape = labels_splits[0].get_shape()
+      for device_num in range(len(self.devices)):
+        image_producer_stages.append(data_flow_ops.StagingArea(
+            [tf.float32, tf.int32],
+            shapes=[images_shape, labels_shape]))
+        for group_index in xrange(self.batch_group_size):
+          if not self.use_synthetic_gpu_images:
+            batch_index = group_index + device_num * self.batch_group_size
+            put_op = image_producer_stages[device_num].put(
+                [images_splits[batch_index], labels_splits[batch_index]])
+            image_producer_ops.append(put_op)
 
+    image_producer_ops = tf.group(*image_producer_ops)
     update_ops = None
     staging_delta_ops = []
 
@@ -784,10 +909,8 @@ class BenchmarkCNN(object):
       with self.variable_mgr.create_outer_variable_scope(
           device_num), tf.name_scope('tower_%i' % device_num) as name_scope:
         results = self.add_forward_pass_and_gradients(
-            images_splits[device_num], labels_splits[device_num], nclass,
-            phase_train, device_num, input_data_type, data_type, input_nchan,
-            use_synthetic_gpu_images, gpu_copy_stage_ops, gpu_compute_stage_ops,
-            gpu_grad_stage_ops)
+            phase_train, device_num, image_producer_stages[device_num],
+            gpu_compute_stage_ops, gpu_grad_stage_ops)
         if phase_train:
           losses.append(results['loss'])
           device_grads.append(results['gradvars'])
@@ -797,17 +920,20 @@ class BenchmarkCNN(object):
           all_top_1_ops.append(results['top_1_op'])
           all_top_5_ops.append(results['top_5_op'])
 
-        if self.variable_mgr.retain_tower_updates(device_num):
+        if device_num == 0:
           # Retain the Batch Normalization updates operations only from the
-          # first tower. Ideally, we should grab the updates from all towers but
-          # these stats accumulate extremely fast so we can ignore the other
-          # stats from the other towers without significant detriment.
+          # first tower. These operations update the moving mean and moving
+          # variance variables, which are updated (but not used) during
+          # training, and used during evaluation. The moving mean and variance
+          # approximate the true mean and variance across all images in the
+          # dataset. Therefore, in replicated mode, these moving averages would
+          # be almost identical for each tower, and so we only update and save
+          # the moving averages for one tower. In parameter server mode, all
+          # towers share a copy of the variables so we also only need to update
+          # and save the moving averages once.
           update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, name_scope)
           staging_delta_ops = list(self.variable_mgr.staging_delta_ops)
 
-    if not update_ops:
-      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, name_scope)
-    enqueue_ops.append(tf.group(*gpu_copy_stage_ops))
     if self.variable_mgr.supports_staged_vars():
       for staging_ops in self.variable_mgr.staging_vars_on_devices:
         gpu_compute_stage_ops.extend(
@@ -832,7 +958,7 @@ class BenchmarkCNN(object):
     if not phase_train:
       if FLAGS.forward_only:
         fetches['all_logits'] = tf.concat(all_logits, 0)
-      return (enqueue_ops, fetches)
+      return (image_producer_ops, enqueue_ops, fetches)
     extra_nccl_ops = []
     apply_gradient_devices, gradient_state = (
         self.variable_mgr.preprocess_device_grads(device_grads))
@@ -844,20 +970,24 @@ class BenchmarkCNN(object):
         avg_grads = self.variable_mgr.get_gradients_to_apply(d, gradient_state)
 
         gradient_clip = FLAGS.gradient_clip
-        learning_rate = self.model.get_learning_rate(
+        learning_rate = FLAGS.learning_rate or self.model.get_learning_rate(
             global_step, self.batch_size)
-        if ((not use_synthetic_gpu_images) and
+        if ((not self.use_synthetic_gpu_images) and
+            FLAGS.learning_rate and
             FLAGS.num_epochs_per_decay > 0 and
             FLAGS.learning_rate_decay_factor > 0):
           num_batches_per_epoch = (
-              self.dataset.num_examples_per_epoch() / self.batch_size)
+              float(self.dataset.num_examples_per_epoch()) / self.batch_size)
           decay_steps = int(num_batches_per_epoch * FLAGS.num_epochs_per_decay)
 
           # Decay the learning rate exponentially based on the number of steps.
-          init_lr = FLAGS.learning_rate or self.model.get_learning_rate()
           learning_rate = tf.train.exponential_decay(
-              init_lr, global_step,
+              FLAGS.learning_rate, global_step,
               decay_steps, FLAGS.learning_rate_decay_factor, staircase=True)
+
+          if FLAGS.minimum_learning_rate != 0.:
+            learning_rate = tf.maximum(learning_rate,
+                                       FLAGS.minimum_learning_rate)
 
         if gradient_clip is not None:
           clipped_grads = [
@@ -867,6 +997,7 @@ class BenchmarkCNN(object):
         else:
           clipped_grads = avg_grads
 
+        learning_rate = tf.identity(learning_rate, name='learning_rate')
         if FLAGS.optimizer == 'momentum':
           opt = tf.train.MomentumOptimizer(
               learning_rate, FLAGS.momentum, use_nesterov=True)
@@ -895,29 +1026,24 @@ class BenchmarkCNN(object):
             tf.summary.histogram(var.op.name, var)
     fetches['train_op'] = train_op
     fetches['total_loss'] = total_loss
-    return (enqueue_ops, fetches)
+    return (image_producer_ops, enqueue_ops, fetches)
 
   def add_forward_pass_and_gradients(
-      self, host_images, host_labels, nclass, phase_train, device_num,
-      input_data_type, data_type, input_nchan, use_synthetic_gpu_images,
-      gpu_copy_stage_ops, gpu_compute_stage_ops, gpu_grad_stage_ops):
+      self, phase_train, device_num, image_producer_stage,
+      gpu_compute_stage_ops, gpu_grad_stage_ops):
     """Add ops for forward-pass and gradient computations."""
-    if not use_synthetic_gpu_images:
+    nclass = self.dataset.num_classes + 1
+    input_data_type = get_data_type()
+    data_type = get_data_type()
+    if not self.use_synthetic_gpu_images:
       with tf.device(self.cpu_device):
+        host_images, host_labels = image_producer_stage.get()
         images_shape = host_images.get_shape()
         labels_shape = host_labels.get_shape()
-        gpu_copy_stage = data_flow_ops.StagingArea(
-            [tf.float32, tf.int32],
-            shapes=[images_shape, labels_shape])
-        gpu_copy_stage_op = gpu_copy_stage.put(
-            [host_images, host_labels])
-        gpu_copy_stage_ops.append(gpu_copy_stage_op)
-        host_images, host_labels = gpu_copy_stage.get()
-
     with tf.device(self.raw_devices[device_num]):
-      if not use_synthetic_gpu_images:
+      if not self.use_synthetic_gpu_images:
         gpu_compute_stage = data_flow_ops.StagingArea(
-            [tf.float32, tf.int32],
+            [host_images.dtype, host_labels.dtype],
             shapes=[images_shape, labels_shape]
         )
         # The CPU-to-GPU copy is triggered here.
@@ -928,18 +1054,22 @@ class BenchmarkCNN(object):
         gpu_compute_stage_ops.append(gpu_compute_stage_op)
       else:
         # Minor hack to avoid H2D copy when using synthetic data
+        image_size = self.model.get_image_size()
+        image_shape = [self.batch_size // self.num_gpus, image_size, image_size,
+                       self.dataset.depth]
+        labels_shape = [self.batch_size // self.num_gpus]
         images = tf.truncated_normal(
-            host_images.get_shape(),
-            dtype=input_data_type,
-            stddev=1e-1,
-            name='synthetic_images')
+            image_shape, dtype=input_data_type,
+            stddev=1e-1, name='synthetic_images')
         images = tf.contrib.framework.local_variable(
             images, name='gpu_cached_images')
-        labels = host_labels
+        labels = tf.random_uniform(
+            labels_shape, minval=0, maxval=nclass-1,
+            dtype=tf.int32, name='synthetic_labels')
 
     with tf.device(self.devices[device_num]):
       # Rescale from [0, 255] to [0, 2]
-      images = tf.mul(images, 1./127.5)
+      images = tf.multiply(images, 1./127.5)
       # Rescale to [-1, 1]
       images = tf.subtract(images, 1.0)
 
@@ -947,8 +1077,13 @@ class BenchmarkCNN(object):
         images = tf.transpose(images, [0, 3, 1, 2])
       if input_data_type != data_type:
         images = tf.cast(images, data_type)
-      network = convnet_builder.ConvNetBuilder(images, input_nchan, phase_train,
-                                               self.data_format, data_type)
+      var_type = tf.float32
+      if data_type == tf.float16 and FLAGS.fp16_vars:
+        var_type = tf.float16
+      network = convnet_builder.ConvNetBuilder(images, self.dataset.depth,
+                                               phase_train, self.use_tf_layers,
+                                               self.data_format, data_type,
+                                               var_type)
       self.model.add_inference(network)
       # Add the final fully-connected class layer
       logits = network.affine(nclass, activation='linear')
@@ -956,6 +1091,11 @@ class BenchmarkCNN(object):
       if network.aux_top_layer is not None:
         with network.switch_to_aux_top_layer():
           aux_logits = network.affine(nclass, activation='linear', stddev=0.001)
+      if data_type == tf.float16:
+        # TODO(reedwm): Determine if we should do this cast here.
+        logits = tf.cast(logits, tf.float32)
+        if aux_logits is not None:
+          aux_logits = tf.cast(aux_logits, tf.float32)
 
       results = {}  # The return value
       if not phase_train or FLAGS.print_training_accuracy:
@@ -971,13 +1111,29 @@ class BenchmarkCNN(object):
         return results
       loss = loss_function(logits, labels, aux_logits=aux_logits)
       params = self.variable_mgr.trainable_variables_on_device(device_num)
-      l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in params])
+      if data_type == tf.float16 and FLAGS.fp16_vars:
+        # fp16 reductions are very slow on GPUs, so cast to fp32 before calling
+        # tf.nn.l2_loss and tf.add_n.
+        # TODO(b/36217816): Once the bug is fixed, investigate if we should do
+        # this reduction in fp16.
+        fp32_params = (tf.cast(p, tf.float32) for p in params)
+        l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in fp32_params])
+      else:
+        l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in params])
       weight_decay = FLAGS.weight_decay
       if weight_decay is not None and weight_decay != 0.:
         loss += weight_decay * l2_loss
 
       aggmeth = tf.AggregationMethod.DEFAULT
-      grads = tf.gradients(loss, params, aggregation_method=aggmeth)
+      scaled_loss = loss if self.loss_scale == 1. else loss * self.loss_scale
+      grads = tf.gradients(scaled_loss, params, aggregation_method=aggmeth)
+      if self.loss_scale != 1.:
+        # TODO(reedwm): We could avoid these multiplications by directly
+        # modifying the learning rate instead. If this is done, care must be
+        # taken to ensure that this scaling method is correct, as some
+        # optimizers square gradients and do other operations which might not be
+        # compatible with modifying both the gradients and the learning rate.
+        grads = [grad * (1. / self.loss_scale) for grad in grads]
 
       if FLAGS.staged_vars:
         grad_dtypes = [grad.dtype for grad in grads]
@@ -1005,7 +1161,7 @@ class BenchmarkCNN(object):
       The image preprocessor, or None if synthetic data should be used.
     """
     image_size = self.model.get_image_size()
-    input_data_type = tf.float32
+    input_data_type = get_data_type()
 
     shift_ratio = 0
     if self.job_name:
@@ -1015,15 +1171,13 @@ class BenchmarkCNN(object):
       shift_ratio = float(self.task_index) / len(self.worker_hosts)
 
     processor_class = self.dataset.get_image_preprocessor()
-    if processor_class is not None:
-      return processor_class(
-          image_size, image_size, self.batch_size,
-          len(self.devices), dtype=input_data_type, train=(not FLAGS.eval),
-          distortions=FLAGS.distortions, resize_method=self.resize_method,
-          shift_ratio=shift_ratio)
-    else:
-      assert isinstance(self.dataset, datasets.SyntheticData)
-      return None
+    assert processor_class
+    return processor_class(
+        image_size, image_size, self.batch_size * self.batch_group_size,
+        len(self.devices) * self.batch_group_size,
+        dtype=input_data_type,
+        train=(not FLAGS.eval), distortions=FLAGS.distortions,
+        resize_method=self.resize_method, shift_ratio=shift_ratio)
 
   def add_sync_queues_and_barrier(self, name_prefix,
                                   enqueue_after_list):
@@ -1078,6 +1232,14 @@ def setup():
   os.environ['TF_SYNC_ON_FINISH'] = str(int(FLAGS.sync_on_finish))
   argparse.ArgumentParser(
       formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+  # Sets environment variables for MKL
+  if FLAGS.mkl:
+    os.environ['KMP_BLOCKTIME'] = str(FLAGS.kmp_blocktime)
+    os.environ['KMP_SETTINGS'] = str(FLAGS.kmp_settings)
+    os.environ['KMP_AFFINITY'] = FLAGS.kmp_affinity
+    if FLAGS.num_intra_threads > 0:
+      os.environ['OMP_NUM_THREADS'] = str(FLAGS.num_intra_threads)
 
 
 

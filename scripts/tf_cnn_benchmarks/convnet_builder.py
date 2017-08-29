@@ -26,6 +26,7 @@ import tensorflow as tf
 from tensorflow.python.layers import convolutional as conv_layers
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.layers import pooling as pooling_layers
+from tensorflow.python.training import moving_averages
 
 
 class ConvNetBuilder(object):
@@ -35,13 +36,17 @@ class ConvNetBuilder(object):
                input_op,
                input_nchan,
                phase_train,
+               use_tf_layers,
                data_format='NCHW',
-               data_type=tf.float32):
+               dtype=tf.float32,
+               variable_dtype=tf.float32):
     self.top_layer = input_op
     self.top_size = input_nchan
     self.phase_train = phase_train
+    self.use_tf_layers = use_tf_layers
     self.data_format = data_format
-    self.data_type = data_type
+    self.dtype = dtype
+    self.variable_dtype = variable_dtype
     self.counts = defaultdict(lambda: 0)
     self.use_batch_norm = False
     self.batch_norm_config = {}  # 'decay': 0.997, 'scale': True}
@@ -64,6 +69,37 @@ class ConvNetBuilder(object):
     self.aux_top_size = self.top_size
     self.top_layer = saved_top_layer
     self.top_size = saved_top_size
+
+  def get_variable(self, name, shape, dtype, cast_dtype, *args, **kwargs):
+    # TODO(reedwm): Currently variables and gradients are transferred to other
+    # devices and machines as type `dtype`, not `cast_dtype`. In particular,
+    # this means in fp16 mode, variables are transferred as fp32 values, not
+    # fp16 values, which uses extra bandwidth.
+    var = tf.get_variable(name, shape, dtype, *args, **kwargs)
+    return tf.cast(var, cast_dtype)
+
+  def _conv2d_impl(self, input_layer, num_channels_in, filters, kernel_size,
+                   strides, padding, kernel_initializer):
+    if self.use_tf_layers:
+      return conv_layers.conv2d(input_layer, filters, kernel_size, strides,
+                                padding, self.channel_pos,
+                                kernel_initializer=kernel_initializer,
+                                use_bias=False)
+    else:
+      weights_shape = [kernel_size[0], kernel_size[1], num_channels_in, filters]
+      # We use the name 'conv2d/kernel' so the variable has the same name as its
+      # tf.layers equivalent. This way, if a checkpoint is written when
+      # self.use_tf_layers == True, it can be loaded when
+      # self.use_tf_layers == False, and vice versa.
+      weights = self.get_variable('conv2d/kernel', weights_shape,
+                                  self.variable_dtype, self.dtype,
+                                  initializer=kernel_initializer)
+      if self.data_format == 'NHWC':
+        strides = [1] + strides + [1]
+      else:
+        strides = [1, 1] + strides
+      return tf.nn.conv2d(input_layer, weights, strides, padding,
+                          data_format=self.data_format)
 
   def conv(self,
            num_out_channels,
@@ -93,24 +129,17 @@ class ConvNetBuilder(object):
       if self.data_format == 'NCHW':
         strides = [strides[0], strides[3], strides[1], strides[2]]
       if mode != 'SAME_RESNET':
-        conv = conv_layers.conv2d(
-            input_layer,
-            num_out_channels, [k_height, k_width],
-            strides=[d_height, d_width],
-            padding=mode,
-            data_format=self.channel_pos,
-            kernel_initializer=kernel_initializer,
-            use_bias=False)
+        conv = self._conv2d_impl(input_layer, num_channels_in, num_out_channels,
+                                 kernel_size=[k_height, k_width],
+                                 strides=[d_height, d_width], padding=mode,
+                                 kernel_initializer=kernel_initializer)
       else:  # Special padding mode for ResNet models
         if d_height == 1 and d_width == 1:
-          conv = conv_layers.conv2d(
-              input_layer,
-              num_out_channels, [k_height, k_width],
-              strides=[d_height, d_width],
-              padding='SAME',
-              data_format=self.channel_pos,
-              kernel_initializer=kernel_initializer,
-              use_bias=False)
+          conv = self._conv2d_impl(input_layer, num_channels_in,
+                                   num_out_channels,
+                                   kernel_size=[k_height, k_width],
+                                   strides=[d_height, d_width], padding='SAME',
+                                   kernel_initializer=kernel_initializer)
         else:
           rate = 1  # Unused (for 'a trous' convolutions)
           kernel_size_effective = k_height + (k_width - 1) * (rate - 1)
@@ -121,20 +150,18 @@ class ConvNetBuilder(object):
           if self.data_format == 'NCHW':
             padding = [padding[0], padding[3], padding[1], padding[2]]
           input_layer = tf.pad(input_layer, padding)
-          conv = conv_layers.conv2d(
-              input_layer,
-              num_out_channels, [k_height, k_width],
-              strides=[d_height, d_width],
-              padding='VALID',
-              data_format=self.channel_pos,
-              kernel_initializer=kernel_initializer,
-              use_bias=False)
+          conv = self._conv2d_impl(input_layer, num_channels_in,
+                                   num_out_channels,
+                                   kernel_size=[k_height, k_width],
+                                   strides=[d_height, d_width], padding='VALID',
+                                   kernel_initializer=kernel_initializer)
       if use_batch_norm is None:
         use_batch_norm = self.use_batch_norm
       if not use_batch_norm:
         if bias is not None:
-          biases = tf.get_variable('biases', [num_out_channels], self.data_type,
-                                   tf.constant_initializer(bias))
+          biases = self.get_variable('biases', [num_out_channels],
+                                     self.variable_dtype, self.dtype,
+                                     initializer=tf.constant_initializer(bias))
           biased = tf.reshape(
               tf.nn.bias_add(conv, biases, data_format=self.data_format),
               conv.get_shape())
@@ -156,6 +183,41 @@ class ConvNetBuilder(object):
       self.top_size = num_out_channels
       return conv1
 
+  def _pool(self,
+            pool_name,
+            pool_function,
+            k_height,
+            k_width,
+            d_height,
+            d_width,
+            mode,
+            input_layer,
+            num_channels_in):
+    """Construct a pooling layer."""
+    if input_layer is None:
+      input_layer = self.top_layer
+    else:
+      self.top_size = num_channels_in
+    name = pool_name + str(self.counts[pool_name])
+    self.counts[pool_name] += 1
+    if self.use_tf_layers:
+      pool = pool_function(
+          input_layer, [k_height, k_width], [d_height, d_width],
+          padding=mode,
+          data_format=self.channel_pos,
+          name=name)
+    else:
+      if self.data_format == 'NHWC':
+        ksize = [1, k_height, k_width, 1]
+        strides = [1, d_height, d_width, 1]
+      else:
+        ksize = [1, 1, k_height, k_width]
+        strides = [1, 1, d_height, d_width]
+      pool = tf.nn.max_pool(input_layer, ksize, strides, padding=mode,
+                            data_format=self.data_format, name=name)
+    self.top_layer = pool
+    return pool
+
   def mpool(self,
             k_height,
             k_width,
@@ -165,19 +227,8 @@ class ConvNetBuilder(object):
             input_layer=None,
             num_channels_in=None):
     """Construct a max pooling layer."""
-    if input_layer is None:
-      input_layer = self.top_layer
-    else:
-      self.top_size = num_channels_in
-    name = 'mpool' + str(self.counts['mpool'])
-    self.counts['mpool'] += 1
-    pool = pooling_layers.max_pooling2d(
-        input_layer, [k_height, k_width], [d_height, d_width],
-        padding=mode,
-        data_format=self.channel_pos,
-        name=name)
-    self.top_layer = pool
-    return pool
+    return self._pool('mpool', pooling_layers.max_pooling2d, k_height, k_width,
+                      d_height, d_width, mode, input_layer, num_channels_in)
 
   def apool(self,
             k_height,
@@ -188,19 +239,9 @@ class ConvNetBuilder(object):
             input_layer=None,
             num_channels_in=None):
     """Construct an average pooling layer."""
-    if input_layer is None:
-      input_layer = self.top_layer
-    else:
-      self.top_size = num_channels_in
-    name = 'apool' + str(self.counts['apool'])
-    self.counts['apool'] += 1
-    pool = pooling_layers.average_pooling2d(
-        input_layer, [k_height, k_width], [d_height, d_width],
-        padding=mode,
-        data_format=self.channel_pos,
-        name=name)
-    self.top_layer = pool
-    return pool
+    return self._pool('apool', pooling_layers.average_pooling2d, k_height,
+                      k_width, d_height, d_width, mode, input_layer,
+                      num_channels_in)
 
   def reshape(self, shape, input_layer=None):
     if input_layer is None:
@@ -225,12 +266,13 @@ class ConvNetBuilder(object):
     with tf.variable_scope(name):
       init_factor = 2. if activation == 'relu' else 1.
       stddev = stddev or np.sqrt(init_factor / num_channels_in)
-      kernel = tf.get_variable(
+      kernel = self.get_variable(
           'weights', [num_channels_in, num_out_channels],
-          self.data_type,
-          tf.truncated_normal_initializer(stddev=stddev))
-      biases = tf.get_variable('biases', [num_out_channels], self.data_type,
-                               tf.constant_initializer(bias))
+          self.variable_dtype, self.dtype,
+          initializer=tf.truncated_normal_initializer(stddev=stddev))
+      biases = self.get_variable('biases', [num_out_channels],
+                                 self.variable_dtype, self.dtype,
+                                 initializer=tf.constant_initializer(bias))
       logits = tf.nn.xw_plus_b(input_layer, kernel, biases)
       if activation == 'relu':
         affine1 = tf.nn.relu(logits, name=name)
@@ -280,12 +322,6 @@ class ConvNetBuilder(object):
       self.top_size = sum([sizes[-1] for sizes in col_layer_sizes])
       return self.top_layer
 
-  def residual(self, nout, net, scale=1.0):
-    inlayer = self.top_layer
-    net(self)
-    self.conv(nout, 1, 1, activation=None)
-    self.top_layer = tf.nn.relu(inlayer + scale * self.top_layer)
-
   def spatial_mean(self, keep_dims=False):
     name = 'spatial_mean' + str(self.counts['spatial_mean'])
     self.counts['spatial_mean'] += 1
@@ -303,11 +339,57 @@ class ConvNetBuilder(object):
     with tf.variable_scope(name):
       if not self.phase_train:
         keep_prob = 1.0
-      dropout = core_layers.dropout(input_layer, keep_prob)
+      if self.use_tf_layers:
+        dropout = core_layers.dropout(input_layer, 1. - keep_prob)
+      else:
+        dropout = tf.nn.dropout(input_layer, keep_prob)
       self.top_layer = dropout
       return dropout
 
-  def batch_norm(self, input_layer=None, **kwargs):
+  def _batch_norm_without_layers(self, input_layer, decay, use_scale, epsilon):
+    """Batch normalization on `input_layer` without tf.layers."""
+    # We make this function as similar as possible to the
+    # tf.contrib.layers.batch_norm, to minimize the differences between using
+    # layers and not using layers.
+    shape = input_layer.shape
+    num_channels = shape[3] if self.data_format == 'NHWC' else shape[1]
+    beta = self.get_variable('beta', [num_channels], tf.float32, tf.float32,
+                             initializer=tf.zeros_initializer())
+    if use_scale:
+      gamma = self.get_variable('gamma', [num_channels], tf.float32,
+                                tf.float32, initializer=tf.ones_initializer())
+    else:
+      gamma = tf.constant(1.0, tf.float32, [num_channels])
+    # For moving variables, we use tf.get_variable instead of self.get_variable,
+    # since self.get_variable returns the result of tf.cast which we cannot
+    # assign to.
+    moving_mean = tf.get_variable('moving_mean', [num_channels],
+                                  tf.float32,
+                                  initializer=tf.zeros_initializer(),
+                                  trainable=False)
+    moving_variance = tf.get_variable('moving_variance', [num_channels],
+                                      tf.float32,
+                                      initializer=tf.ones_initializer(),
+                                      trainable=False)
+    if self.phase_train:
+      bn, batch_mean, batch_variance = tf.nn.fused_batch_norm(
+          input_layer, gamma, beta, epsilon=epsilon,
+          data_format=self.data_format, is_training=True)
+      mean_update = moving_averages.assign_moving_average(
+          moving_mean, batch_mean, decay=decay, zero_debias=False)
+      variance_update = moving_averages.assign_moving_average(
+          moving_variance, batch_variance, decay=decay, zero_debias=False)
+      tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, mean_update)
+      tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, variance_update)
+    else:
+      bn, _, _ = tf.nn.fused_batch_norm(
+          input_layer, gamma, beta, mean=moving_mean,
+          variance=moving_variance, epsilon=epsilon,
+          data_format=self.data_format, is_training=False)
+    return bn
+
+  def batch_norm(self, input_layer=None, decay=0.999, scale=False,
+                 epsilon=0.001):
     """Adds a Batch Normalization layer."""
     if input_layer is None:
       input_layer = self.top_layer
@@ -317,14 +399,28 @@ class ConvNetBuilder(object):
     self.counts['batchnorm'] += 1
 
     with tf.variable_scope(name) as scope:
-      bn = tf.contrib.layers.batch_norm(
-          input_layer,
-          is_training=self.phase_train,
-          fused=True,
-          data_format=self.data_format,
-          scope=scope,
-          **kwargs)
+      using_fp16 = (self.dtype == tf.float16)
+      if using_fp16:
+        # Currently fused batch norm does not support fp16, so we do a cast
+        # to fp32 here.
+        input_layer = tf.cast(input_layer, tf.float32)
+      if self.use_tf_layers:
+        bn = tf.contrib.layers.batch_norm(
+            input_layer,
+            decay=decay,
+            scale=scale,
+            epsilon=epsilon,
+            is_training=self.phase_train,
+            fused=True,
+            data_format=self.data_format,
+            scope=scope)
+      else:
+        bn = self._batch_norm_without_layers(input_layer, decay, scale, epsilon)
+      if using_fp16:
+        bn = tf.cast(bn, tf.float16)
     self.top_layer = bn
+    self.top_size = bn.shape[3] if self.data_format == 'NHWC' else bn.shape[1]
+    self.top_size = int(self.top_size)
     return bn
 
   def lrn(self, depth_radius, bias, alpha, beta):
