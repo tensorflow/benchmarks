@@ -939,7 +939,7 @@ class BenchmarkCNN(object):
 
     with tf.device(self.devices[device_num]):
       # Rescale from [0, 255] to [0, 2]
-      images = tf.mul(images, 1./127.5)
+      images = tf.multiply(images, 1./127.5)
       # Rescale to [-1, 1]
       images = tf.subtract(images, 1.0)
 
