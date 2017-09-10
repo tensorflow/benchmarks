@@ -329,7 +329,7 @@ class StagedModelVariable(object):
           [self.var_stage_get.dtype], shapes=[self.var_stage_get.shape])
       delta_put_op = delta_staging_area.put([delta])
       self.variable_mgr.staging_delta_ops.append(delta_put_op)
-      delta_get_op = delta_staging_area.get()[0]
+      delta_get_op = delta_staging_area.get()
     # Return the actual updates. The colocation constraint will be reapplied.
     return self.real_var.assign_sub(delta_get_op)
 
@@ -395,7 +395,7 @@ class StagedVariableGetter(object):
     with tf.device(self.devices[self.device_num]):
       staging_area = data_flow_ops.StagingArea([dtype], shapes=[shape])
       put_op = staging_area.put([var_to_stage])
-      get_op = staging_area.get()[0]
+      get_op = staging_area.get()
       staging_ops[name] = (put_op, get_op)
     if trainable:
       # For trainable variables, they are managed separatedly through
