@@ -17,7 +17,7 @@
 """
 
 from abc import abstractmethod
-import cPickle
+from six.moves import cPickle
 import os
 
 import numpy as np
