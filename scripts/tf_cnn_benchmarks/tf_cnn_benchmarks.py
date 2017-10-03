@@ -833,7 +833,6 @@ class BenchmarkCNN(object):
       if FLAGS.forward_only:
         fetches['all_logits'] = tf.concat(all_logits, 0)
       return (enqueue_ops, fetches)
-    extra_nccl_ops = []
     apply_gradient_devices, gradient_state = (
         self.variable_mgr.preprocess_device_grads(device_grads))
 
@@ -881,7 +880,7 @@ class BenchmarkCNN(object):
 
         self.variable_mgr.append_apply_gradients_ops(
             gradient_state, opt, clipped_grads, training_ops)
-    train_op = tf.group(*(training_ops + update_ops + extra_nccl_ops))
+    train_op = tf.group(*(training_ops + update_ops))
 
     with tf.device(self.cpu_device):
       if self.task_index == 0 and FLAGS.summary_verbosity > 0:
