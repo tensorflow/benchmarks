@@ -24,4 +24,7 @@
    * Optionally, you can pass flags to your benchmark by adding `args` list.
 5. Send PR with the changes to annarev.
 
+Currently running benchmarks:
+https://benchmarks-dot-tensorflow-testing.appspot.com/
+
 For any questions, please contact annarev@google.com.

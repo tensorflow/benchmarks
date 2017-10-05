@@ -40,7 +40,9 @@
     data_format: "NHWC"
     model: "resnet50"
     result_storage: "cbuild_benchmark_datastore"
+    num_gpus: 8
+    local_parameter_device: "cpu"
   worker_count: 2
   ps_count: 2
-  gpus_per_machine: 1
+  gpus_per_machine: 8
   docker_file: "benchmarks/scripts/Dockerfile.tf_cnn_benchmarks"

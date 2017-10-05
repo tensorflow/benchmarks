@@ -49,7 +49,9 @@ class Model(object):
   def get_layer_counts(self):
     return self.layer_counts
 
-  def get_learning_rate(self):
+  def get_learning_rate(self, global_step=None, batch_size=None):
+    del global_step
+    del batch_size
     return self.learning_rate
 
   def set_learning_rate(self, learning_rate):
