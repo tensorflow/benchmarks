@@ -19,11 +19,14 @@
 
 from __future__ import print_function
 
+import collections as pycoll
 import operator
+import re
 
 import tensorflow as tf
 
 from tensorflow.contrib import nccl
+from tensorflow.contrib.all_reduce.python import all_reduce
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
 
@@ -180,10 +183,6 @@ class VariableMgr(object):
     apply_gradients_op = opt.apply_gradients(grads)
     training_ops.append(apply_gradients_op)
 
-  def retain_tower_updates(self, device_num):
-    """Return if only updates for the first GPU tower should be applied."""
-    return device_num == 0 and not self.each_tower_has_variables()
-
   def get_post_init_ops(self):
     """Returns ops that should run post-initialization."""
     return []
@@ -193,24 +192,26 @@ class VariableMgr(object):
     assert False, 'Must be implemented in subclass'
 
   def savable_variables(self):
-    """Return the set of variables used for saving/loading the model."""
+    """Returns a list/dict of savable variables to pass to tf.train.Saver."""
     return tf.global_variables()
 
-  def trainable_variables_on_device(self, device_num, writable=False):
+  def trainable_variables_on_device(self, rel_device_num, abs_device_num,
+                                    writable=False):
     """Return the set of trainable variables on device.
 
     Args:
-      device_num: the index to the device.
+      rel_device_num: local worker device index.
+      abs_device_num: global graph device index.
       writable: whether to get a reference to the underlying variable.
 
     Returns:
       The set of trainable vairalbes on the specified device.
     """
-    del writable
+    del rel_device_num, writable
     if self.each_tower_has_variables():
       params = [
           v for v in tf.trainable_variables()
-          if v.name.startswith('v%s/' % device_num)
+          if v.name.startswith('v%s/' % abs_device_num)
       ]
     else:
       params = tf.trainable_variables()
@@ -302,6 +303,10 @@ class StagedModelVariable(object):
   def _ref(self):
     """Return the underlying variable ref, required by tf.colocate_with."""
     return self.real_var._ref()  # pylint: disable=protected-access
+
+  def read_value(self):
+    """Mimics tf.Variable.read_value()."""
+    return tf.identity(self.var_stage_get, name='read')
 
   @property
   def dtype(self):
@@ -406,23 +411,26 @@ class StagedVariableGetter(object):
       # class.
       return StagedModelVariable(real_var, get_op, self.variable_mgr)
 
-  def trainable_variables_on_device(self, device_num, writable):
+  def trainable_variables_on_device(self, rel_device_num, abs_device_num,
+                                    writable):
     """Return the set of trainable variables on the specified device.
 
     Args:
-      device_num: the specified device index.
+      rel_device_num: local worker device index.
+      abs_device_num: global graph device index.
       writable: whether the returned variables is writable or read-only.
 
     Returns:
       Return the set of trainable variables on the specified device.
     """
+    del abs_device_num
     params_refs = tf.trainable_variables()
     if writable:
       return params_refs
     params = []
     for param in params_refs:
       var_name = param.name.split(':')[0]
-      _, var_get_op = self.variable_mgr.staging_vars_on_devices[device_num][
+      _, var_get_op = self.variable_mgr.staging_vars_on_devices[rel_device_num][
           var_name]
       params.append(var_get_op)
     return params
@@ -450,22 +458,188 @@ class VariableMgrLocalFetchFromStagedPS(VariableMgrLocalFetchFromPS):
     return tf.variable_scope(
         'v', reuse=bool(device_num), custom_getter=self._custom_getter)
 
-  def trainable_variables_on_device(self, device_num, writable=False):
+  def trainable_variables_on_device(self, rel_device_num, abs_device_num,
+                                    writable=False):
     return self._custom_getter.trainable_variables_on_device(
-        device_num, writable=writable)
+        rel_device_num, abs_device_num, writable=writable)
+
+
+AllReduceSpecTuple = pycoll.namedtuple('AllReduceSpecTuple', 'alg shards limit')
+
+
+def parse_general_int(s):
+  """Parse integer with power-of-2 suffix eg. 32k."""
+  mo = re.match(r'(\d+)([KkMGT]?)$', s)
+  if mo:
+    i, suffix = mo.group(1, 2)
+    v = int(i)
+    if suffix:
+      if suffix == 'K' or suffix == 'k':
+        v *= 1024
+      elif suffix == 'M':
+        v *= (1024 * 1024)
+      elif suffix == 'G':
+        v *= (1024 * 1024 * 1024)
+      elif suffix == 'T':
+        v *= (1024 * 1024 * 1024 * 1024)
+      else:
+        raise ValueError('invalid integer string %s' % s)
+    return v
+  else:
+    v = int(s)
+  return v
+
+
+def parse_all_reduce_spec(all_reduce_spec):
+  """Parse all_reduce_spec.
+
+  Args:
+    all_reduce_spec: a string specifying a combination of all-reduce
+      algorithms to apply for gradient reduction.
+
+  Returns:
+    a list of AllReduceSpecTuple.
+
+  Raises:
+    ValueError: all_reduce_spec is not well-formed.
+
+  An all_reduce_spec has BNF form:
+     int ::= positive whole number
+     g_int ::= int[KkMGT]?
+     alg_spec ::= alg | alg#int
+     range_spec ::= alg_spec | alg_spec/alg_spec
+     spec ::= range_spec | range_spec:g_int:range_spec
+
+  Not all syntactically correct specifications are supported.
+  Examples of supported all_reduce_spec strings, with semantics explained:
+
+    'xring' == apply ring all-reduce to all tensors
+    'xring#2' == apply ring all-reduce to all tensors, using two simultaneous
+            transfer rings, each operating on 1/2 of each tensor.
+    'nccl'  == apply NCCL all-reduce to all tensors (only works within
+            a single worker process where all devices are GPUs)
+    'nccl/xring' == apply NCCL all-reduce to all tensors within each worker
+            to produce at least one full-reduced (locally) value,
+            then apply ring all-reduce to one such value from each
+            worker, then apply NCCL broadcast to propagate those globally
+            reduced values back to every device within each worker.
+    'pscpu' == Shuffle reduce using worker CPUs as the gather devices: each
+            distributed tensor is reduced by copying all instances to
+            one of the worker CPUs, computing the reduction there, then
+            copying back to each participating device.  Tensor reductions
+            are assigned to specific CPUs round-robin.
+    'psgpu#4' == Arrange all GPUs across all workers into groups of 4.
+            Each distributed tensor is shuffle reduced against one
+            such group of 4 GPUs, selected round-robin.  That is, each
+            tensor is split across 4 shards for the reduction.
+    'pscpu:2k:pscpu#2:64k:xring' == Apply single-shard pscpu to
+            tensors of size <= 2048 elements, apply 2-shard pscpu to
+            tensors up to size 64k elements, apply xring to larger tensors.
+    'pscpu/pscpu#2' == Use shuffle gather to locally reduce each tensor on
+            the worker's CPU, then use 2-shard shuffle to reduce those
+            locally reduced tensors across workers (on the worker CPUs), then
+            scatter the globally reduced values locally from each worker CPU.
+  """
+  range_parts = all_reduce_spec.split(':') + ['-1']
+  if len(range_parts) % 2:
+    raise ValueError('all_reduce_spec not well formed: %s' % all_reduce_spec)
+  limit = 0
+  spec = []
+  alg = None
+  shards = 1
+  for i, range_part in enumerate(range_parts):
+    if i % 2 == 1:
+      try:
+        limit = parse_general_int(range_part)
+        spec.append(AllReduceSpecTuple(alg=alg, shards=shards, limit=limit))
+      except ValueError:
+        raise ValueError('all_reduce_spec (%s) contains non-integer range %s' %
+                         (all_reduce_spec, range_part))
+    else:
+      alg = range_part
+      alg_parts = range_part.split('#')
+      alg = alg_parts[0]
+      if len(alg_parts) > 1:
+        try:
+          shards = int(alg_parts[1])
+        except ValueError:
+          raise ValueError('all_reduce_spec (%s) contains non-integer '
+                           'shards %s' % all_reduce_spec, alg_parts[1])
+      else:
+        shards = 1
+      if alg not in['nccl', 'nccl/xring', 'nccl/rechd', 'nccl/pscpu',
+                    'xring', 'pscpu', 'psgpu', 'pscpu/pscpu']:
+        raise ValueError('all_reduce_spec (%s) contains invalid alg %s' %
+                         (all_reduce_spec, alg))
+  return spec
+
+
+def build_all_reduce_device_prefixes(job_name, num_tasks):
+  """Build list of device prefix names for all_reduce.
+
+  Args:
+    job_name: 'worker', 'ps' or 'localhost'.
+    num_tasks: number of jobs across which device names should be generated.
+
+  Returns:
+     A list of device name prefix strings. Each element spells out the full
+     host name without adding the device.
+     e.g. '/job:worker/task:0'
+  """
+  if job_name != 'localhost':
+    return ['/job:%s/task:%d' % (job_name, d) for d in range(0, num_tasks)]
+  else:
+    assert num_tasks == 1
+    return ['/job:%s' % job_name]
+
+
+def group_device_names(devices, group_size):
+  """Group device names into groups of group_size.
+
+  Args:
+    devices: list of strings naming devices.
+    group_size: int >= 1
+
+  Returns:
+    list of lists of devices, where each inner list is group_size long,
+      and each device appears at least once in an inner list.  If
+      len(devices) % group_size = 0 then each device will appear
+      exactly once.
+
+  Raises:
+    ValueError: group_size > len(devices)
+  """
+  num_devices = len(devices)
+  if group_size > num_devices:
+    raise ValueError('only %d devices, but group_size=%d' % (
+        num_devices, group_size))
+  num_groups = (num_devices // group_size) + (
+      1 if (num_devices % group_size != 0) else 0)
+  groups = [[] for i in range(num_groups)]
+  for i in range(0, num_groups * group_size):
+    groups[i % num_groups].append(devices[i % num_devices])
+  return groups
 
 
 class VariableMgrLocalReplicated(VariableMgr):
   """VariableMgr that implements the --replicated mode for local jobs.
 
      Each GPU has its own copy of the variables. To apply gradients,
-     either nccl all-reduce or a regular cross-device aggregation is used to
-     replicate the combined gradients to all towers.
+     either a local all-reduce algorithm is applied or a regular
+     cross-device aggregation is used to replicate the combined
+     gradients to all towers.
   """
 
-  def __init__(self, benchmark_cnn, use_nccl):
+  def __init__(self, benchmark_cnn, all_reduce_spec):
     super(VariableMgrLocalReplicated, self).__init__(benchmark_cnn)
-    self._use_nccl = use_nccl
+    if all_reduce_spec:
+      spec = parse_all_reduce_spec(all_reduce_spec)
+      if len(spec) != 1:
+        raise ValueError(
+            'replicated mode does not support hybrid all-reduce strategies')
+      self._all_reduce_spec = spec[0]
+    else:
+      self._all_reduce_spec = None
 
   def each_tower_has_variables(self):
     return True
@@ -474,8 +648,11 @@ class VariableMgrLocalReplicated(VariableMgr):
     return tf.variable_scope('v%s' % device_num)
 
   def preprocess_device_grads(self, device_grads):
-    if self._use_nccl:
-      aggregated_device_grads = sum_gradients_all_reduce(device_grads)
+    if self._all_reduce_spec:
+      aggregated_device_grads = sum_gradients_all_reduce(
+          ['/job:localhost'], device_grads, 1,
+          self._all_reduce_spec.alg,
+          self._all_reduce_spec.shards, self.benchmark_cnn.gpu_indices)
     else:
       agg_grads = aggregate_gradients_using_copy_with_device_selection(
           self.benchmark_cnn, device_grads, use_mean=False)
@@ -491,6 +668,103 @@ class VariableMgrLocalReplicated(VariableMgr):
 
   def get_post_init_ops(self):
     # Copy initialized values for variables on GPU 0 to other GPUs.
+    global_vars = tf.global_variables()
+    var_by_name = dict([(v.name, v) for v in global_vars])
+    post_init_ops = []
+    for v in global_vars:
+      split_name = v.name.split('/')
+      # TODO(b/62630508): use more specific prefix than v or v0.
+      if split_name[0] == 'v0' or not v.name.startswith('v'):
+        continue
+      split_name[0] = 'v0'
+      copy_from = var_by_name['/'.join(split_name)]
+      post_init_ops.append(v.assign(copy_from.read_value()))
+    return post_init_ops
+
+  def savable_variables(self):
+    """Return the set of variables used for saving/loading the model."""
+    params = []
+    for v in tf.global_variables():
+      split_name = v.name.split('/')
+      if split_name[0] == 'v0' or not v.name.startswith('v'):
+        params.append(v)
+    return params
+
+  def get_devices(self):
+    return self.benchmark_cnn.raw_devices
+
+
+class VariableMgrDistributedAllReduce(VariableMgr):
+  """VariableMgr that implements the --distributed_all_reduce mode.
+
+     Each GPU has its own copy of the variables. To apply gradients,
+     the specified all-reduce algorithm is used to reduce the gradients
+     and replicate the final value to all GPUs.
+  """
+
+  def __init__(self, benchmark_cnn, all_reduce_spec, job_name,
+               num_workers):
+    super(VariableMgrDistributedAllReduce, self).__init__(benchmark_cnn)
+    self._all_reduce_spec = parse_all_reduce_spec(all_reduce_spec)
+    self._all_reduce_device_prefixes = build_all_reduce_device_prefixes(
+        job_name, num_workers)
+    self._num_workers = num_workers
+    if not self._all_reduce_spec:
+      raise ValueError('all_reduce_spec must be specified')
+
+  def each_tower_has_variables(self):
+    return True
+
+  def create_outer_variable_scope(self, device_num):
+    """Create a scope for the named device.
+
+    Args:
+      device_num: index of device for variable scope. (Note that
+        device_num spans all processes in cluster since a single global
+        graph is used.)
+
+    Returns:
+      the requested variable_scope
+    """
+    return tf.variable_scope('v%s' % device_num)
+
+  def preprocess_device_grads(self, device_grads):
+    remaining_grads = device_grads
+    aggregated_grads = []
+    for spec_tuple in self._all_reduce_spec:
+      if spec_tuple.limit < 0:
+        this_grads = remaining_grads
+        remaining_grads = []
+      else:
+        (this_grads, remaining_grads) = split_grads_by_size(
+            spec_tuple.limit, remaining_grads)
+      if this_grads:
+        range_agg_grads = sum_gradients_all_reduce(
+            self._all_reduce_device_prefixes, this_grads, self._num_workers,
+            spec_tuple.alg, spec_tuple.shards, self.benchmark_cnn.gpu_indices)
+        if not aggregated_grads:
+          aggregated_grads = range_agg_grads
+        else:
+          assert len(aggregated_grads) == len(range_agg_grads)
+          for i in range(len(aggregated_grads)):
+            aggregated_grads[i] += range_agg_grads[i]
+    assert not remaining_grads
+    full_device_set = []
+    for grads in device_grads:
+      g, v = grads[0]
+      del v
+      full_device_set.append(g.device)
+    return (full_device_set, aggregated_grads)
+
+  def get_gradients_to_apply(self, device_num, gradient_state):
+    device_grads = gradient_state
+    if device_num >= len(device_grads):
+      raise ValueError('device_num %d exceeds length of device_grads (%d)' %
+                       (device_num, len(device_grads)))
+    return device_grads[device_num]
+
+  def get_post_init_ops(self):
+    """Copy initialized values for variables to other devices."""
     global_vars = tf.global_variables()
     var_by_name = dict([(v.name, v) for v in global_vars])
     post_init_ops = []
@@ -575,9 +849,10 @@ class VariableMgrDistributedFetchFromStagedPS(
   def supports_staged_vars(self):
     return True
 
-  def trainable_variables_on_device(self, device_num, writable=False):
+  def trainable_variables_on_device(self, rel_device_num, abs_device_num,
+                                    writable=False):
     return self._custom_getter.trainable_variables_on_device(
-        device_num, writable=writable)
+        rel_device_num, abs_device_num, writable=writable)
 
 
 class VariableMgrDistributedReplicated(VariableMgr):
@@ -659,38 +934,162 @@ class VariableMgrDistributedReplicated(VariableMgr):
             post_init_ops.append(copy_to.assign(v.read_value()))
     return post_init_ops
 
+  def _remove_shadow_var_prefix_if_present(self, var_name):
+    if var_name.startswith(PS_SHADOW_VAR_PREFIX + '/'):
+      return var_name[len(PS_SHADOW_VAR_PREFIX + '/'):]
+    else:
+      return var_name
+
+  def var_dict_name(self, v):
+    return self._strip_port(self._remove_shadow_var_prefix_if_present(v.name))
+
   def savable_variables(self):
-    """Return the set of variables used for saving/loading the model."""
-    params = []
+    """Returns a list/dict of savable variables to pass to tf.train.Saver."""
+    params = {}
     for v in tf.global_variables():
-      if (v.name.startswith(PS_SHADOW_VAR_PREFIX + '/v0/') or
-          not v.name.startswith(PS_SHADOW_VAR_PREFIX)):
-        print('save variable %s' % v.name)
-        params.append(v)
+      assert (v.name.startswith(PS_SHADOW_VAR_PREFIX + '/v0/') or
+              v.name == 'global_step:0')
+      # We store variables in the checkpoint with the shadow variable prefix
+      # removed so we can evaluate checkpoints in non-distributed replicated
+      # mode. The checkpoints can also be loaded for training in
+      # distributed_replicated mode.
+      name = self._strip_port(self._remove_shadow_var_prefix_if_present(v.name))
+      params[name] = v
+    for v in tf.local_variables():
+      # Non-trainable variables, such as batch norm moving averages, do not have
+      # corresponding global shadow variables, so we add them here. Trainable
+      # local variables have corresponding global shadow variables, which were
+      # added in the global variable loop above.
+      if v.name.startswith('v0/') and v not in tf.trainable_variables():
+        params[self._strip_port(v.name)] = v
     return params
 
   def get_devices(self):
     return self.benchmark_cnn.raw_devices
 
 
-def sum_grad_and_var_all_reduce(grad_and_vars):
+def split_grads_by_size(threshold_size, device_grads):
+  """Break gradients into two sets according to tensor size.
+
+  Args:
+    threshold_size: int size cutoff for small vs large tensor.
+    device_grads: List of lists of (gradient, variable) tuples.  The outer
+        list is over devices, the inner list is over individual gradients.
+
+  Returns:
+    small_grads: Subset of device_grads where shape is <= theshold_size
+       elements.
+    large_grads: Subset of device_grads where shape is > threshold_size
+       elements.
+  """
+  small_grads = []
+  large_grads = []
+  for dl in device_grads:
+    small_dl = []
+    large_dl = []
+    for (g, v) in dl:
+      tensor_size = g.get_shape().num_elements()
+      if tensor_size <= threshold_size:
+        small_dl.append([g, v])
+      else:
+        large_dl.append([g, v])
+    if small_dl:
+      small_grads.append(small_dl)
+    if large_dl:
+      large_grads.append(large_dl)
+  return small_grads, large_grads
+
+
+def sum_grad_and_var_all_reduce(grad_and_vars, num_workers, alg, gpu_indices,
+                                aux_devices=None, num_shards=1):
+  """Apply all-reduce algorithm over specified gradient tensors."""
   # Note that each grad_and_vars looks like the following:
   #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
-
   scaled_grads = [g for g, _ in grad_and_vars]
-  summed_grads = nccl.all_sum(scaled_grads)
+  if alg == 'nccl':
+    summed_grads = nccl.all_sum(scaled_grads)
+  elif alg == 'xring':
+    summed_grads = all_reduce.build_ring_all_reduce(
+        scaled_grads, num_workers, num_shards, gpu_indices, tf.add)
+  elif alg == 'nccl/xring':
+    summed_grads = all_reduce.build_nccl_then_ring(scaled_grads, num_shards,
+                                                   tf.add)
+  elif alg == 'nccl/rechd':
+    summed_grads = all_reduce.build_nccl_then_recursive_hd(scaled_grads, tf.add)
+  elif alg == 'nccl/pscpu':
+    summed_grads = all_reduce.build_nccl_then_shuffle(
+        scaled_grads, aux_devices, tf.add, tf.add_n)
+  elif alg == 'pscpu/pscpu':
+    summed_grads = all_reduce.build_shuffle_then_shuffle(
+        scaled_grads, aux_devices,
+        # TODO(tucker): devise a way of better specifying the device set
+        # for the second level.
+        [aux_devices[0]],
+        tf.add_n)
+  elif alg in ['pscpu', 'psgpu']:
+    summed_grads = all_reduce.build_shuffle_all_reduce(
+        scaled_grads, aux_devices, tf.add_n)
+  else:
+    raise ValueError('unsupported all_reduce alg: ', alg)
 
   result = []
   for (_, v), g in zip(grad_and_vars, summed_grads):
-    result.append((g, v))
+    result.append([g, v])
   return result
 
 
-def sum_gradients_all_reduce(tower_grads):
+def contains_any(haystack, needles):
+  """Tests if any needle is a substring of haystack.
+
+  Args:
+    haystack: a string
+    needles: list of strings
+
+  Returns:
+    True if any element of needles is a substring of haystack,
+      False otherwise.
+  """
+  for n in needles:
+    if n in haystack:
+      return True
+  return False
+
+
+def sum_gradients_all_reduce(dev_prefixes, tower_grads, num_workers,
+                             alg, num_shards, gpu_indices):
+  """Apply all-reduce algorithm over specified gradient tensors.
+
+  Args:
+    dev_prefixes: list of prefix strings to use to generate PS device names.
+    tower_grads: the gradients to reduce.
+    num_workers: number of worker processes across entire job.
+    alg: the all-reduce algorithm to apply.
+    num_shards: alg-specific sharding factor.
+    gpu_indices: indices of local GPUs in order usable for ring-reduce.
+
+  Returns:
+    list of reduced tensors
+  """
+  alg_contains_shuffle = contains_any(alg, ['pscpu', 'psgpu'])
   new_tower_grads = []
+  is_hierarchical = '/' in alg
+  if 'pscpu' in alg:
+    aux_devices = [prefix + '/cpu:0' for prefix in dev_prefixes]
+  elif 'psgpu' in alg:
+    aux_devices = [prefix + '/gpu:%d' % i for i in range(len(gpu_indices))
+                   for prefix in dev_prefixes]
+  else:
+    aux_devices = ['/job:localhost/cpu:0']
+  aux_device_groups = group_device_names(
+      aux_devices, num_shards if alg_contains_shuffle else 1)
+  group_index = 0
   for grad_and_vars in zip(*tower_grads):
-    new_tower_grads.append(sum_grad_and_var_all_reduce(grad_and_vars))
-  return list(zip(*new_tower_grads))
+    new_tower_grads.append(sum_grad_and_var_all_reduce(
+        grad_and_vars, num_workers, alg, gpu_indices,
+        aux_devices if is_hierarchical else aux_device_groups[group_index],
+        num_shards))
+    group_index = (group_index + 1) % len(aux_device_groups)
+  return [list(x) for x in zip(*new_tower_grads)]
 
 
 def aggregate_gradients_using_copy_with_device_selection(
@@ -702,6 +1101,7 @@ def aggregate_gradients_using_copy_with_device_selection(
     tower_grads: List of lists of (gradient, variable) tuples. The outer list
       is over towers. The inner list is over individual gradients.
     use_mean: if True, mean is taken, else sum of gradients is taken.
+
   Returns:
     List of pairs of (gradient, variable) where the gradient has been averaged
      across all towers. For each gradient, the variable is chosen from the
