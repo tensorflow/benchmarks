@@ -17,6 +17,7 @@
 import time
 
 import tensorflow as tf
+import mnist
 
 # Define a class that extends from tf.test.Benchmark.
 class SampleBenchmark(tf.test.Benchmark):
