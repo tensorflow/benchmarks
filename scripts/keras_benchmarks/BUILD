@@ -11,5 +11,5 @@ py_test(
 
 tf_py_logged_benchmark(
     name = "sample_logged_benchmark",
-    target = "//tensorflow/tools/test:sample_benchmark",
+    target = "//benchmarks/scripts/keras_benchmarks:sample_benchmark",
 )
