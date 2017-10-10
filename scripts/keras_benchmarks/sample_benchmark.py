@@ -17,7 +17,6 @@
 import time
 
 import tensorflow as tf
-import mnist
 
 
 # Define a class that extends from tf.test.Benchmark.
@@ -33,7 +32,7 @@ class SampleBenchmark(tf.test.Benchmark):
       iters = 100
       start_time = time.time()
       for _ in range(iters):
-        mnist.mnist_main()
+        sess.run(result)
       total_wall_time = time.time() - start_time
 
       # Call report_benchmark to report a metric value.
