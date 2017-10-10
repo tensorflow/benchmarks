@@ -15,7 +15,7 @@ tf_py_logged_benchmark(
 )
 
 py_test(
-    name = "mnist_benchmark",
+    name = "mnist_mlp",
     srcs = ["mnist_mlp.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -25,5 +25,5 @@ py_test(
 
 tf_py_logged_benchmark(
     name = "mnist_logged_benchmark",
-    target = "//benchmarks/scripts/keras_benchmarks:mnist_benchmark",
+    target = "//benchmarks/scripts/keras_benchmarks:mnist_mlp",
 )
