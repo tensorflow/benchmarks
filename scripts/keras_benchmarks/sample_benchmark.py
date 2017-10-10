@@ -31,8 +31,9 @@ class SampleBenchmark(tf.test.Benchmark):
 
       iters = 100
       start_time = time.time()
-      for _ in range(iters):
-        sess.run(result)
+      mnist
+      #for _ in range(iters):
+      #  sess.run(result)
       total_wall_time = time.time() - start_time
 
       # Call report_benchmark to report a metric value.
