@@ -15,8 +15,8 @@ tf_py_logged_benchmark(
 )
 
 py_test(
-    name = "mnist_mlp",
-    srcs = ["mnist_mlp.py"],
+    name = "mnist_mlp_benchmark",
+    srcs = ["mnist_mlp_benchmark.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
@@ -24,6 +24,20 @@ py_test(
 )
 
 tf_py_logged_benchmark(
-    name = "mnist_logged_benchmark",
-    target = "//benchmarks/scripts/keras_benchmarks:mnist_mlp",
+    name = "mnist_mlp_logged_benchmark",
+    target = "//benchmarks/scripts/keras_benchmarks:mnist_mlp_benchmark",
+)
+
+py_test(
+    name = "cifar10_cnn_benchmark",
+    srcs = ["cifar10_cnn_benchmark.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+tf_py_logged_benchmark(
+    name = "cifar10_cnn_logged_benchmark",
+    target = "//benchmarks/scripts/keras_benchmarks:cifar10_cnn_benchmark",
 )

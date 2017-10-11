@@ -1,5 +1,5 @@
 '''
-Model from keras/examples
+Original Model from keras/examples
 
 Trains a simple deep NN on the MNIST dataset.
 Gets to 98.40% test accuracy after 20 epochs
@@ -19,9 +19,9 @@ from keras.optimizers import RMSprop
 
 
 # Define a class that extends from tf.test.Benchmark.
-class KerasBenchmark(tf.test.Benchmark):
+class MnistMlpBenchmark(tf.test.Benchmark):
 
-    def benchmarkMnist(self):
+    def benchmarkMnistMlp(self):
         batch_size = 128
         num_classes = 10
         epochs = 20
@@ -66,7 +66,7 @@ class KerasBenchmark(tf.test.Benchmark):
 
         # Call report_benchmark to report a metric value.
         self.report_benchmark(
-            name="sum_wall_time",
+            name="sum_wall_time:time per epoch",
             # This value should always be per iteration.
             wall_time=total_wall_time/epochs,
             iters=epochs)
