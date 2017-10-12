@@ -11,7 +11,6 @@ py_test(
 
 tf_py_logged_benchmark(
     name = "sample_logged_benchmark",
-    timeout = "eternal",
     target = "//benchmarks/scripts/keras_benchmarks:sample_benchmark",
 )
 
@@ -26,7 +25,6 @@ py_test(
 
 tf_py_logged_benchmark(
     name = "mnist_mlp_logged_benchmark",
-    timeout = "eternal",
     target = "//benchmarks/scripts/keras_benchmarks:mnist_mlp_benchmark",
 )
 
@@ -41,6 +39,5 @@ py_test(
 
 tf_py_logged_benchmark(
     name = "cifar10_cnn_logged_benchmark",
-    timeout = "eternal",
     target = "//benchmarks/scripts/keras_benchmarks:cifar10_cnn_benchmark",
 )
