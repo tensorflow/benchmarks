@@ -19,11 +19,10 @@ from keras.layers import Dense, Dropout, Activation, Flatten
 from keras.layers import Conv2D, MaxPooling2D
 
 import os
+import upload_benchmarks_bq as bq
 
-# Define a class that extends from tf.test.Benchmark.
-class Cifar10CnnBenchmark(tf.test.Benchmark):
+class Cifar10CnnBenchmark():
 
-    # Note: benchmark method name must start with `benchmark`.
     def benchmarkCifar10Cnn(self):
 
         batch_size = 32
@@ -130,14 +129,4 @@ class Cifar10CnnBenchmark(tf.test.Benchmark):
         print('Test loss:', scores[0])
         print('Test accuracy:', scores[1])
 
-
-        # Call report_benchmark to report a metric value.
-        self.report_benchmark(
-            name="sum_wall_time:time per epoch",
-            # This value should always be per iteration.
-            wall_time=total_wall_time/epochs,
-            iters=epochs)
-
-if __name__ == "__main__":
-  tf.test.main()
-
+        bq.upload_metrics_to_bq("cifar10_cnn", total_wall_time, epochs, sample_type="images")

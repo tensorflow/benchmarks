@@ -15,12 +15,13 @@
 """Sample Benchmark file."""
 
 import time
-
 import tensorflow as tf
 
+from models import cifar10_cnn_benchmark
+from models import mnist_mlp_benchmark
 
 # Define a class that extends from tf.test.Benchmark.
-class SampleBenchmark(tf.test.Benchmark):
+class RunKerasBenchmarks():
 
   # Note: benchmark method name must start with `benchmark`.
   def benchmarkSum(self):
@@ -35,12 +36,15 @@ class SampleBenchmark(tf.test.Benchmark):
         sess.run(result)
       total_wall_time = time.time() - start_time
 
-      # Call report_benchmark to report a metric value.
-      self.report_benchmark(
-          name="sum_wall_time",
-          # This value should always be per iteration.
-          wall_time=total_wall_time/iters,
-          iters=iters)
+      print("total_wall_time", total_wall_time)
 
-if __name__ == "__main__":
-  tf.test.main()
+
+
+keras_benchmarks = RunKerasBenchmarks()
+keras_benchmarks.benchmarkSum()
+
+cifar = cifar10_cnn_benchmark.Cifar10CnnBenchmark()
+cifar.benchmarkCifar10Cnn()
+
+mnist = mnist_mlp_benchmark.MnistMlpBenchmark()
+mnist.benchmarkMnistMlp()

@@ -17,9 +17,9 @@ from keras.models import Sequential
 from keras.layers import Dense, Dropout
 from keras.optimizers import RMSprop
 
+import upload_benchmarks_bq as bq
 
-# Define a class that extends from tf.test.Benchmark.
-class MnistMlpBenchmark(tf.test.Benchmark):
+class MnistMlpBenchmark():
 
     def benchmarkMnistMlp(self):
         batch_size = 128
@@ -64,17 +64,9 @@ class MnistMlpBenchmark(tf.test.Benchmark):
                             validation_data=(x_test, y_test))
         total_wall_time = time.time() - start_time
 
-        # Call report_benchmark to report a metric value.
-        self.report_benchmark(
-            name="sum_wall_time:time per epoch",
-            # This value should always be per iteration.
-            wall_time=total_wall_time/epochs,
-            iters=epochs)
-
         score = model.evaluate(x_test, y_test, verbose=0)
 
         print('Test loss:', score[0])
         print('Test accuracy:', score[1])
 
-if __name__ == "__main__":
-    tf.test.main()
+        bq.upload_metrics_to_bq("mnist_mlp", total_wall_time, epochs, sample_type="images")
