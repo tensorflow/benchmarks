@@ -22,7 +22,7 @@ def upload_metrics_to_bq(test_name, total_time, num_iters, sample_type=None):
       query,
       query_parameters=(
         bigquery.ScalarQueryParameter('testname', 'STRING', test_name),
-        bigquery.ScalarQueryParameter('totaltime', 'INTEGER', total_time),
+        bigquery.ScalarQueryParameter('totaltime', 'TIME', total_time),
         bigquery.ScalarQueryParameter('numiters', 'INTEGER', num_iters),
         bigquery.ScalarQueryParameter('sampletype', 'STRING', sample_type)))
   query_job.use_legacy_sql = False
