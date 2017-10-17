@@ -17,14 +17,25 @@ from keras.models import Sequential
 from keras.layers import Dense, Dropout
 from keras.optimizers import RMSprop
 
-import upload_benchmarks_bq as bq
+import scripts.keras_benchmarks.upload_benchmarks_bq as bq
+from interface import implements
+from model_interface import BenchmarkModelInterface
 
-class MnistMlpBenchmark():
+class MnistMlpBenchmark(implements(BenchmarkModelInterface)):
+
+    total_time = 0
+    iters = 0
+    test_name = "undefined"
+    sample_type = "undefined"
 
     def benchmarkMnistMlp(self):
         batch_size = 128
         num_classes = 10
         epochs = 1
+
+        self.iters = epochs
+        self.test_name = "mnist_mlp"
+        self.sample_type="images"
 
         # the data, shuffled and split between train and test sets
         (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -62,11 +73,24 @@ class MnistMlpBenchmark():
                             epochs=epochs,
                             verbose=1,
                             validation_data=(x_test, y_test))
-        total_wall_time = time.time() - start_time
+        self.total_time = time.time() - start_time
 
         score = model.evaluate(x_test, y_test, verbose=0)
 
         print('Test loss:', score[0])
         print('Test accuracy:', score[1])
 
-        bq.upload_metrics_to_bq("mnist_mlp", total_wall_time, epochs, sample_type="images")
+        #bq.upload_metrics_to_bq("mnist_mlp", self.total_time, epochs, sample_type="images")
+
+
+    def get_totaltime(self):
+        return self.total_time
+
+    def get_iters(self):
+        return self.iters
+
+    def get_testname(self):
+        return self.test_name
+
+    def get_sampletype(self):
+        return self.sample_type

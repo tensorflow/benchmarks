@@ -19,9 +19,17 @@ from keras.layers import Dense, Dropout, Activation, Flatten
 from keras.layers import Conv2D, MaxPooling2D
 
 import os
-import upload_benchmarks_bq as bq
+import scripts.keras_benchmarks.upload_benchmarks_bq as bq
+from interface import implements
+from model_interface import BenchmarkModelInterface
 
-class Cifar10CnnBenchmark():
+
+class Cifar10CnnBenchmark(implements(BenchmarkModelInterface)):
+
+    total_time = 0
+    iters = 0
+    test_name = "undefined"
+    sample_type = "undefined"
 
     def benchmarkCifar10Cnn(self):
 
@@ -32,6 +40,10 @@ class Cifar10CnnBenchmark():
         num_predictions = 20
         save_dir = os.path.join(os.getcwd(), 'saved_models')
         model_name = 'keras_cifar10_trained_model.h5'
+
+        self.iters = epochs
+        self.test_name = "cifar10_cnn"
+        self.sample_type = "images"
 
         # The data, shuffled and split between train and test sets:
         (x_train, y_train), (x_test, y_test) = cifar10.load_data()
@@ -129,4 +141,16 @@ class Cifar10CnnBenchmark():
         print('Test loss:', scores[0])
         print('Test accuracy:', scores[1])
 
-        bq.upload_metrics_to_bq("cifar10_cnn", total_wall_time, epochs, sample_type="images")
+        bq.upload_metrics_to_bq(self.test_name, self.total_time, self.epochs, self.sample_type)
+
+    def get_totaltime(self):
+      return self.total_time
+
+    def get_iters(self):
+      return self.iters
+
+    def get_testname(self):
+      return self.test_name
+
+    def get_sampletype(self):
+      return self.sample_type
