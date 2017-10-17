@@ -17,8 +17,8 @@
 import time
 import tensorflow as tf
 
-from models import cifar10_cnn_benchmark
-from models import mnist_mlp_benchmark
+import cifar10_cnn_benchmark
+import mnist_mlp_benchmark
 
 # Define a class that extends from tf.test.Benchmark.
 class RunKerasBenchmarks():
