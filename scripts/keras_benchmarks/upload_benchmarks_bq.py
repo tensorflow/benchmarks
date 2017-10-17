@@ -1,5 +1,4 @@
 from google.cloud import bigquery
-from google.cloud import storage
 import uuid
 import urllib3
 

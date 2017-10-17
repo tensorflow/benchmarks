@@ -1,16 +1,14 @@
-from interface import Interface
 
-
-class BenchmarkModelInterface(Interface):
+class BenchmarkModel(object):
 
   def get_totaltime(self):
-    pass
+    raise ValueError('Must be implemented in derived classes')
 
   def get_iters(self):
-    pass
+    raise ValueError('Must be implemented in derived classes')
 
   def get_testname(self):
-    pass
+    raise ValueError('Must be implemented in derived classes')
 
   def get_sampletype(self):
-    pass
+    raise ValueError('Must be implemented in derived classes')

@@ -10,7 +10,6 @@ It gets down to 0.65 test logloss in 25 epochs, and down to 0.55 after 50 epochs
 
 from __future__ import print_function
 import time
-import tensorflow as tf
 import keras
 from keras.datasets import cifar10
 from keras.preprocessing.image import ImageDataGenerator
@@ -19,12 +18,9 @@ from keras.layers import Dense, Dropout, Activation, Flatten
 from keras.layers import Conv2D, MaxPooling2D
 
 import os
-import scripts.keras_benchmarks.upload_benchmarks_bq as bq
-from interface import implements
-from model_interface import BenchmarkModelInterface
+from model import BenchmarkModel
 
-
-class Cifar10CnnBenchmark(implements(BenchmarkModelInterface)):
+class Cifar10CnnBenchmark(BenchmarkModel):
 
     total_time = 0
     iters = 0
@@ -127,7 +123,7 @@ class Cifar10CnnBenchmark(implements(BenchmarkModelInterface)):
                               validation_data=(x_test, y_test),
                               workers=4)
 
-        total_wall_time = time.time() - start_time
+        self.total_time = time.time() - start_time
 
         # Save model and weights
         if not os.path.isdir(save_dir):
@@ -141,7 +137,6 @@ class Cifar10CnnBenchmark(implements(BenchmarkModelInterface)):
         print('Test loss:', scores[0])
         print('Test accuracy:', scores[1])
 
-        bq.upload_metrics_to_bq(self.test_name, self.total_time, self.epochs, self.sample_type)
 
     def get_totaltime(self):
       return self.total_time

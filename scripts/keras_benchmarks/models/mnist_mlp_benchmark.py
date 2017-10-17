@@ -10,18 +10,15 @@ Gets to 98.40% test accuracy after 20 epochs
 from __future__ import print_function
 
 import time
-import tensorflow as tf
 import keras
 from keras.datasets import mnist
 from keras.models import Sequential
 from keras.layers import Dense, Dropout
 from keras.optimizers import RMSprop
 
-import scripts.keras_benchmarks.upload_benchmarks_bq as bq
-from interface import implements
-from model_interface import BenchmarkModelInterface
+from model import BenchmarkModel
 
-class MnistMlpBenchmark(implements(BenchmarkModelInterface)):
+class MnistMlpBenchmark(BenchmarkModel):
 
     total_time = 0
     iters = 0
@@ -79,8 +76,6 @@ class MnistMlpBenchmark(implements(BenchmarkModelInterface)):
 
         print('Test loss:', score[0])
         print('Test accuracy:', score[1])
-
-        #bq.upload_metrics_to_bq("mnist_mlp", self.total_time, epochs, sample_type="images")
 
 
     def get_totaltime(self):
