@@ -7,6 +7,7 @@ urllib3.disable_warnings()
 
 
 def upload_metrics_to_bq(test_name, total_time, num_iters, sample_type=None):
+  bigquery_client = bigquery.Client()
   dataset = bigquery_client.dataset('tf_test_dataset')
   table = dataset.table('TestBqTable')
 
