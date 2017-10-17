@@ -13,7 +13,7 @@ def upload_metrics_to_bq(test_name, total_time, num_iters, sample_type=None):
   table.reload()
 
   query = """\
-  INSERT tf_test_dataset.Benchmarks (test_name,recorded_time,metrics_data) VALUES(@testname,CURRENT_TIMESTAMP(),(@totaltime,@numiters,@sampletype))
+  INSERT tf_test_dataset.PrototypeBenchmarks (test_name,recorded_time,metrics_data) VALUES(@testname,CURRENT_TIMESTAMP(),(@totaltime,@numiters,@sampletype))
   """
 
   query_job = bigquery_client.run_async_query(
