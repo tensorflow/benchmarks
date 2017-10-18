@@ -3,7 +3,7 @@
 sudo apt-get install bzip2
 
 wget https://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh -O miniconda.sh
-
+chmod 777 miniconda.sh
 ./miniconda.sh -b -p $HOME/miniconda
 export PATH="$HOME/miniconda/bin:$PATH"
 hash -r
@@ -38,7 +38,8 @@ pip install tensorflow
 
 # Install CNTK
 echo "Installing CNTK"
-pip install https://cntk.ai/PythonWheel/CPU-Only/cntk-2.2-cp27-cp27mu-linux_x86_64.whl;
+pip install https://cntk.ai/PythonWheel/CPU-Only/cntk-2.2-cp27-cp27mu-linux_x86_64.whl
+            https://cntk.ai/PythonWheel/CPU-Only/cntk-2.2-cp27-cp27m-win_amd64.whl
 
 #install open mpi
 rm -rf ~/mpi
@@ -56,7 +57,7 @@ pip install keras
 
 # Install git
 echo "Installing Git"
-apt-get install git
+sudo apt-get install git
 
 # Install google-cloud tools
 echo "Installing Google Cloud tools"
@@ -66,5 +67,10 @@ pip install google-cloud-bigquery
 # Clone benchmarks repo
 rm -rf benchmarks
 git clone -b keras-benchmarks https://github.com/tensorflow/benchmarks.git
-python run_benchmarks.py
+
+KERAS_BACKEND=tensorflow
+sed -i -e 's/"backend":[[:space:]]*"[^"]*/"backend":\ "'$KERAS_BACKEND'/g' ~/.keras/keras.json;
+echo -e "Running tests with the following config:\n$(cat ~/.keras/keras.json)"
+
+python benchmarks/scripts/keras_benchmarks/run_benchmarks.py --keras_backend=$KERAS_BACKED
 
