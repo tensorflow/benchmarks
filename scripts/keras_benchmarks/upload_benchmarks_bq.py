@@ -26,7 +26,7 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
       str(uuid.uuid4()),
       query,
       query_parameters=(
-        bigquery.ScalarQueryParameter('testid', 'INTEGER', 1234),
+        bigquery.ScalarQueryParameter('testid', 'INTEGER', uuid.uuid4().int),
         bigquery.ScalarQueryParameter('testname', 'STRING', test_name),
         bigquery.ScalarQueryParameter('metrics_totaltime', 'FLOAT', total_time),
         bigquery.ScalarQueryParameter('metrics_epochs', 'INTEGER', epochs),
