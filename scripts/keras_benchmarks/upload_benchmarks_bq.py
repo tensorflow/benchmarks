@@ -5,29 +5,47 @@ import urllib3
 urllib3.disable_warnings()
 
 
-def upload_metrics_to_bq(test_name, total_time, num_iters, sample_type=None):
+def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
+    backend_type, backend_version, cpu_num_cores, cpu_memory, cpu_memory_info,
+    platform_type, platform_machine_type, sample_type=None,):
+
   bigquery_client = bigquery.Client()
-  dataset = bigquery_client.dataset('tf_test_dataset')
-  table = dataset.table('TestBqTable')
+  dataset = bigquery_client.dataset('keras_benchmarks')
+  table = dataset.table('benchmarks')
 
   table.reload()
 
   query = """\
-  INSERT tf_test_dataset.PrototypeBenchmarks (test_name,recorded_time,metrics_data) VALUES(@testname,CURRENT_TIMESTAMP(),(@totaltime,@numiters,@sampletype))
+  INSERT keras_benchmarks.benchmarks (test_id,test_name,recorded_time,\
+  metrics,keras_backend,cpu_info,platform_info) \
+  VALUES(@testid,@testname,CURRENT_TIMESTAMP(),\
+  (@metrics_totaltime,@metrics_epochs,@metrics_batch_size,@metrics_sampletype),\
+  (@keras_backend_type, keras_backend_version),\
+  (@cpu_info_numcores,@cpu_info_memory, @cpu_info_memory_units)\
+  (@platform_info_type,@platform_info_machine_type))
   """
 
   query_job = bigquery_client.run_async_query(
       str(uuid.uuid4()),
       query,
       query_parameters=(
+        bigquery.ScalarQueryParameter('testid', 'INTEGER', uuid.uuid4()),
         bigquery.ScalarQueryParameter('testname', 'STRING', test_name),
-        bigquery.ScalarQueryParameter('totaltime', 'FLOAT', total_time),
-        bigquery.ScalarQueryParameter('numiters', 'INTEGER', num_iters),
-        bigquery.ScalarQueryParameter('sampletype', 'STRING', sample_type)))
+        bigquery.ScalarQueryParameter('metrics_totaltime', 'FLOAT', total_time),
+        bigquery.ScalarQueryParameter('metrics_epochs', 'INTEGER', epochs),
+        bigquery.ScalarQueryParameter('metrics_batch_size', 'INTEGER', batch_size),
+        bigquery.ScalarQueryParameter('metrics_sampletype', 'STRING', sample_type),
+        bigquery.ScalarQueryParameter('keras_backend_type', 'STRING', backend_type),
+        bigquery.ScalarQueryParameter('keras_backend_version', 'STRING', backend_version),
+        bigquery.ScalarQueryParameter('cpu_info_numcores', 'STRING', cpu_num_cores),
+        bigquery.ScalarQueryParameter('cpu_info_memory', 'STRING', cpu_memory),
+        bigquery.ScalarQueryParameter('cpu_info_memory_units', 'STRING', cpu_memory_info),
+        bigquery.ScalarQueryParameter('platform_info_type', 'STRING', platform_type),
+        bigquery.ScalarQueryParameter('platform_info_machine_type', 'STRING', platform_machine_type)))
+
+
+
   query_job.use_legacy_sql = False
 
   query_job.begin()
   query_job.result()  # Wait for job to complete.
-
-
-

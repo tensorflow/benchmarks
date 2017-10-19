@@ -24,6 +24,7 @@ class MnistMlpBenchmark(BenchmarkModel):
     iters = 0
     test_name = "undefined"
     sample_type = "undefined"
+    batch_size = 0
 
     def benchmarkMnistMlp(self):
         batch_size = 128
@@ -33,6 +34,7 @@ class MnistMlpBenchmark(BenchmarkModel):
         self.iters = epochs
         self.test_name = "mnist_mlp"
         self.sample_type="images"
+        self.batch_size = batch_size
 
         # the data, shuffled and split between train and test sets
         (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -89,3 +91,6 @@ class MnistMlpBenchmark(BenchmarkModel):
 
     def get_sampletype(self):
         return self.sample_type
+
+    def get_batch_size(self):
+        return self.batch_size
