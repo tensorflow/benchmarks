@@ -75,6 +75,6 @@ sed -i -e 's/"backend":[[:space:]]*"[^"]*/"backend":\ "'$KERAS_BACKEND'/g' ~/.ke
 # TODO(anjalisridhar): look into adding this as a command line arg
 echo -e "Running tests with the following config:\n$(cat ~/.keras/keras.json)"
 
-python benchmarks/scripts/keras_benchmarks/run_benchmark.py --keras_backend=$KERAS_BACKED
+python benchmarks/scripts/keras_benchmarks/run_benchmark.py --keras_backend=$KERAS_BACKEND
 
 

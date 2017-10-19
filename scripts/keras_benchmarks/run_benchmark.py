@@ -2,6 +2,7 @@ from models import mnist_mlp_benchmark
 import upload_benchmarks_bq as bq
 import argparse
 import tensorflow as tf
+import theano
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--keras_backend', default="tensorflow",
@@ -12,11 +13,12 @@ print(args.keras_backend)
 
 
 def get_keras_backend_version(backend_type):
-  print(backend_type)
   if str(backend_type) == "tensorflow":
     return tf.__version__
-  else:
-    return "undefined"
+  if str(backend_type) == "theano":
+    return theano.__version__
+
+  return "undefined"
 
 model = mnist_mlp_benchmark.MnistMlpBenchmark()
 model.benchmarkMnistMlp()

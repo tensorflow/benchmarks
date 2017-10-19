@@ -22,7 +22,7 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
   (@cpu_info_numcores,@cpu_info_memory, @cpu_info_memory_units),\
   (@platform_info_type,@platform_info_machine_type))
   """
-  test_id = uuid.uuid4().int>>64
+  test_id = uuid.uuid4().int >> 80
   print(test_id)
   query_job = bigquery_client.run_async_query(
       str(uuid.uuid4()),
