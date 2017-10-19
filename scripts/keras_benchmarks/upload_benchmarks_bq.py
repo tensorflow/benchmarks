@@ -7,7 +7,13 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
     backend_type, backend_version, cpu_num_cores, cpu_memory, cpu_memory_info,
     platform_type, platform_machine_type, sample_type=None):
 
-  bigquery_client = bigquery.Client()
+  #bigquery_client = bigquery.Client()
+  # Explicitly use service account credentials by specifying the private key
+  # file. All clients in google-cloud-python have this helper, see
+  # https://google-cloud-python.readthedocs.io/en/latest/core/modules.html
+  #   #google.cloud.client.Client.from_service_account_json
+
+  bigquery_client = bigquery.Client.from_service_account_json('/usr/local/google/home/anjalisridhar/Downloads/Anj-Tf-8abadd6f416a.json')
   dataset = bigquery_client.dataset('keras_benchmarks')
   table = dataset.table('benchmarks')
 
@@ -22,11 +28,13 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
   (@cpu_info_numcores,@cpu_info_memory, @cpu_info_memory_units),\
   (@platform_info_type,@platform_info_machine_type))
   """
+  test_id = uuid.uuid4().int>>64
+  print(test_id)
   query_job = bigquery_client.run_async_query(
       str(uuid.uuid4()),
       query,
       query_parameters=(
-        bigquery.ScalarQueryParameter('testid', 'INTEGER', uuid.uuid4().int),
+        bigquery.ScalarQueryParameter('testid', 'INTEGER', test_id),
         bigquery.ScalarQueryParameter('testname', 'STRING', test_name),
         bigquery.ScalarQueryParameter('metrics_totaltime', 'FLOAT', total_time),
         bigquery.ScalarQueryParameter('metrics_epochs', 'INTEGER', epochs),

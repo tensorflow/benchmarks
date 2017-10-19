@@ -13,7 +13,7 @@ print(args.keras_backend)
 
 def get_keras_backend_version(backend_type):
   print(backend_type)
-  if backend_type == "tensorflow":
+  if str(backend_type) == "tensorflow":
     return tf.__version__
   else:
     return "undefined"
