@@ -7,13 +7,7 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
     backend_type, backend_version, cpu_num_cores, cpu_memory, cpu_memory_info,
     platform_type, platform_machine_type, sample_type=None):
 
-  #bigquery_client = bigquery.Client()
-  # Explicitly use service account credentials by specifying the private key
-  # file. All clients in google-cloud-python have this helper, see
-  # https://google-cloud-python.readthedocs.io/en/latest/core/modules.html
-  #   #google.cloud.client.Client.from_service_account_json
-
-  bigquery_client = bigquery.Client.from_service_account_json('/usr/local/google/home/anjalisridhar/Downloads/Anj-Tf-8abadd6f416a.json')
+  bigquery_client = bigquery.Client()
   dataset = bigquery_client.dataset('keras_benchmarks')
   table = dataset.table('benchmarks')
 
