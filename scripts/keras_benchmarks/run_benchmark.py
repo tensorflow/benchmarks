@@ -25,7 +25,7 @@ def get_keras_backend_version(backend_type):
 
 model = mnist_mlp_benchmark.MnistMlpBenchmark()
 model.benchmarkMnistMlp()
-eis
+
 bq.upload_metrics_to_bq(model.get_testname(), model.get_totaltime(),
                      model.get_iters(), model.get_batch_size(),
                      args.keras_backend, get_keras_backend_version(args.keras_backend),
