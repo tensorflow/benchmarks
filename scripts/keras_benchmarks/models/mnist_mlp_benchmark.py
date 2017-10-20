@@ -17,6 +17,7 @@ from keras.layers import Dense, Dropout
 from keras.optimizers import RMSprop
 
 from model import BenchmarkModel
+from models import timehistory
 
 class MnistMlpBenchmark(BenchmarkModel):
 
@@ -66,22 +67,15 @@ class MnistMlpBenchmark(BenchmarkModel):
                       metrics=['accuracy'])
 
         start_time = time.time()
-
+        time_callback = timehistory.TimeHistory()
         history = model.fit(x_train, y_train,
                             batch_size=batch_size,
                             epochs=epochs,
                             verbose=1,
-                            validation_data=(x_test, y_test))
-        epoch1_total_time = time.time() - start_time
+                            validation_data=(x_test, y_test),
+                            callbacks=[time_callback])
 
-        start_time = time.time()
-
-        history = model.fit(x_train, y_train,
-                            batch_size=batch_size,
-                            epochs=epochs,
-                            verbose=1,
-                            validation_data=(x_test, y_test))
-        self.total_time = time.time() - start_time - epoch1_total_time
+        self.total_time = time.time() - start_time - time_callback.times[0]
 
         score = model.evaluate(x_test, y_test, verbose=0)
 

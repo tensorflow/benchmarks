@@ -2,8 +2,9 @@ from models import mnist_mlp_benchmark
 import upload_benchmarks_bq as bq
 import argparse
 import tensorflow as tf
-import theano
-import cntk
+#import theano
+#import cntk
+import keras
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--keras_backend', default="tensorflow",
@@ -24,9 +25,9 @@ def get_keras_backend_version(backend_type):
 
 model = mnist_mlp_benchmark.MnistMlpBenchmark()
 model.benchmarkMnistMlp()
-
+eis
 bq.upload_metrics_to_bq(model.get_testname(), model.get_totaltime(),
                      model.get_iters(), model.get_batch_size(),
                      args.keras_backend, get_keras_backend_version(args.keras_backend),
                      "1", "3.75", "GB",
-                     "GCP", "n1-standard-1", model.get_sampletype())
+                     "GCP", "n1-standard-1", model.get_sampletype(), keras.__version__)
