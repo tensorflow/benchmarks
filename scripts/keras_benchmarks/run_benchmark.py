@@ -3,6 +3,7 @@ import upload_benchmarks_bq as bq
 import argparse
 import tensorflow as tf
 import theano
+import cntk
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--keras_backend', default="tensorflow",
@@ -17,7 +18,8 @@ def get_keras_backend_version(backend_type):
     return tf.__version__
   if str(backend_type) == "theano":
     return theano.__version__
-
+  if str(backend_type) == "cntk":
+    return cntk.__version__
   return "undefined"
 
 model = mnist_mlp_benchmark.MnistMlpBenchmark()

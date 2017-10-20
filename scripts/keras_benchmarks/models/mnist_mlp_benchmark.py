@@ -29,9 +29,9 @@ class MnistMlpBenchmark(BenchmarkModel):
     def benchmarkMnistMlp(self):
         batch_size = 128
         num_classes = 10
-        epochs = 1
+        epochs = 20
 
-        self.iters = epochs
+        self.iters = epochs-1
         self.test_name = "mnist_mlp"
         self.sample_type="images"
         self.batch_size = batch_size
@@ -72,7 +72,16 @@ class MnistMlpBenchmark(BenchmarkModel):
                             epochs=epochs,
                             verbose=1,
                             validation_data=(x_test, y_test))
-        self.total_time = time.time() - start_time
+        epoch1_total_time = time.time() - start_time
+
+        start_time = time.time()
+
+        history = model.fit(x_train, y_train,
+                            batch_size=batch_size,
+                            epochs=epochs,
+                            verbose=1,
+                            validation_data=(x_test, y_test))
+        self.total_time = time.time() - start_time - epoch1_total_time
 
         score = model.evaluate(x_test, y_test, verbose=0)
 

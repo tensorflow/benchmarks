@@ -37,6 +37,12 @@ conda install pil
 echo "Installing Theano"
 pip install theano
 
+# Install MKL library for Theano
+conda install mkl-service
+
+# Install g++
+sudo apt-get install g++
+
 # Install tensorflow
 echo "Installing Tensorflow"
 pip install tensorflow
@@ -46,7 +52,10 @@ pip install tensorflow
 echo "Installing CNTK"
 pip install https://cntk.ai/PythonWheel/CPU-Only/cntk-2.2-cp27-cp27mu-linux_x86_64.whl
 
-#install open mpi
+# Install OpenCV
+sudo apt-get install libopencv-dev python-opencv
+
+# Install open mpi
 rm -rf ~/mpi
 mkdir ~/mpi
 pushd ~/mpi
@@ -69,12 +78,4 @@ echo "Installing Google Cloud tools"
 pip install google-cloud
 pip install google-cloud-bigquery
 
-python -c "from keras import backend"
-KERAS_BACKEND=tensorflow
-sed -i -e 's/"backend":[[:space:]]*"[^"]*/"backend":\ "'$KERAS_BACKEND'/g' ~/.keras/keras.json;
-# TODO(anjalisridhar): look into adding this as a command line arg
-echo -e "Running tests with the following config:\n$(cat ~/.keras/keras.json)"
-
-python benchmarks/scripts/keras_benchmarks/run_benchmark.py --keras_backend=$KERAS_BACKEND
-
-
+sh run_all_backends.sh
