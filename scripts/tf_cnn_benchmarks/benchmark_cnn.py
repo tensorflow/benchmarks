@@ -190,7 +190,7 @@ _DEFAULT_PARAMS = {
                    'Useful for testing the benchmark script, as this allows '
                    'distributed mode to be run on a single machine. For '
                    'example, if there are two tasks, each can be allocated '
-                   '~40% of the memory on a single machine'),
+                   '~40%% of the memory on a single machine'),
     'use_tf_layers':
         _ParamSpec('boolean', True,
                    'If True, use tf.layers for neural network layers. This '
