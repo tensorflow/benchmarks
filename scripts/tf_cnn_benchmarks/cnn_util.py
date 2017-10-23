@@ -14,6 +14,8 @@
 # ==============================================================================
 
 """Utilities for CNN benchmarks."""
+from __future__ import print_function
+
 import sys
 import threading
 
@@ -37,7 +39,7 @@ def tensorflow_version():
 
 
 def log_fn(log):
-  print log
+  print(log)
   if FLAGS.flush_stdout:
     sys.stdout.flush()
 
