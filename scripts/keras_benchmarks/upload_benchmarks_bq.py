@@ -3,9 +3,9 @@ import uuid
 import urllib3
 
 
-def upload_metrics_to_bq(test_name=test_name, total_time=total_time, epochs=epochs, batch_size=batch_size,
-    backend_type=backend_type, backend_version=backend_version, cpu_num_cores=cpu_num_cores, cpu_memory=cpu_memory, cpu_memory_info=cpu_memory_info,
-    platform_type=platform_type, platform_machine_type=platform_machine_type, keras_version=keras_version, sample_type=None):
+def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
+    backend_type, backend_version, cpu_num_cores, cpu_memory, cpu_memory_info,
+    platform_type, platform_machine_type, keras_version, sample_type=None):
 
   bigquery_client = bigquery.Client()
   dataset = bigquery_client.dataset('keras_benchmarks')

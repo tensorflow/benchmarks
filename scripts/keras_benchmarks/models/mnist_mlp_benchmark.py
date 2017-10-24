@@ -21,21 +21,14 @@ from models import timehistory
 
 class MnistMlpBenchmark(BenchmarkModel):
 
-    total_time = 0
-    iters = 0
-    test_name = "undefined"
-    sample_type = "undefined"
-    batch_size = 0
 
     def benchmarkMnistMlp(self):
-        batch_size = 128
-        num_classes = 10
-        epochs = 20
+        _test_name = "mnist_mlp"
+        _sample_type="images"
 
-        self.iters = epochs-1
-        self.test_name = "mnist_mlp"
-        self.sample_type="images"
-        self.batch_size = batch_size
+        _batch_size = 128
+        num_classes = 10
+        _epochs = 20
 
         # the data, shuffled and split between train and test sets
         (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -69,31 +62,30 @@ class MnistMlpBenchmark(BenchmarkModel):
         start_time = time.time()
         time_callback = timehistory.TimeHistory()
         history = model.fit(x_train, y_train,
-                            batch_size=batch_size,
-                            epochs=epochs,
+                            batch_size=_batch_size,
+                            epochs=_epochs,
                             verbose=1,
                             validation_data=(x_test, y_test),
                             callbacks=[time_callback])
 
-        self.total_time = time.time() - start_time - time_callback.times[0]
+        _total_time = time.time() - start_time - time_callback.times[0]
 
         score = model.evaluate(x_test, y_test, verbose=0)
 
         print('Test loss:', score[0])
         print('Test accuracy:', score[1])
 
-
     def get_totaltime(self):
-        return self.total_time
+        return self._total_time
 
     def get_iters(self):
-        return self.iters
+        return self._iters
 
     def get_testname(self):
-        return self.test_name
+        return self._test_name
 
     def get_sampletype(self):
-        return self.sample_type
+        return self._sample_type
 
     def get_batch_size(self):
-        return self.batch_size
+        return self._batch_size

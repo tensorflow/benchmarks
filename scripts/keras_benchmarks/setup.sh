@@ -46,8 +46,8 @@ sudo apt-get install g++
 
 # Install tensorflow
 echo "Installing Tensorflow"
-#pip install tensorflow
-pip install tensorflow-gpu
+pip install tensorflow
+#pip install tensorflow-gpu
 
 # Install CNTK
 echo "Installing CNTK"

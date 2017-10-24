@@ -1,6 +1,6 @@
 #!/bin/bash
 
-declare -a backend_types=('tensorflow' 'theano' ''cntk)
+declare -a backend_types=('tensorflow' 'theano' 'cntk')
 
 if [ "$1" = "cpu" ]; then
    echo "$1"
