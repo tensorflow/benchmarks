@@ -82,7 +82,7 @@ class MnistMlpBenchmark(BenchmarkModel):
         return self._total_time
 
     def get_iters(self):
-        return self._iters
+        return self._epochs - 1
 
     def get_testname(self):
         return self._test_name
