@@ -5,7 +5,7 @@ import urllib3
 
 def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
     backend_type, backend_version, cpu_num_cores, cpu_memory, cpu_memory_info,
-    platform_type, platform_machine_type, keras_version, sample_type=None):
+    gpu_count, gpu_platform, platform_type, platform_machine_type, keras_version, sample_type=None):
 
   bigquery_client = bigquery.Client()
   dataset = bigquery_client.dataset('keras_benchmarks')
@@ -21,7 +21,8 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
   (@keras_backend_type, @keras_backend_version),\
   (@cpu_info_numcores,@cpu_info_memory, @cpu_info_memory_units),\
   (@platform_info_type,@platform_info_machine_type),\
-   @keras_version)
+   @keras_version,\
+   (@gpu_info_count,@gpu_info_platform))
   """
   test_id = uuid.uuid4().int >> 80
   print(test_id)
@@ -42,7 +43,9 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
         bigquery.ScalarQueryParameter('cpu_info_memory_units', 'STRING', cpu_memory_info),
         bigquery.ScalarQueryParameter('platform_info_type', 'STRING', platform_type),
         bigquery.ScalarQueryParameter('platform_info_machine_type', 'STRING', platform_machine_type),
-        bigquery.ScalarQueryParameter('keras_version', 'STRING', keras_version)))
+        bigquery.ScalarQueryParameter('keras_version', 'STRING', keras_version),
+        bigquery.ScalarQueryParameter('gpu_info_count', 'FLOAT', gpu_count),
+        bigquery.ScalarQueryParameter('gpu_info_platform', 'STRING', gpu_platform)))
 
 
 
