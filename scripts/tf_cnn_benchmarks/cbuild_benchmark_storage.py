@@ -23,6 +23,7 @@ import json
 import os
 import sys
 from google.cloud import datastore
+import six
 
 
 _TEST_NAME_ENV_VAR = 'TF_DIST_BENCHMARK_NAME'
@@ -55,7 +56,7 @@ def upload_to_benchmark_datastore(data, test_name=None, start_time=None):
           'No test name passed in for benchmarks. '
           'Either pass a test_name to upload_to_benchmark_datastore or '
           'set %s environment variable.' % _TEST_NAME_ENV_VAR)
-  test_name = unicode(test_name)
+  test_name = six.text_type(test_name)
 
   if not start_time:
     start_time = datetime.now()
@@ -73,9 +74,9 @@ def upload_to_benchmark_datastore(data, test_name=None, start_time=None):
     e_val.update({
         'test': test_name,
         'start': start_time,
-        'entry': unicode(name),
+        'entry': six.text_type(name),
         'timing': value,
-        'info': unicode(json.dumps(entry_map))
+        'info': six.text_type(json.dumps(entry_map))
     })
     batch.append(e_val)
 
@@ -91,7 +92,7 @@ def upload_to_benchmark_datastore(data, test_name=None, start_time=None):
   t_val.update({
       'test': test_name,
       'start': start_time,
-      'info': unicode(test_result)
+      'info': six.text_type(test_result)
   })
   batch.append(t_val)
 
