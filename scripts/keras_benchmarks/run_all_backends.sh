@@ -1,7 +1,7 @@
 #!/bin/bash
 
 declare -a backend_types=('tensorflow' 'theano' 'cntk')
-TODO(anjalisridhar): Can we represent cpu and gpu info  in a more structured format.ma
+#TODO(anjalisridhar): Can we represent cpu and gpu info  in a more structured format.ma
 for bt in "${backend_types[@]}";do
       python -c "from keras import backend"
       KERAS_BACKEND=$bt
