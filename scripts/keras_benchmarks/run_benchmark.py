@@ -49,6 +49,7 @@ bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_tot
                      epochs=model.get_iters(), batch_size=model.get_batch_size(),
                      backend_type=args.keras_backend, backend_version=get_keras_backend_version(args.keras_backend),
                      cpu_num_cores=args.cpu_num_cores, cpu_memory=args.cpu_memory, cpu_memory_info=args.cpu_memory_info,
+                     gpu_count=args.gpu_count, gpu_platform=args.gpu_platform,
                      platform_type=args.platform_type, platform_machine_type=args.platform_machine_type,
                      keras_version=keras.__version__, sample_type=model.get_sampletype())
 
@@ -59,5 +60,6 @@ bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_tot
                         epochs=model.get_iters(), batch_size=model.get_batch_size(),
                         backend_type=args.keras_backend, backend_version=get_keras_backend_version(args.keras_backend),
                         cpu_num_cores=args.cpu_num_cores, cpu_memory=args.cpu_memory, cpu_memory_info=args.cpu_memory_info,
+                        gpu_count=args.gpu_count, gpu_platform=args.gpu_platform,
                         platform_type=args.platform_type, platform_machine_type=args.platform_machine_type,
                         keras_version=keras.__version__, sample_type=model.get_sampletype())
