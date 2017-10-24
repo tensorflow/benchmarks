@@ -6,9 +6,27 @@ import theano
 import cntk
 import keras
 
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--keras_backend', default="tensorflow",
                     help='Keras backend being used to run benchmarks.')
+
+parser.add_argument('--cpu_num_cores',
+                    help='')
+parser.add_argument('--cpu_memory',
+                    help='')
+parser.add_argument('--cpu_memory_info',
+                    help='')
+
+parser.add_argument('--platform_type',
+                    help='')
+parser.add_argument('--platform_machine_type',
+                    help='')
+
+parser.add_argument('--gpu_count',
+                    help='')
+parser.add_argument('--gpu_platform',
+                    help='')
 
 args = parser.parse_args()
 print(args.keras_backend)
@@ -26,8 +44,9 @@ def get_keras_backend_version(backend_type):
 model = mnist_mlp_benchmark.MnistMlpBenchmark()
 model.benchmarkMnistMlp()
 
-bq.upload_metrics_to_bq(model.get_testname(), model.get_totaltime(),
-                     model.get_iters(), model.get_batch_size(),
-                     args.keras_backend, get_keras_backend_version(args.keras_backend),
-                     "1", "3.75", "GB",
-                     "GCP", "n1-standard-1", keras.__version__,model.get_sampletype())
+bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_totaltime(),
+                     epochs=model.get_iters(), batch_size=model.get_batch_size(),
+                     backend_type=args.keras_backend, backend_version=get_keras_backend_version(args.keras_backend),
+                     cpu_num_cores=args.cpu_num_cores, cpu_memory=args.cpu_memory, cpu_memory_info=args.cpu_memory_info,
+                     platform_type=args.platform_type, platform_machine_type=args.platform_machine_type,
+                     keras_version=keras.__version__, sample_type=model.get_sampletype())
