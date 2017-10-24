@@ -21,14 +21,17 @@ from models import timehistory
 
 class MnistMlpBenchmark(BenchmarkModel):
 
+    _test_name = "mnist_mlp"
+    _sample_type="images"
+    _total_time = 0
+    _batch_size = 0
+    _epochs = 0
 
     def benchmarkMnistMlp(self):
-        _test_name = "mnist_mlp"
-        _sample_type="images"
 
-        _batch_size = 128
+        self._batch_size = 128
         num_classes = 10
-        _epochs = 20
+        self._epochs = 20
 
         # the data, shuffled and split between train and test sets
         (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -62,13 +65,13 @@ class MnistMlpBenchmark(BenchmarkModel):
         start_time = time.time()
         time_callback = timehistory.TimeHistory()
         history = model.fit(x_train, y_train,
-                            batch_size=_batch_size,
-                            epochs=_epochs,
+                            batch_size=self._batch_size,
+                            epochs=self._epochs,
                             verbose=1,
                             validation_data=(x_test, y_test),
                             callbacks=[time_callback])
 
-        _total_time = time.time() - start_time - time_callback.times[0]
+        self._total_time = time.time() - start_time - time_callback.times[0]
 
         score = model.evaluate(x_test, y_test, verbose=0)
 
