@@ -21,11 +21,14 @@ from models import timehistory
 
 class MnistMlpBenchmark(BenchmarkModel):
 
-    _test_name = "mnist_mlp"
-    _sample_type="images"
-    _total_time = 0
-    _batch_size = 0
-    _epochs = 0
+    # TODO(anjalisridhar): you can pass test name and sample type when creating
+    # the object
+    def __init__(self):
+      self._test_name = "mnist_mlp"
+      self._sample_type="images"
+      self._total_time = 0
+      self._batch_size = 0
+      self._epochs = 0
 
     def benchmarkMnistMlp(self):
 
