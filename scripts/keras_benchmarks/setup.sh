@@ -80,4 +80,6 @@ echo "Installing Google Cloud tools"
 pip install google-cloud
 pip install google-cloud-bigquery
 
+pip install h5py
+
 sh run_all_backends.sh

@@ -30,14 +30,11 @@ class Cifar10CnnBenchmark(BenchmarkModel):
       self._test_name = "cifar10_cnn"
       self._sample_type="images"
       self._total_time = 0
-      self._batch_size = 0
-      self._epochs = 0
+      self._batch_size = 32
+      self._epochs = 2
 
     def benchmarkCifar10Cnn(self):
-
-        self._batch_size = 32
         num_classes = 10
-        self._epochs = 200
         data_augmentation = True
         num_predictions = 20
         save_dir = os.path.join(os.getcwd(), 'saved_models')
@@ -154,3 +151,6 @@ class Cifar10CnnBenchmark(BenchmarkModel):
 
     def get_sampletype(self):
       return self._sample_type
+
+    def get_batch_size(self):
+      return self._batch_size

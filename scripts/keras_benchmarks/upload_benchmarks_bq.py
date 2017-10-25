@@ -15,7 +15,7 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
 
   query = """\
   INSERT keras_benchmarks.benchmarks (test_id,test_name,recorded_time,\
-  metrics,keras_backend,cpu_info,platform_info,keras_version) \
+  metrics,keras_backend,cpu_info,platform_info,keras_version,gpu_info) \
   VALUES(@testid,@testname,CURRENT_TIMESTAMP(),\
   (@metrics_totaltime,@metrics_epochs,@metrics_batch_size,@metrics_sampletype),\
   (@keras_backend_type, @keras_backend_version),\

@@ -27,14 +27,12 @@ class MnistMlpBenchmark(BenchmarkModel):
       self._test_name = "mnist_mlp"
       self._sample_type="images"
       self._total_time = 0
-      self._batch_size = 0
-      self._epochs = 0
+      self._batch_size = 128
+      self._epochs = 2
 
     def benchmarkMnistMlp(self):
 
-        self._batch_size = 128
         num_classes = 10
-        self._epochs = 20
 
         # the data, shuffled and split between train and test sets
         (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -76,6 +74,7 @@ class MnistMlpBenchmark(BenchmarkModel):
 
         self._total_time = time.time() - start_time - time_callback.times[0]
 
+        # TODO(anjalisridhar): Do we want to evaluate this mode?
         score = model.evaluate(x_test, y_test, verbose=0)
 
         print('Test loss:', score[0])
