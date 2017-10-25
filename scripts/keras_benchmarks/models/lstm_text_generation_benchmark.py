@@ -34,7 +34,12 @@ class LstmTextGenBenchmark(BenchmarkModel):
     self._batch_size = 128
     self._epochs = 2
 
-  def benchmarkLstmTextGen(self):
+  def benchmarkLstmTextGen(self, keras_backend=None, gpu_count=0):
+    if keras_backend is None:
+      raise ValueError('keras_backend parameter must be specified.')
+
+    if keras_backend is not "tensorflow" and gpu_count > 0:
+      raise ValueError('gpu mode is currently only supported for tensorflow backends.')
 
     path = get_file('nietzsche.txt', origin='https://s3.amazonaws.com/text-datasets/nietzsche.txt')
     text = open(path).read().lower()
@@ -75,18 +80,19 @@ class LstmTextGenBenchmark(BenchmarkModel):
     model.compile(loss='categorical_crossentropy', optimizer=optimizer)
 
     # train the model, output generated text after each iteration
-    for iteration in range(1, 1):
+    start_time = time.time()
+    time_callback = timehistory.TimeHistory()
+
+    for iteration in range(1, 60):
       print()
       print('-' * 50)
       print('Iteration', iteration)
-      start_time = time.time()
-      time_callback = timehistory.TimeHistory()
 
       model.fit(x, y,
                 batch_size=self._batch_size,
                 epochs=self._epochs)
 
-      self._total_time = time.time() - start_time - time_callback.times[0]
+    self._total_time = time.time() - start_time - time_callback.times[0]
 
   def get_totaltime(self):
     return self._total_time

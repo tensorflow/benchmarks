@@ -39,7 +39,12 @@ class MnistIrnnBenchmark(BenchmarkModel):
     self._batch_size = 32
     self._epochs = 2
 
-  def benchmarkMnistIrnn(self):
+  def benchmarkMnistIrnn(self, keras_backend=None, gpu_count=0):
+    if keras_backend is None:
+      raise ValueError('keras_backend parameter must be specified.')
+
+    if keras_backend is not "tensorflow" and gpu_count > 0:
+      raise ValueError('gpu mode is currently only supported for tensorflow backends.')
 
     num_classes = 10
     hidden_units = 100

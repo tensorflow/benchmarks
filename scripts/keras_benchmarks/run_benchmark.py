@@ -47,7 +47,7 @@ def get_keras_backend_version(backend_type):
 
 #TODO(anjalisridhar): instantiate models in a loop to avoid calling bq functions repeatedly
 
-model = mnist_mlp_benchmark.MnistMlpBenchmark()
+model = mnist_mlp_benchmark.MnistMlpBenchmark(args.keras_backend, args.gpu_count)
 model.benchmarkMnistMlp()
 
 bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_totaltime(),
@@ -58,7 +58,7 @@ bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_tot
                      platform_type=args.platform_type, platform_machine_type=args.platform_machine_type,
                      keras_version=keras.__version__, sample_type=model.get_sampletype())
 
-model = cifar10_cnn_benchmark.Cifar10CnnBenchmark()
+model = cifar10_cnn_benchmark.Cifar10CnnBenchmark(args.keras_backend, args.gpu_mode)
 model.benchmarkCifar10Cnn()
 
 bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_totaltime(),
@@ -70,7 +70,7 @@ bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_tot
                         keras_version=keras.__version__, sample_type=model.get_sampletype())
 
 
-model = mnist_irnn_benchmark.MnistIrnnBenchmark()
+model = mnist_irnn_benchmark.MnistIrnnBenchmark(args.keras_backend, args.gpu_mode)
 model.benchmarkMnistIrnn()
 
 bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_totaltime(),
@@ -82,7 +82,7 @@ bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_tot
                         keras_version=keras.__version__, sample_type=model.get_sampletype())
 
 
-model = lstm_text_generation_benchmark.LstmTextGenBenchmark()
+model = lstm_text_generation_benchmark.LstmTextGenBenchmark(args.keras_backend,args.gpu_count)
 model.benchmarkLstmTextGen()
 
 bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_totaltime(),

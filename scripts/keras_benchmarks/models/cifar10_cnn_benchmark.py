@@ -33,7 +33,13 @@ class Cifar10CnnBenchmark(BenchmarkModel):
       self._batch_size = 32
       self._epochs = 2
 
-    def benchmarkCifar10Cnn(self):
+    def benchmarkCifar10Cnn(self, keras_backend=None, gpu_count=0):
+        if keras_backend is None:
+          raise ValueError('keras_backend parameter must be specified.')
+
+        if keras_backend is not "tensorflow" and gpu_count > 0:
+          raise ValueError('gpu mode is currently only supported for tensorflow backends.')
+
         num_classes = 10
         data_augmentation = True
         num_predictions = 20

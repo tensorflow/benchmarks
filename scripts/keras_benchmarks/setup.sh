@@ -36,7 +36,7 @@ pip install theano
 conda install mkl-service
 
 # Install g++
-sudo apt-get install g++
+sudo apt-get install g++ -y
 
 # Installing cuda drivers for GPU.
 #curl -O http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/cuda-repo-ubuntu1604_8.0.61-1_amd64.deb
@@ -55,14 +55,14 @@ echo "Installing CNTK"
 pip install https://cntk.ai/PythonWheel/CPU-Only/cntk-2.2-cp27-cp27mu-linux_x86_64.whl
 
 # Install OpenCV
-sudo apt-get install libopencv-dev python-opencv
+sudo apt-get install libopencv-dev python-opencv -y
 
 # Install open mpi
 rm -rf ~/mpi
 mkdir ~/mpi
 pushd ~/mpi
 wget http://cntk.ai/PythonWheel/ForKeras/depends/openmpi_1.10-3.zip
-sudo apt-get install unzip
+sudo apt-get install unzip -y
 unzip ./openmpi_1.10-3.zip
 sudo dpkg -i openmpi_1.10-3.deb
 popd
@@ -73,13 +73,12 @@ pip install keras
 
 # Install git
 echo "Installing Git"
-sudo apt-get install git
+sudo apt-get install git -y
 
 # Install google-cloud tools
 echo "Installing Google Cloud tools"
 pip install google-cloud
 pip install google-cloud-bigquery
 
+# Install h5py
 pip install h5py
-
-sh run_all_backends.sh

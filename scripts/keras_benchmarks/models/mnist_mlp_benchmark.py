@@ -15,6 +15,7 @@ from keras.datasets import mnist
 from keras.models import Sequential
 from keras.layers import Dense, Dropout
 from keras.optimizers import RMSprop
+from keras.utils import multi_gpu_model
 
 from model import BenchmarkModel
 from models import timehistory
@@ -30,7 +31,12 @@ class MnistMlpBenchmark(BenchmarkModel):
       self._batch_size = 128
       self._epochs = 2
 
-    def benchmarkMnistMlp(self):
+    def benchmarkMnistMlp(self, keras_backend=None, gpu_count=0):
+        if keras_backend is None:
+          raise ValueError('keras_backend parameter must be specified.')
+
+        if keras_backend is not "tensorflow" and gpu_count > 0:
+          raise ValueError('gpu mode is currently only supported for tensorflow backends.')
 
         num_classes = 10
 
@@ -59,6 +65,9 @@ class MnistMlpBenchmark(BenchmarkModel):
 
         model.summary()
 
+        if keras_backend is "tensorflow" and gpu_count > 1:
+          model = multi_gpu_model(model, gpus=gpu_count)
+
         model.compile(loss='categorical_crossentropy',
                       optimizer=RMSprop(),
                       metrics=['accuracy'])
@@ -74,7 +83,7 @@ class MnistMlpBenchmark(BenchmarkModel):
 
         self._total_time = time.time() - start_time - time_callback.times[0]
 
-        # TODO(anjalisridhar): Do we want to evaluate this mode?
+        # TODO(anjalisridhar): Do we want to evaluate this model?
         score = model.evaluate(x_test, y_test, verbose=0)
 
         print('Test loss:', score[0])

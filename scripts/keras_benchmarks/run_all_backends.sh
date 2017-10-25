@@ -9,7 +9,8 @@ for bt in "${backend_types[@]}";do
       echo -e "Running tests with the following config:\n$(cat ~/.keras/keras.json)"
       if [ "$1" = "cpu" ]; then
           python benchmarks/scripts/keras_benchmarks/run_benchmark.py --keras_backend=$KERAS_BACKEND --cpu_num_cores='1' --cpu_memory='3.75' --cpu_memory_info='GB' --platform_type='GCP' --platform_machine_type='n1-standard-1'
-      else
+      fi
+      if ["$1" = "gpu"]; then
           python benchmarks/scripts/keras_benchmarks/run_benchmark.py --keras_backend=$KERAS_BACKEND --gpu_count='1' --gpu_platform='NVIDIA Tesla K80' --cpu_num_cores='8' --cpu_memory='30' --cpu_memory_info='GB' --platform_type='GCP' --platform_machine_type='n1-standard-8'
       fi
 done
