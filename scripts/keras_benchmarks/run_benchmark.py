@@ -5,8 +5,8 @@ from models import lstm_text_generation_benchmark
 import upload_benchmarks_bq as bq
 import argparse
 import tensorflow as tf
-import theano
-import cntk
+#import theano
+#import cntk
 import keras
 
 
@@ -47,8 +47,8 @@ def get_keras_backend_version(backend_type):
 
 #TODO(anjalisridhar): instantiate models in a loop to avoid calling bq functions repeatedly
 
-model = mnist_mlp_benchmark.MnistMlpBenchmark(args.keras_backend, args.gpu_count)
-model.benchmarkMnistMlp()
+model = mnist_mlp_benchmark.MnistMlpBenchmark()
+model.benchmarkMnistMlp(args.keras_backend, args.gpu_count)
 
 bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_totaltime(),
                      epochs=model.get_iters(), batch_size=model.get_batch_size(),
@@ -58,8 +58,8 @@ bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_tot
                      platform_type=args.platform_type, platform_machine_type=args.platform_machine_type,
                      keras_version=keras.__version__, sample_type=model.get_sampletype())
 
-model = cifar10_cnn_benchmark.Cifar10CnnBenchmark(args.keras_backend, args.gpu_mode)
-model.benchmarkCifar10Cnn()
+model = cifar10_cnn_benchmark.Cifar10CnnBenchmark()
+model.benchmarkCifar10Cnn(args.keras_backend, args.gpu_count)
 
 bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_totaltime(),
                         epochs=model.get_iters(), batch_size=model.get_batch_size(),
@@ -70,8 +70,8 @@ bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_tot
                         keras_version=keras.__version__, sample_type=model.get_sampletype())
 
 
-model = mnist_irnn_benchmark.MnistIrnnBenchmark(args.keras_backend, args.gpu_mode)
-model.benchmarkMnistIrnn()
+model = mnist_irnn_benchmark.MnistIrnnBenchmark()
+model.benchmarkMnistIrnn(args.keras_backend, args.gpu_count)
 
 bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_totaltime(),
                         epochs=model.get_iters(), batch_size=model.get_batch_size(),
@@ -82,8 +82,8 @@ bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_tot
                         keras_version=keras.__version__, sample_type=model.get_sampletype())
 
 
-model = lstm_text_generation_benchmark.LstmTextGenBenchmark(args.keras_backend,args.gpu_count)
-model.benchmarkLstmTextGen()
+model = lstm_text_generation_benchmark.LstmTextGenBenchmark()
+model.benchmarkLstmTextGen(args.keras_backend, args.gpu_count)
 
 bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_totaltime(),
                         epochs=model.get_iters(), batch_size=model.get_batch_size(),
