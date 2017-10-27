@@ -22,7 +22,7 @@ References:
 """
 
 import tensorflow as tf
-import model
+from . import model
 
 
 class AlexnetModel(model.Model):

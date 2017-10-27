@@ -14,7 +14,7 @@
 # ==============================================================================
 """Trivial model configuration."""
 
-import model
+from . import model
 
 
 class TrivialModel(model.Model):
