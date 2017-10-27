@@ -23,7 +23,7 @@ References:
   http://arxiv.org/abs/1312.6229
 """
 
-import model
+from . import model
 
 
 class OverfeatModel(model.Model):

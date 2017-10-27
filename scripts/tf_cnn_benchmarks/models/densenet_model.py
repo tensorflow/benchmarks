@@ -21,7 +21,7 @@ References:
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
-import model as model_lib
+from . import model as model_lib
 
 
 class DensenetCifar10Model(model_lib.Model):

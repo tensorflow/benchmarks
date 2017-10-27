@@ -16,15 +16,15 @@
 """Model configurations for CNN benchmarks.
 """
 
-import alexnet_model
-import densenet_model
-import googlenet_model
-import inception_model
-import lenet_model
-import overfeat_model
-import resnet_model
-import trivial_model
-import vgg_model
+from . import alexnet_model
+from . import densenet_model
+from . import googlenet_model
+from . import inception_model
+from . import lenet_model
+from . import overfeat_model
+from . import resnet_model
+from . import trivial_model
+from . import vgg_model
 
 
 def get_model_config(model, dataset):
