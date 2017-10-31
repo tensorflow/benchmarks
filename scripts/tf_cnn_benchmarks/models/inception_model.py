@@ -38,7 +38,7 @@ References:
 """
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import model
+from models import model
 
 
 class Inceptionv3Model(model.Model):

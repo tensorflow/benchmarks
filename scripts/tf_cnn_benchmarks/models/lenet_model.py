@@ -21,7 +21,7 @@ References:
   Proceedings of the IEEE (1998)
 """
 
-import model
+from models import model
 
 
 class Lenet5Model(model.Model):

@@ -21,7 +21,7 @@ References:
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
-import model as model_lib
+from models import model as model_lib
 
 
 class DensenetCifar10Model(model_lib.Model):
@@ -74,9 +74,7 @@ class DensenetCifar10Model(model_lib.Model):
     cnn.top_size = cnn.top_layer.get_shape().as_list()[channel_index]
     cnn.spatial_mean()
 
-  def get_learning_rate(self, global_step=None, batch_size=None):
-    if global_step is None or batch_size is None:
-      return self.learning_rate
+  def get_learning_rate(self, global_step, batch_size):
     num_batches_per_epoch = int(50000 / batch_size)
     boundaries = num_batches_per_epoch * np.array([150, 225, 300],
                                                   dtype=np.int64)
