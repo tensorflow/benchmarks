@@ -38,9 +38,6 @@ class LstmTextGenBenchmark(BenchmarkModel):
     if keras_backend is None:
       raise ValueError('keras_backend parameter must be specified.')
 
-    if keras_backend is not "tensorflow" and gpu_count > 0:
-      raise ValueError('gpu mode is currently only supported for tensorflow backends.')
-
     path = get_file('nietzsche.txt', origin='https://s3.amazonaws.com/text-datasets/nietzsche.txt')
     text = open(path).read().lower()
     print('corpus length:', len(text))
