@@ -56,3 +56,11 @@ sudo apt-get install python-dev python-pip libcupti-dev
 
 # Install tensorflow GPU version
 sudo pip install tensorflow-gpu
+
+sudo pip install git+git://github.com/fchollet/keras.git --upgrade
+
+# Install google-cloud tools
+echo "Installing Google Cloud tools"
+sudo pip install google-cloud
+sudo pip install google-cloud-bigquery
+

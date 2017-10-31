@@ -35,9 +35,6 @@ class MnistMlpBenchmark(BenchmarkModel):
         if keras_backend is None:
           raise ValueError('keras_backend parameter must be specified.')
 
-        if keras_backend is not "tensorflow" and gpu_count > 0:
-          raise ValueError('gpu mode is currently only supported for tensorflow backends.')
-
         num_classes = 10
 
         # the data, shuffled and split between train and test sets
