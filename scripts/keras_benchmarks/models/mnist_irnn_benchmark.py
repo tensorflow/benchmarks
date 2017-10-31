@@ -96,10 +96,6 @@ class MnistIrnnBenchmark(BenchmarkModel):
 
     self._total_time = time.time() - start_time - time_callback.times[0]
 
-    scores = model.evaluate(x_test, y_test, verbose=0)
-    print('IRNN test score:', scores[0])
-    print('IRNN test accuracy:', scores[1])
-
   def get_totaltime(self):
     return self._total_time
 

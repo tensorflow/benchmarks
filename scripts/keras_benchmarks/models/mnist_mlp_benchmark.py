@@ -83,12 +83,6 @@ class MnistMlpBenchmark(BenchmarkModel):
 
         self._total_time = time.time() - start_time - time_callback.times[0]
 
-        # TODO(anjalisridhar): Do we want to evaluate this model?
-        score = model.evaluate(x_test, y_test, verbose=0)
-
-        print('Test loss:', score[0])
-        print('Test accuracy:', score[1])
-
     def get_totaltime(self):
         return self._total_time
 
