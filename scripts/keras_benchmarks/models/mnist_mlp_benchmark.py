@@ -65,7 +65,7 @@ class MnistMlpBenchmark(BenchmarkModel):
 
         model.summary()
 
-        if keras_backend is "tensorflow" and gpu_count > 1:
+        if str(keras_backend) is "tensorflow" and gpu_count > 1:
           model = multi_gpu_model(model, gpus=gpu_count)
 
         model.compile(loss='categorical_crossentropy',

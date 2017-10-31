@@ -4,9 +4,6 @@ from models import mnist_irnn_benchmark
 from models import lstm_text_generation_benchmark
 import upload_benchmarks_bq as bq
 import argparse
-import tensorflow as tf
-#import theano
-#import cntk
 import keras
 
 
@@ -32,10 +29,16 @@ parser.add_argument('--gpu_platform',
                     help='')
 
 args = parser.parse_args()
-print(args.keras_backend)
+
+if str(args.keras_backend) == "tensorflow":
+  import tensorflow as tf
+if str(args.keras_backend) == "theano":
+  import theano
+if str(args.keras_backend) == "cntk":
+  import cntk
 
 
-def get_keras_backend_version(backend_type):
+def get_backend_version(backend_type):
   if str(backend_type) == "tensorflow":
     return tf.__version__
   if str(backend_type) == "theano":
@@ -45,50 +48,43 @@ def get_keras_backend_version(backend_type):
   return "undefined"
 
 
-#TODO(anjalisridhar): instantiate models in a loop to avoid calling bq functions repeatedly
+def upload_metrics(current_model):
+  bq.upload_metrics_to_bq(test_name=current_model.get_testname(),
+                          total_time=current_model.get_totaltime(),
+                          epochs=current_model.get_iters(),
+                          batch_size=current_model.get_batch_size(),
+                          backend_type=args.keras_backend,
+                          backend_version=get_backend_version(args.keras_backend),
+                          cpu_num_cores=args.cpu_num_cores,
+                          cpu_memory=args.cpu_memory,
+                          cpu_memory_info=args.cpu_memory_info,
+                          gpu_count=args.gpu_count,
+                          gpu_platform=args.gpu_platform,
+                          platform_type=args.platform_type,
+                          platform_machine_type=args.platform_machine_type,
+                          keras_version=keras.__version__,
+                          sample_type=current_model.get_sampletype())
 
+
+#TODO(anjalisridhar): instantiate models in a loop to avoid calling bq functions repeatedly
+#TODO(anjalisridhar): use a dict to pass cpu info etc to the upload function
+
+# MNIST MLP
 model = mnist_mlp_benchmark.MnistMlpBenchmark()
 model.benchmarkMnistMlp(args.keras_backend, args.gpu_count)
+upload_metrics(model)
 
-bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_totaltime(),
-                     epochs=model.get_iters(), batch_size=model.get_batch_size(),
-                     backend_type=args.keras_backend, backend_version=get_keras_backend_version(args.keras_backend),
-                     cpu_num_cores=args.cpu_num_cores, cpu_memory=args.cpu_memory, cpu_memory_info=args.cpu_memory_info,
-                     gpu_count=args.gpu_count, gpu_platform=args.gpu_platform,
-                     platform_type=args.platform_type, platform_machine_type=args.platform_machine_type,
-                     keras_version=keras.__version__, sample_type=model.get_sampletype())
-
+# CIFAR10 CNN
 model = cifar10_cnn_benchmark.Cifar10CnnBenchmark()
 model.benchmarkCifar10Cnn(args.keras_backend, args.gpu_count)
+upload_metrics(model)
 
-bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_totaltime(),
-                        epochs=model.get_iters(), batch_size=model.get_batch_size(),
-                        backend_type=args.keras_backend, backend_version=get_keras_backend_version(args.keras_backend),
-                        cpu_num_cores=args.cpu_num_cores, cpu_memory=args.cpu_memory, cpu_memory_info=args.cpu_memory_info,
-                        gpu_count=args.gpu_count, gpu_platform=args.gpu_platform,
-                        platform_type=args.platform_type, platform_machine_type=args.platform_machine_type,
-                        keras_version=keras.__version__, sample_type=model.get_sampletype())
-
-
+# MNIST RNN
 model = mnist_irnn_benchmark.MnistIrnnBenchmark()
 model.benchmarkMnistIrnn(args.keras_backend, args.gpu_count)
+upload_metrics(model)
 
-bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_totaltime(),
-                        epochs=model.get_iters(), batch_size=model.get_batch_size(),
-                        backend_type=args.keras_backend, backend_version=get_keras_backend_version(args.keras_backend),
-                        cpu_num_cores=args.cpu_num_cores, cpu_memory=args.cpu_memory, cpu_memory_info=args.cpu_memory_info,
-                        gpu_count=args.gpu_count, gpu_platform=args.gpu_platform,
-                        platform_type=args.platform_type, platform_machine_type=args.platform_machine_type,
-                        keras_version=keras.__version__, sample_type=model.get_sampletype())
-
-
+# LSTM
 model = lstm_text_generation_benchmark.LstmTextGenBenchmark()
 model.benchmarkLstmTextGen(args.keras_backend, args.gpu_count)
-
-bq.upload_metrics_to_bq(test_name=model.get_testname(), total_time=model.get_totaltime(),
-                        epochs=model.get_iters(), batch_size=model.get_batch_size(),
-                        backend_type=args.keras_backend, backend_version=get_keras_backend_version(args.keras_backend),
-                        cpu_num_cores=args.cpu_num_cores, cpu_memory=args.cpu_memory, cpu_memory_info=args.cpu_memory_info,
-                        gpu_count=args.gpu_count, gpu_platform=args.gpu_platform,
-                        platform_type=args.platform_type, platform_machine_type=args.platform_machine_type,
-                        keras_version=keras.__version__, sample_type=model.get_sampletype())
+upload_metrics(model)

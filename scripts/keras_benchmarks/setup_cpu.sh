@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# setup script for running benchmarks on CPU
+
 sudo apt-get update
 
 # Install pip package manager
@@ -38,17 +40,9 @@ conda install mkl-service
 # Install g++
 sudo apt-get install g++ -y
 
-# Installing cuda drivers for GPU.
-#curl -O http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/cuda-repo-ubuntu1604_8.0.61-1_amd64.deb
-#sudo dpkg -i ./cuda-repo-ubuntu1604_8.0.61-1_amd64.deb
-#sudo apt-get update
-#sudo apt-get install cuda-8-0 -y
-#nvidia-smi
-
 # Install tensorflow
 echo "Installing Tensorflow"
 pip install tensorflow
-#pip install tensorflow-gpu
 
 # Install CNTK
 echo "Installing CNTK"
