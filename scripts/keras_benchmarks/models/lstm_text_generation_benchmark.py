@@ -76,8 +76,7 @@ class LstmTextGenBenchmark(BenchmarkModel):
     start_time = time.time()
     time_callback = timehistory.TimeHistory()
 
-    for iteration in range(1, 60):
-      model.fit(x, y,
+    model.fit(x, y,
                 batch_size=self._batch_size,
                 epochs=self._epochs,
                 callbacks=[time_callback])
