@@ -1,3 +1,5 @@
+""" Main entry point for running benchmarks with different Keras backends."""
+
 from models import mnist_mlp_benchmark
 from models import cifar10_cnn_benchmark
 from models import mnist_irnn_benchmark

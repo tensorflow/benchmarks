@@ -15,6 +15,7 @@ from keras.datasets import cifar10
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation, Flatten
 from keras.layers import Conv2D, MaxPooling2D
+from keras.utils import multi_gpu_model
 
 import os
 from model import BenchmarkModel
@@ -37,16 +38,11 @@ class Cifar10CnnBenchmark(BenchmarkModel):
           raise ValueError('keras_backend parameter must be specified.')
 
         num_classes = 10
-        data_augmentation = True
-        num_predictions = 20
         save_dir = os.path.join(os.getcwd(), 'saved_models')
         model_name = 'keras_cifar10_trained_model.h5'
 
         # The data, shuffled and split between train and test sets:
         (x_train, y_train), (x_test, y_test) = cifar10.load_data()
-        print('x_train shape:', x_train.shape)
-        print(x_train.shape[0], 'train samples')
-        print(x_test.shape[0], 'test samples')
 
         # Convert class vectors to binary class matrices.
         y_train = keras.utils.to_categorical(y_train, num_classes)
@@ -78,6 +74,9 @@ class Cifar10CnnBenchmark(BenchmarkModel):
         # initiate RMSprop optimizer
         opt = keras.optimizers.rmsprop(lr=0.0001, decay=1e-6)
 
+        if str(keras_backend) is "tensorflow" and gpu_count > 1:
+          model = multi_gpu_model(model, gpus=gpu_count)
+
         # Let's train the model using RMSprop
         model.compile(loss='categorical_crossentropy',
                       optimizer=opt,
@@ -99,14 +98,6 @@ class Cifar10CnnBenchmark(BenchmarkModel):
                     callbacks=[time_callback])
 
         self._total_time = time.time() - start_time - time_callback.times[0]
-
-        # Save model and weights
-        if not os.path.isdir(save_dir):
-          os.makedirs(save_dir)
-        model_path = os.path.join(save_dir, model_name)
-        model.save(model_path)
-        print('Saved trained model at %s ' % model_path)
-
 
     def get_totaltime(self):
       return self._total_time

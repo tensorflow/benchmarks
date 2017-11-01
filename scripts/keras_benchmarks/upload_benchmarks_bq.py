@@ -1,6 +1,7 @@
+""" Uploads benchmark statistics along with platform used to run the benchmark
+to BigQuery."""
 from google.cloud import bigquery
 import uuid
-import urllib3
 
 
 def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,

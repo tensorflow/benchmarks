@@ -23,6 +23,7 @@ from keras.layers import Dense, Activation
 from keras.layers import SimpleRNN
 from keras import initializers
 from keras.optimizers import RMSprop
+from keras.utils import multi_gpu_model
 
 from model import BenchmarkModel
 from models import timehistory
@@ -30,8 +31,6 @@ from models import timehistory
 
 class MnistIrnnBenchmark(BenchmarkModel):
 
-  # TODO(anjalisridhar): you can pass test name and sample type when creating
-  # the object
   def __init__(self):
     self._test_name = "mnist_irnn"
     self._sample_type="images"
@@ -47,7 +46,6 @@ class MnistIrnnBenchmark(BenchmarkModel):
     hidden_units = 100
 
     learning_rate = 1e-6
-    clip_norm = 1.0
 
     # the data, shuffled and split between train and test sets
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -58,15 +56,11 @@ class MnistIrnnBenchmark(BenchmarkModel):
     x_test = x_test.astype('float32')
     x_train /= 255
     x_test /= 255
-    print('x_train shape:', x_train.shape)
-    print(x_train.shape[0], 'train samples')
-    print(x_test.shape[0], 'test samples')
 
     # convert class vectors to binary class matrices
     y_train = keras.utils.to_categorical(y_train, num_classes)
     y_test = keras.utils.to_categorical(y_test, num_classes)
 
-    print('Evaluate IRNN...')
     model = Sequential()
     model.add(SimpleRNN(hidden_units,
                         kernel_initializer=initializers.RandomNormal(stddev=0.001),
@@ -76,10 +70,13 @@ class MnistIrnnBenchmark(BenchmarkModel):
     model.add(Dense(num_classes))
     model.add(Activation('softmax'))
     rmsprop = RMSprop(lr=learning_rate)
+
+    if str(keras_backend) is "tensorflow" and gpu_count > 1:
+      model = multi_gpu_model(model, gpus=gpu_count)
+
     model.compile(loss='categorical_crossentropy',
                   optimizer=rmsprop,
                   metrics=['accuracy'])
-
 
     start_time = time.time()
     time_callback = timehistory.TimeHistory()

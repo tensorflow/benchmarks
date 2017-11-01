@@ -1,3 +1,4 @@
+""" Utility class for accessing the first epoch time interval. """
 import keras
 from keras.callbacks import Callback
 import time

@@ -16,6 +16,7 @@ from keras.layers import Dense, Activation
 from keras.layers import LSTM
 from keras.optimizers import RMSprop
 from keras.utils.data_utils import get_file
+from keras.utils import multi_gpu_model
 import numpy as np
 
 import time
@@ -25,8 +26,6 @@ from models import timehistory
 
 class LstmTextGenBenchmark(BenchmarkModel):
 
-  # TODO(anjalisridhar): you can pass test name and sample type when creating
-  # the object
   def __init__(self):
     self._test_name = "lstm_text_generation"
     self._sample_type="text"
@@ -38,14 +37,12 @@ class LstmTextGenBenchmark(BenchmarkModel):
     if keras_backend is None:
       raise ValueError('keras_backend parameter must be specified.')
 
-    path = get_file('nietzsche.txt', origin='https://s3.amazonaws.com/text-datasets/nietzsche.txt')
+    path = get_file('nietzsche.txt',
+                  origin='https://s3.amazonaws.com/text-datasets/nietzsche.txt')
     text = open(path).read().lower()
-    print('corpus length:', len(text))
 
     chars = sorted(list(set(text)))
-    print('total chars:', len(chars))
     char_indices = dict((c, i) for i, c in enumerate(chars))
-    indices_char = dict((i, c) for i, c in enumerate(chars))
 
     # cut the text in semi-redundant sequences of maxlen characters
     maxlen = 40
@@ -55,9 +52,6 @@ class LstmTextGenBenchmark(BenchmarkModel):
     for i in range(0, len(text) - maxlen, step):
       sentences.append(text[i: i + maxlen])
       next_chars.append(text[i + maxlen])
-    print('nb sequences:', len(sentences))
-
-    print('Vectorization...')
     x = np.zeros((len(sentences), maxlen, len(chars)), dtype=np.bool)
     y = np.zeros((len(sentences), len(chars)), dtype=np.bool)
     for i, sentence in enumerate(sentences):
@@ -65,15 +59,17 @@ class LstmTextGenBenchmark(BenchmarkModel):
         x[i, t, char_indices[char]] = 1
       y[i, char_indices[next_chars[i]]] = 1
 
-
     # build the model: a single LSTM
-    print('Build model...')
     model = Sequential()
     model.add(LSTM(128, input_shape=(maxlen, len(chars))))
     model.add(Dense(len(chars)))
     model.add(Activation('softmax'))
 
     optimizer = RMSprop(lr=0.01)
+
+    if str(keras_backend) is "tensorflow" and gpu_count > 1:
+        model = multi_gpu_model(model, gpus=gpu_count)
+
     model.compile(loss='categorical_crossentropy', optimizer=optimizer)
 
     # train the model, output generated text after each iteration
@@ -81,13 +77,10 @@ class LstmTextGenBenchmark(BenchmarkModel):
     time_callback = timehistory.TimeHistory()
 
     for iteration in range(1, 60):
-      print()
-      print('-' * 50)
-      print('Iteration', iteration)
-
       model.fit(x, y,
                 batch_size=self._batch_size,
-                epochs=self._epochs)
+                epochs=self._epochs,
+                callbacks=[time_callback])
 
     self._total_time = time.time() - start_time - time_callback.times[0]
 

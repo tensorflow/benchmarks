@@ -46,8 +46,6 @@ class MnistMlpBenchmark(BenchmarkModel):
         x_test = x_test.astype('float32')
         x_train /= 255
         x_test /= 255
-        print(x_train.shape[0], 'train samples')
-        print(x_test.shape[0], 'test samples')
 
         # convert class vectors to binary class matrices
         y_train = keras.utils.to_categorical(y_train, num_classes)
@@ -63,7 +61,7 @@ class MnistMlpBenchmark(BenchmarkModel):
         model.summary()
 
         if str(keras_backend) is "tensorflow" and gpu_count > 1:
-          model = multi_gpu_model(model, gpus=gpu_count)
+            model = multi_gpu_model(model, gpus=gpu_count)
 
         model.compile(loss='categorical_crossentropy',
                       optimizer=RMSprop(),
@@ -71,12 +69,9 @@ class MnistMlpBenchmark(BenchmarkModel):
 
         start_time = time.time()
         time_callback = timehistory.TimeHistory()
-        history = model.fit(x_train, y_train,
-                            batch_size=self._batch_size,
-                            epochs=self._epochs,
-                            verbose=1,
-                            validation_data=(x_test, y_test),
-                            callbacks=[time_callback])
+        model.fit(x_train, y_train, batch_size=self._batch_size,
+                  epochs=self._epochs, verbose=1,
+                  validation_data=(x_test, y_test), callbacks=[time_callback])
 
         self._total_time = time.time() - start_time - time_callback.times[0]
 
