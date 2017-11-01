@@ -67,6 +67,32 @@ class MnistMlpBenchmark(BenchmarkModel):
                       optimizer=RMSprop(),
                       metrics=['accuracy'])
 
+        # create a distributed trainer for cntk
+        if str(keras_backend) is "cntk" and gpu_count > 1:
+            #create a CNTK distributed trainer
+            model.model._make_train_function()
+            trainer = model.model.train_function.trainer
+            assert (trainer is not None), "Cannot find a trainer in Keras Model!"
+            learner_no = len(trainer.parameter_learners)
+            assert (learner_no > 0), "No learner in the trainer."
+            if(learner_no > 1):
+              warnings.warn("Unexpected multiple learners in a trainer.")
+            learner = trainer.parameter_learners[0]
+            dist_learner = cntk.train.distributed.data_parallel_distributed_learner(learner,num_quantization_bits=32,distributed_after=0)
+            model.model.train_function.trainer = cntk.trainer.Trainer(
+                trainer.model, [trainer.loss_function, trainer.evaluation_function], [dist_learner])
+
+            rank = cntk.Communicator.rank()
+            workers = cntk.Communicator.num_workers()
+            if (workers == 1):
+              warnings.warn("Only one worker is found.")
+            total_items = x_train.shape[0]
+            start = rank*total_items//workers
+            end = min((rank+1)*total_items//workers, total_items)
+
+            x_train = x_train[start : end]
+            y_train = y_train[start : end]
+
         start_time = time.time()
         time_callback = timehistory.TimeHistory()
         model.fit(x_train, y_train, batch_size=self._batch_size,
