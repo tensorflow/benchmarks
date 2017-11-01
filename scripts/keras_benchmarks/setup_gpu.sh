@@ -64,3 +64,5 @@ echo "Installing Google Cloud tools"
 sudo pip install google-cloud
 sudo pip install google-cloud-bigquery
 
+
+sudo pip install h5py
