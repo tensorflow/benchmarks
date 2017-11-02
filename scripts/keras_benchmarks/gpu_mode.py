@@ -1,8 +1,9 @@
 """ CNTK gpu config required for running keras models in multi gpu mode."""
 import cntk
 
+
 def cntk_gpu_mode_config(model, num_samples):
-    #create a CNTK distributed trainer
+    # create a CNTK distributed trainer
     model.model._make_train_function()
     trainer = model.model.train_function.trainer
     assert (trainer is not None), "Cannot find a trainer in Keras Model!"
@@ -22,5 +23,5 @@ def cntk_gpu_mode_config(model, num_samples):
     total_items = num_samples
     start = rank*total_items//workers
     end = min((rank+1)*total_items//workers, total_items)
-    return start,end
+    return start, end
 
