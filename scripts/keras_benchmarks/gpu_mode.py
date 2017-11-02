@@ -1,7 +1,6 @@
 """ CNTK gpu config required for running keras models in multi gpu mode."""
 import cntk
 
-
 def cntk_gpu_mode_config(model, num_samples):
     # create a CNTK distributed trainer
     model.model._make_train_function()

@@ -17,29 +17,27 @@ from keras.layers import Dense, Dropout, Activation, Flatten
 from keras.layers import Conv2D, MaxPooling2D
 from keras.utils import multi_gpu_model
 
-import os
 from model import BenchmarkModel
 from models import timehistory
 from gpu_mode import cntk_gpu_mode_config
+
 
 class Cifar10CnnBenchmark(BenchmarkModel):
 
     # TODO(anjalisridhar): you can pass test name and sample type when creating
     # the object
     def __init__(self):
-      self._test_name = "cifar10_cnn"
-      self._sample_type="images"
-      self._total_time = 0
-      self._batch_size = 32
-      self._epochs = 2
+        self._test_name = "cifar10_cnn"
+        self._sample_type="images"
+        self._total_time = 0
+        self._batch_size = 32
+        self._epochs = 2
 
-    def benchmarkCifar10Cnn(self, keras_backend=None, gpu_count=0):
+    def run_benchmark(self, keras_backend=None, gpu_count=0):
         if keras_backend is None:
-          raise ValueError('keras_backend parameter must be specified.')
+            raise ValueError('keras_backend parameter must be specified.')
 
         num_classes = 10
-        save_dir = os.path.join(os.getcwd(), 'saved_models')
-        model_name = 'keras_cifar10_trained_model.h5'
 
         # The data, shuffled and split between train and test sets:
         (x_train, y_train), (x_test, y_test) = cifar10.load_data()
@@ -75,7 +73,7 @@ class Cifar10CnnBenchmark(BenchmarkModel):
         opt = keras.optimizers.rmsprop(lr=0.0001, decay=1e-6)
 
         if str(keras_backend) is "tensorflow" and gpu_count > 1:
-          model = multi_gpu_model(model, gpus=gpu_count)
+            model = multi_gpu_model(model, gpus=gpu_count)
 
         # Let's train the model using RMSprop
         model.compile(loss='categorical_crossentropy',
@@ -89,34 +87,34 @@ class Cifar10CnnBenchmark(BenchmarkModel):
 
         # create a distributed trainer for cntk
         if str(keras_backend) is "cntk" and gpu_count > 1:
-          start,end = cntk_gpu_mode_config(model, x_train.shape[0])
-          x_train = x_train[start: end]
-          y_train = y_train[start: end]
-
+            start, end = cntk_gpu_mode_config(model, x_train.shape[0])
+            x_train = x_train[start: end]
+            y_train = y_train[start: end]
 
         start_time = time.time()
         time_callback = timehistory.TimeHistory()
 
-        model.fit(x_train, y_train,
-                    batch_size=self._batch_size,
-                    epochs=self._epochs,
-                    validation_data=(x_test, y_test),
-                    shuffle=True,
-                    callbacks=[time_callback])
+        model.fit(x_train,
+                  y_train,
+                  batch_size=self._batch_size,
+                  epochs=self._epochs,
+                  validation_data=(x_test, y_test),
+                  shuffle=True,
+                  callbacks=[time_callback])
 
         self._total_time = time.time() - start_time - time_callback.times[0]
 
     def get_totaltime(self):
-      return self._total_time
+        return self._total_time
 
     def get_iters(self):
-      return self._epochs
+        return self._epochs
 
     def get_testname(self):
-      return self._test_name
+        return self._test_name
 
     def get_sampletype(self):
-      return self._sample_type
+        return self._sample_type
 
     def get_batch_size(self):
-      return self._batch_size
+        return self._batch_size

@@ -26,15 +26,15 @@ class MnistMlpBenchmark(BenchmarkModel):
     # TODO(anjalisridhar): you can pass test name and sample type when creating
     # the object
     def __init__(self):
-      self._test_name = "mnist_mlp"
-      self._sample_type="images"
-      self._total_time = 0
-      self._batch_size = 128
-      self._epochs = 2
+        self._test_name = "mnist_mlp"
+        self._sample_type="images"
+        self._total_time = 0
+        self._batch_size = 128
+        self._epochs = 2
 
-    def benchmarkMnistMlp(self, keras_backend=None, gpu_count=0):
+    def run_benchmark(self, keras_backend=None, gpu_count=0):
         if keras_backend is None:
-          raise ValueError('keras_backend parameter must be specified.')
+            raise ValueError('keras_backend parameter must be specified.')
 
         num_classes = 10
 
@@ -70,7 +70,7 @@ class MnistMlpBenchmark(BenchmarkModel):
 
         # create a distributed trainer for cntk
         if str(keras_backend) is "cntk" and gpu_count > 1:
-            start,end = cntk_gpu_mode_config(model, x_train.shape[0])
+            start, end = cntk_gpu_mode_config(model, x_train.shape[0])
             x_train = x_train[start: end]
             y_train = y_train[start: end]
 
