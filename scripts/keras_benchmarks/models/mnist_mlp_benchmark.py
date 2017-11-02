@@ -19,7 +19,7 @@ from keras.utils import multi_gpu_model
 
 from model import BenchmarkModel
 from models import timehistory
-from ..gpu_mode import cntk_gpu_mode_config
+from gpu_mode import cntk_gpu_mode_config
 
 class MnistMlpBenchmark(BenchmarkModel):
 

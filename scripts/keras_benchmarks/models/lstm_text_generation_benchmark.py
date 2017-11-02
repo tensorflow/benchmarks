@@ -22,7 +22,7 @@ import numpy as np
 import time
 from model import BenchmarkModel
 from models import timehistory
-
+from gpu_mode import cntk_gpu_mode_config
 
 class LstmTextGenBenchmark(BenchmarkModel):
 
@@ -71,6 +71,12 @@ class LstmTextGenBenchmark(BenchmarkModel):
         model = multi_gpu_model(model, gpus=gpu_count)
 
     model.compile(loss='categorical_crossentropy', optimizer=optimizer)
+
+    # create a distributed trainer for cntk
+    if str(keras_backend) is "cntk" and gpu_count > 1:
+      start,end = cntk_gpu_mode_config(model, x.shape[0])
+      x = x[start: end]
+      y = y[start: end]
 
     # train the model, output generated text after each iteration
     start_time = time.time()

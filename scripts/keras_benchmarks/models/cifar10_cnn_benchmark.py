@@ -20,7 +20,7 @@ from keras.utils import multi_gpu_model
 import os
 from model import BenchmarkModel
 from models import timehistory
-
+from gpu_mode import cntk_gpu_mode_config
 
 class Cifar10CnnBenchmark(BenchmarkModel):
 
@@ -86,6 +86,13 @@ class Cifar10CnnBenchmark(BenchmarkModel):
         x_test = x_test.astype('float32')
         x_train /= 255
         x_test /= 255
+
+        # create a distributed trainer for cntk
+        if str(keras_backend) is "cntk" and gpu_count > 1:
+          start,end = cntk_gpu_mode_config(model, x_train.shape[0])
+          x_train = x_train[start: end]
+          y_train = y_train[start: end]
+
 
         start_time = time.time()
         time_callback = timehistory.TimeHistory()

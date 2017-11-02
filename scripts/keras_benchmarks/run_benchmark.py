@@ -75,7 +75,7 @@ def upload_metrics(current_model):
 model = mnist_mlp_benchmark.MnistMlpBenchmark()
 model.benchmarkMnistMlp(args.keras_backend, args.gpu_count)
 upload_metrics(model)
-ret
+
 # CIFAR10 CNN
 model = cifar10_cnn_benchmark.Cifar10CnnBenchmark()
 model.benchmarkCifar10Cnn(args.keras_backend, args.gpu_count)

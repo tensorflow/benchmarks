@@ -27,7 +27,7 @@ from keras.utils import multi_gpu_model
 
 from model import BenchmarkModel
 from models import timehistory
-
+from gpu_mode import cntk_gpu_mode_config
 
 class MnistIrnnBenchmark(BenchmarkModel):
 
@@ -77,6 +77,12 @@ class MnistIrnnBenchmark(BenchmarkModel):
     model.compile(loss='categorical_crossentropy',
                   optimizer=rmsprop,
                   metrics=['accuracy'])
+
+    # create a distributed trainer for cntk
+    if str(keras_backend) is "cntk" and gpu_count > 1:
+        start,end = cntk_gpu_mode_config(model, x_train.shape[0])
+        x_train = x_train[start: end]
+        y_train = y_train[start: end]
 
     start_time = time.time()
     time_callback = timehistory.TimeHistory()
