@@ -10,18 +10,19 @@ If you try this script on new data, make sure your corpus
 has at least ~100k characters. ~1M is better.
 '''
 from __future__ import print_function
+import keras
 from keras.models import Sequential
 from keras.layers import Dense, Activation
 from keras.layers import LSTM
 from keras.optimizers import RMSprop
-from keras.utils.data_utils import get_file
 from keras.utils import multi_gpu_model
-import numpy as np
 
 import time
 from model import BenchmarkModel
 from models import timehistory
-from gpu_mode import cntk_gpu_mode_config
+if keras.backend.backend() == 'cntk':
+  from gpu_mode import cntk_gpu_mode_config
+from data_generator import generate_text_input_data
 
 class LstmTextGenBenchmark(BenchmarkModel):
 
@@ -31,48 +32,30 @@ class LstmTextGenBenchmark(BenchmarkModel):
         self._total_time = 0
         self._batch_size = 128
         self._epochs = 2
+        self._num_samples = 1000
 
-    def run_benchmark(self, keras_backend=None, gpu_count=0):
-        if keras_backend is None:
-            raise ValueError('keras_backend parameter must be specified.')
-
-        path = get_file('nietzsche.txt',
-                  origin='https://s3.amazonaws.com/text-datasets/nietzsche.txt')
-        text = open(path).read().lower()
-
-        chars = sorted(list(set(text)))
-        char_indices = dict((c, i) for i, c in enumerate(chars))
-
-        # cut the text in semi-redundant sequences of maxlen characters
+    def run_benchmark(self, gpus=0):
         maxlen = 40
-        step = 3
-        sentences = []
-        next_chars = []
-        for i in range(0, len(text) - maxlen, step):
-          sentences.append(text[i: i + maxlen])
-          next_chars.append(text[i + maxlen])
-        x = np.zeros((len(sentences), maxlen, len(chars)), dtype=np.bool)
-        y = np.zeros((len(sentences), len(chars)), dtype=np.bool)
-        for i, sentence in enumerate(sentences):
-          for t, char in enumerate(sentence):
-            x[i, t, char_indices[char]] = 1
-          y[i, char_indices[next_chars[i]]] = 1
+        char_len = 60
+
+        input_shape = (self._num_samples, maxlen, 60)
+        x, y = generate_text_input_data(input_shape)
 
         # build the model: a single LSTM
         model = Sequential()
-        model.add(LSTM(128, input_shape=(maxlen, len(chars))))
-        model.add(Dense(len(chars)))
+        model.add(LSTM(128, input_shape=(maxlen, char_len)))
+        model.add(Dense(char_len))
         model.add(Activation('softmax'))
 
         optimizer = RMSprop(lr=0.01)
 
-        if str(keras_backend) is "tensorflow" and gpu_count > 1:
-            model = multi_gpu_model(model, gpus=gpu_count)
+        if keras.backend.backend() is "tensorflow" and gpus > 1:
+            model = multi_gpu_model(model, gpus=gpus)
 
         model.compile(loss='categorical_crossentropy', optimizer=optimizer)
 
         # create a distributed trainer for cntk
-        if str(keras_backend) is "cntk" and gpu_count > 1:
+        if keras.backend.backend() is "cntk" and gpus > 1:
             start, end = cntk_gpu_mode_config(model, x.shape[0])
             x = x[start: end]
             y = y[start: end]

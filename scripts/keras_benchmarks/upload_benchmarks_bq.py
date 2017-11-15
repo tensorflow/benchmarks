@@ -9,6 +9,7 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
     gpu_count, gpu_platform, platform_type, platform_machine_type,
     keras_version, sample_type=None):
 
+
     bigquery_client = bigquery.Client()
     dataset = bigquery_client.dataset('keras_benchmarks')
     table = dataset.table('benchmarks')
