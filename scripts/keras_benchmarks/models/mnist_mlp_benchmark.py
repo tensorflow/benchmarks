@@ -18,17 +18,16 @@ from keras.utils import multi_gpu_model
 
 from model import BenchmarkModel
 from models import timehistory
+from data_generator import generate_img_input_data
 if keras.backend.backend() == 'cntk':
     from gpu_mode import cntk_gpu_mode_config
-from data_generator import generate_img_input_data
+
 
 class MnistMlpBenchmark(BenchmarkModel):
 
-    # TODO(anjalisridhar): you can pass test name and sample type when creating
-    # the object
     def __init__(self):
         self._test_name = "mnist_mlp"
-        self._sample_type="images"
+        self._sample_type = "images"
         self._total_time = 0
         self._batch_size = 128
         self._epochs = 2
@@ -36,6 +35,7 @@ class MnistMlpBenchmark(BenchmarkModel):
 
     def run_benchmark(self, gpus=0):
         num_classes = 10
+
         # Generate random input data
         input_shape = (self._num_samples, 28, 28)
         x_train, y_train = generate_img_input_data(input_shape)
@@ -53,8 +53,6 @@ class MnistMlpBenchmark(BenchmarkModel):
         model.add(Dense(512, activation='relu'))
         model.add(Dropout(0.2))
         model.add(Dense(num_classes, activation='softmax'))
-
-        model.summary()
 
         if keras.backend.backend() is "tensorflow" and gpus > 1:
             model = multi_gpu_model(model, gpus=gpus)

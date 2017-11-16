@@ -1,4 +1,6 @@
 """ Base class to be inherited by every benchmark model. """
+
+
 class BenchmarkModel(object):
 
   def get_totaltime(self):

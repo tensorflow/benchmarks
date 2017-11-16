@@ -3,7 +3,7 @@
 from models import mnist_mlp_benchmark
 from models import cifar10_cnn_benchmark
 from models import mnist_irnn_benchmark
-from models import lstm_text_generation_benchmark
+from models import lstm_benchmark
 import upload_benchmarks_bq as bq
 import argparse
 import keras
@@ -37,7 +37,7 @@ def get_backend_version():
         return cntk.__version__
     return "undefined"
 
-
+#TODO: We could just pass model and config to the uploads function here
 def _upload_metrics(current_model):
     bq.upload_metrics_to_bq(test_name=current_model.get_testname(),
                             total_time=current_model.get_totaltime(),
@@ -66,12 +66,7 @@ model = cifar10_cnn_benchmark.Cifar10CnnBenchmark()
 model.run_benchmark(gpus=config['gpus'])
 _upload_metrics(model)
 
-# MNIST RNN
-model = mnist_irnn_benchmark.MnistIrnnBenchmark()
-model.run_benchmark(gpus=config['gpus'])
-_upload_metrics(model)
-
 # LSTM
-model = lstm_text_generation_benchmark.LstmTextGenBenchmark()
+model = lstm_benchmark.LstmBenchmark()
 model.run_benchmark(gpus=config['gpus'])
 _upload_metrics(model)

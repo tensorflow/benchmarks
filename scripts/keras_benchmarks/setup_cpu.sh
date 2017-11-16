@@ -26,7 +26,6 @@ source activate benchmarks-environment
 # set library path
 export LD_LIBRARY_PATH=$HOME/miniconda/envs/test-environmcondent/lib/:$LD_LIBRARY_PATH
 
-
 # Install Pillow package
 conda install pil
 

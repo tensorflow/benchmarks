@@ -20,15 +20,17 @@ from keras.utils import multi_gpu_model
 import time
 from model import BenchmarkModel
 from models import timehistory
-if keras.backend.backend() == 'cntk':
-  from gpu_mode import cntk_gpu_mode_config
 from data_generator import generate_text_input_data
 
-class LstmTextGenBenchmark(BenchmarkModel):
+if keras.backend.backend() == 'cntk':
+  from gpu_mode import cntk_gpu_mode_config
+
+
+class LstmBenchmark(BenchmarkModel):
 
     def __init__(self):
-        self._test_name = "lstm_text_generation"
-        self._sample_type="text"
+        self._test_name = "lstm"
+        self._sample_type = "text"
         self._total_time = 0
         self._batch_size = 128
         self._epochs = 2
@@ -60,7 +62,6 @@ class LstmTextGenBenchmark(BenchmarkModel):
             x = x[start: end]
             y = y[start: end]
 
-        # train the model, output generated text after each iteration
         start_time = time.time()
         time_callback = timehistory.TimeHistory()
 

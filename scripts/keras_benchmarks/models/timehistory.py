@@ -2,6 +2,7 @@
 import keras
 import time
 
+
 class TimeHistory(keras.callbacks.Callback):
   def on_train_begin(self, logs={}):
     self.times = []

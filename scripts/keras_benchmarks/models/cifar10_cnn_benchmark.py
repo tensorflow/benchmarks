@@ -10,6 +10,7 @@ It gets down to 0.65 test logloss in 25 epochs, and down to 0.55 after 50 epochs
 
 from __future__ import print_function
 import time
+import numpy as np
 import keras
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation, Flatten
@@ -18,19 +19,16 @@ from keras.utils import multi_gpu_model
 
 from model import BenchmarkModel
 from models import timehistory
+from data_generator import generate_img_input_data
 if keras.backend.backend() == 'cntk':
     from gpu_mode import cntk_gpu_mode_config
 
-from data_generator import generate_img_input_data
-import numpy as np
 
 class Cifar10CnnBenchmark(BenchmarkModel):
 
-    # TODO(anjalisridhar): you can pass test name and sample type when creating
-    # the object
     def __init__(self):
         self._test_name = "cifar10_cnn"
-        self._sample_type="images"
+        self._sample_type = "images"
         self._total_time = 0
         self._batch_size = 32
         self._epochs = 2
@@ -48,7 +46,6 @@ class Cifar10CnnBenchmark(BenchmarkModel):
 
         if keras.backend.image_data_format() == 'channels_last':
             x_train = x_train.transpose(0, 2, 3, 1)
-
 
         model = Sequential()
         model.add(Conv2D(32, (3, 3), padding='same',

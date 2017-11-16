@@ -6,7 +6,6 @@
 wget https://bootstrap.pypa.io/get-pip.py
 sudo python get-pip.py
 
-
 # Install Nvidia drivers CUDA 8
 curl -O http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/cuda-repo-ubuntu1604_8.0.61-1_amd64.deb
 sudo dpkg -i ./cuda-repo-ubuntu1604_8.0.61-1_amd64.deb
@@ -64,5 +63,5 @@ echo "Installing Google Cloud tools"
 sudo pip install google-cloud
 sudo pip install google-cloud-bigquery
 
-
+# Install h5py
 sudo pip install h5py

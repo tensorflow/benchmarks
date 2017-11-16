@@ -8,8 +8,34 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
     backend_type, backend_version, cpu_num_cores, cpu_memory, cpu_memory_info,
     gpu_count, gpu_platform, platform_type, platform_machine_type,
     keras_version, sample_type=None):
+    """ Upload benchmark metrics of a model along with platform specs.
 
-
+    # Arguments
+        test_name: Unique test name for each benchmark.
+        total_time: Time taken to run the given number of epochs.
+        epochs: Total number of epochs for which the given benchmark was run.
+                       We don't count the first epoch since some amount of time is
+                       spent creating the graph.
+        batch_size: Batch size of samples used in a given epoch.
+        backend_type: Backend type used by the Keras models. This is either
+                            "tensorflow", "cntk" or "theano".
+        backend_version: This is the version "tensorflow", "cntk" or "theano"
+                                used by Keras.
+        cpu_num_cores: Number of CPU cores of the machine on which the Keras
+                              benchmark is run.
+        cpu_memory: RAM memory specs of the CPU.
+        cpu_memory_info: This is the memory unit of the CPU memory such as
+        gpu_count: Number of GPUs used to run the benchmarks.
+                                'GB'.
+        gpu_platform: The type of GPU used, for e.g "Nvidia Tesla K80"
+        platform_type: This is the local or cloud platform used to run the
+                              benchmarks.
+        platform_machine_type: This can be details about the machine type
+                                      for e.g
+        keras_version: Version of Keras used to run the benchmark model.
+        sample_type: This is a user specified string used to calculate metrics such
+                    as "images per epoch" etc.
+    """
     bigquery_client = bigquery.Client()
     dataset = bigquery_client.dataset('keras_benchmarks')
     table = dataset.table('benchmarks')
