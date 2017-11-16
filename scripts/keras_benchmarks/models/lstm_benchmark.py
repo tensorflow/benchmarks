@@ -1,13 +1,7 @@
 '''
-Original Model from keras/examples
+Original Model from keras/examples/lstm_text_generation.py
 
-Example script to generate text from Nietzsche's writings.
-At least 20 epochs are required before the generated text
-starts sounding coherent.
-It is recommended to run this script on GPU, as recurrent
-networks are quite computationally intensive.
-If you try this script on new data, make sure your corpus
-has at least ~100k characters. ~1M is better.
+Benchmark for a LSTM model.
 '''
 from __future__ import print_function
 import keras
@@ -37,17 +31,16 @@ class LstmBenchmark(BenchmarkModel):
         self._num_samples = 1000
 
     def run_benchmark(self, gpus=0):
-        maxlen = 40
-        char_len = 60
+        input_dim_1 = 40
+        input_dim_2 = 60
 
-        input_shape = (self._num_samples, maxlen, 60)
+        input_shape = (self._num_samples, input_dim_1, 60)
         x, y = generate_text_input_data(input_shape)
 
         # build the model: a single LSTM
         model = Sequential()
-        model.add(LSTM(128, input_shape=(maxlen, char_len)))
-        model.add(Dense(char_len))
-        model.add(Activation('softmax'))
+        model.add(LSTM(128, input_shape=(input_dim_1, input_dim_2)))
+        model.add(Dense(input_dim_2), activation='softmax')
 
         optimizer = RMSprop(lr=0.01)
 

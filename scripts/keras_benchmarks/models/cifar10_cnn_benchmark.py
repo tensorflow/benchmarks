@@ -1,11 +1,7 @@
 '''
-Original Model from keras/examples
+Original Model from keras/examples/cifar10_cnn.py
 
-Train a simple deep CNN on the CIFAR10 small images dataset.
-GPU run command with Theano backend (with TensorFlow, the GPU is automatically used):
-    THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatx=float32 python cifar10_cnn.py
-It gets down to 0.65 test logloss in 25 epochs, and down to 0.55 after 50 epochs.
-(it's still underfitting at that point, though).
+Benchmark CNN model
 '''
 
 from __future__ import print_function
@@ -67,7 +63,7 @@ class Cifar10CnnBenchmark(BenchmarkModel):
         model.add(Dense(512))
         model.add(Activation('relu'))
         model.add(Dropout(0.5))
-        model.add(Dense(num_classes))
+        model.add(Dense(num_classes), activation='softmax')
         model.add(Activation('softmax'))
 
         # initiate RMSprop optimizer
