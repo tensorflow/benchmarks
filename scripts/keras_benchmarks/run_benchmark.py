@@ -2,7 +2,6 @@
 
 from models import mnist_mlp_benchmark
 from models import cifar10_cnn_benchmark
-from models import mnist_irnn_benchmark
 from models import lstm_benchmark
 import upload_benchmarks_bq as bq
 import argparse
@@ -39,10 +38,10 @@ def get_backend_version():
 
 #TODO: We could just pass model and config to the uploads function here
 def _upload_metrics(current_model):
-    bq.upload_metrics_to_bq(test_name=current_model.get_testname(),
-                            total_time=current_model.get_totaltime(),
-                            epochs=current_model.get_iters(),
-                            batch_size=current_model.get_batch_size(),
+    bq.upload_metrics_to_bq(test_name=current_model.test_name,
+                            total_time=current_model.total_time,
+                            epochs=current_model.epochs,
+                            batch_size=current_model.batch_size,
                             backend_type=keras.backend.backend(),
                             backend_version=get_backend_version(),
                             cpu_num_cores=config['cpu_num_cores'],
@@ -53,7 +52,7 @@ def _upload_metrics(current_model):
                             platform_type=config['platform_type'],
                             platform_machine_type=config['platform_machine_type'],
                             keras_version=keras.__version__,
-                            sample_type=current_model.get_sampletype())
+                            sample_type=current_model.sample_type)
 
 
 # MNIST MLP

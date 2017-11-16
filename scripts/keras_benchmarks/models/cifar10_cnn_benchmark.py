@@ -13,28 +13,27 @@ from keras.layers import Dense, Dropout, Activation, Flatten
 from keras.layers import Conv2D, MaxPooling2D
 from keras.utils import multi_gpu_model
 
-from model import BenchmarkModel
 from models import timehistory
 from data_generator import generate_img_input_data
 if keras.backend.backend() == 'cntk':
     from gpu_mode import cntk_gpu_mode_config
 
 
-class Cifar10CnnBenchmark(BenchmarkModel):
+class Cifar10CnnBenchmark():
 
     def __init__(self):
-        self._test_name = "cifar10_cnn"
-        self._sample_type = "images"
-        self._total_time = 0
-        self._batch_size = 32
-        self._epochs = 2
-        self._num_samples = 1000
+        self.test_name = "cifar10_cnn"
+        self.sample_type = "images"
+        self.total_time = 0
+        self.batch_size = 32
+        self.epochs = 2
+        self.num_samples = 1000
 
     def run_benchmark(self, gpus=0):
         num_classes = 10
 
         # Generate random input data
-        input_shape = (self._num_samples, 3, 32, 32)
+        input_shape = (self.num_samples, 3, 32, 32)
         x_train, y_train = generate_img_input_data(input_shape)
 
         y_train = np.reshape(y_train, (len(y_train), 1))
@@ -60,11 +59,9 @@ class Cifar10CnnBenchmark(BenchmarkModel):
         model.add(Dropout(0.25))
 
         model.add(Flatten())
-        model.add(Dense(512))
-        model.add(Activation('relu'))
+        model.add(Dense(512, activation='relu'))
         model.add(Dropout(0.5))
-        model.add(Dense(num_classes), activation='softmax')
-        model.add(Activation('softmax'))
+        model.add(Dense(num_classes, activation='softmax'))
 
         # initiate RMSprop optimizer
         opt = keras.optimizers.rmsprop(lr=0.0001, decay=1e-6)
@@ -91,24 +88,9 @@ class Cifar10CnnBenchmark(BenchmarkModel):
 
         model.fit(x_train,
                   y_train,
-                  batch_size=self._batch_size,
-                  epochs=self._epochs,
+                  batch_size=self.batch_size,
+                  epochs=self.epochs,
                   shuffle=True,
                   callbacks=[time_callback])
 
-        self._total_time = time.time() - start_time - time_callback.times[0]
-
-    def get_totaltime(self):
-        return self._total_time
-
-    def get_iters(self):
-        return self._epochs
-
-    def get_testname(self):
-        return self._test_name
-
-    def get_sampletype(self):
-        return self._sample_type
-
-    def get_batch_size(self):
-        return self._batch_size
+        self.total_time = time.time() - start_time - time_callback.times[0]
