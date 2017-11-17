@@ -15,9 +15,13 @@
 
 """Image pre-processing utilities.
 """
+import math
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+from tensorflow.contrib.data.python.ops import batching
+from tensorflow.contrib.data.python.ops import interleave_ops
+from tensorflow.contrib.image.python.ops import distort_image_ops
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import gfile
@@ -203,7 +207,7 @@ def eval_image(image,
   # TODO(reedwm): Currently we resize then crop. Investigate if it's faster to
   # crop then resize.
   with tf.name_scope('eval_image'):
-    if summary_verbosity >= 2:
+    if summary_verbosity >= 3:
       tf.summary.image(
           'original_image', tf.expand_dims(image, 0))
 
@@ -243,7 +247,7 @@ def eval_image(image,
                                [height, width, 3])
 
     distorted_image.set_shape([height, width, 3])
-    if summary_verbosity >= 2:
+    if summary_verbosity >= 3:
       tf.summary.image(
           'cropped_resized_image', tf.expand_dims(distorted_image, 0))
     image = distorted_image
@@ -259,6 +263,7 @@ def train_image(image_buffer,
                 distortions,
                 scope=None,
                 summary_verbosity=0,
+                distort_color_in_yiq=False,
                 fuse_decode_and_crop=False):
   """Distort one image for training a network.
 
@@ -281,6 +286,7 @@ def train_image(image_buffer,
     scope: Optional scope for op_scope.
     summary_verbosity: Verbosity level for summary ops. Pass 0 to disable both
       summaries and checkpoints.
+    distort_color_in_yiq: distort color of input images in YIQ space.
     fuse_decode_and_crop: fuse the decode/crop operation.
   Returns:
     3-D float Tensor of distorted image used for training.
@@ -304,7 +310,7 @@ def train_image(image_buffer,
         max_attempts=100,
         use_image_if_no_bounding_boxes=True)
     bbox_begin, bbox_size, distort_bbox = sample_distorted_bounding_box
-    if summary_verbosity >= 2:
+    if summary_verbosity >= 3:
       image = tf.image.decode_jpeg(image_buffer, channels=3,
                                    dct_method='INTEGER_FAST')
       image = tf.image.convert_image_dtype(image, dtype=tf.float32)
@@ -349,7 +355,7 @@ def train_image(image_buffer,
     # Restore the shape since the dynamic slice based upon the bbox_size loses
     # the third dimension.
     distorted_image.set_shape([height, width, 3])
-    if summary_verbosity >= 2:
+    if summary_verbosity >= 3:
       tf.summary.image(
           'cropped_resized_image',
           tf.expand_dims(distorted_image, 0))
@@ -359,19 +365,21 @@ def train_image(image_buffer,
 
     if distortions:
       # Randomly distort the colors.
-      distorted_image = distort_color(distorted_image, batch_position)
+      distorted_image = distort_color(distorted_image, batch_position,
+                                      distort_color_in_yiq=distort_color_in_yiq)
 
       # Note: This ensures the scaling matches the output of eval_image
       distorted_image *= 255
 
-    if summary_verbosity >= 2:
+    if summary_verbosity >= 3:
       tf.summary.image(
           'final_distorted_image',
           tf.expand_dims(distorted_image, 0))
     return distorted_image
 
 
-def distort_color(image, batch_position=0, scope=None):
+def distort_color(image, batch_position=0, distort_color_in_yiq=False,
+                  scope=None):
   """Distort the color of the image.
 
   Each color distortion is non-commutative and thus ordering of the color ops
@@ -384,26 +392,37 @@ def distort_color(image, batch_position=0, scope=None):
       range [0, 1].
     batch_position: the position of the image in a batch. NOTE: this argument
       can be an integer or a tensor
+    distort_color_in_yiq: distort color of input images in YIQ space.
     scope: Optional scope for op_scope.
   Returns:
     color-distorted image
   """
-  # with tf.op_scope([image], scope, 'distort_color'):
-  # with tf.name_scope(scope, 'distort_color', [image]):
   with tf.name_scope(scope or 'distort_color'):
 
     def distort_fn_0(image=image):
+      """Variant 0 of distort function."""
       image = tf.image.random_brightness(image, max_delta=32. / 255.)
-      image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
-      image = tf.image.random_hue(image, max_delta=0.2)
+      if distort_color_in_yiq:
+        image = distort_image_ops.random_hsv_in_yiq(
+            image, lower_saturation=0.5, upper_saturation=1.5,
+            max_delta_hue=0.2 * math.pi)
+      else:
+        image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
+        image = tf.image.random_hue(image, max_delta=0.2)
       image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
       return image
 
     def distort_fn_1(image=image):
+      """Variant 1 of distort function."""
       image = tf.image.random_brightness(image, max_delta=32. / 255.)
       image = tf.image.random_contrast(image, lower=0.5, upper=1.5)
-      image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
-      image = tf.image.random_hue(image, max_delta=0.2)
+      if distort_color_in_yiq:
+        image = distort_image_ops.random_hsv_in_yiq(
+            image, lower_saturation=0.5, upper_saturation=1.5,
+            max_delta_hue=0.2 * math.pi)
+      else:
+        image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
+        image = tf.image.random_hue(image, max_delta=0.2)
       return image
 
     image = utils.smart_cond(batch_position % 2 == 0, distort_fn_0,
@@ -427,6 +446,7 @@ class RecordInputImagePreprocessor(object):
                resize_method,
                shift_ratio,
                summary_verbosity,
+               distort_color_in_yiq,
                fuse_decode_and_crop):
     self.height = height
     self.width = width
@@ -437,6 +457,7 @@ class RecordInputImagePreprocessor(object):
     self.resize_method = resize_method
     self.shift_ratio = shift_ratio
     self.distortions = distortions
+    self.distort_color_in_yiq = distort_color_in_yiq
     self.fuse_decode_and_crop = fuse_decode_and_crop
     if self.batch_size % self.num_splits != 0:
       raise ValueError(
@@ -452,6 +473,7 @@ class RecordInputImagePreprocessor(object):
       image = train_image(image_buffer, self.height, self.width, bbox,
                           batch_position, self.resize_method, self.distortions,
                           None, summary_verbosity=self.summary_verbosity,
+                          distort_color_in_yiq=self.distort_color_in_yiq,
                           fuse_decode_and_crop=self.fuse_decode_and_crop)
     else:
       image = tf.image.decode_jpeg(
@@ -470,7 +492,8 @@ class RecordInputImagePreprocessor(object):
     image = self.preprocess(image_buffer, bbox, batch_position)
     return (label_index, image)
 
-  def minibatch(self, dataset, subset, use_datasets, shift_ratio=-1):
+  def minibatch(self, dataset, subset, use_datasets, cache_data,
+                shift_ratio=-1):
     if shift_ratio < 0:
       shift_ratio = self.shift_ratio
     with tf.name_scope('batch_processing'):
@@ -483,27 +506,27 @@ class RecordInputImagePreprocessor(object):
         if not file_names:
           raise ValueError('Found no files in --data_dir matching: {}'
                            .format(glob_pattern))
-        ds = tf.contrib.data.TFRecordDataset(file_names)
-        counter = tf.contrib.data.Dataset.range(self.batch_size)
+        ds = tf.data.TFRecordDataset.list_files(file_names)
+        ds = ds.apply(
+            interleave_ops.parallel_interleave(
+                tf.data.TFRecordDataset, cycle_length=10))
+        if cache_data:
+          ds = ds.take(1).cache().repeat()
+        counter = tf.data.Dataset.range(self.batch_size)
         counter = counter.repeat()
-        ds = tf.contrib.data.Dataset.zip((ds, counter))
-        ds = ds.map(
-            self.parse_and_preprocess,
-            num_parallel_calls=self.batch_size)
+        ds = tf.data.Dataset.zip((ds, counter))
         ds = ds.prefetch(buffer_size=self.batch_size)
         ds = ds.shuffle(buffer_size=10000)
         ds = ds.repeat()
+        ds = ds.apply(
+            batching.map_and_batch(
+                map_func=self.parse_and_preprocess,
+                batch_size=self.batch_size_per_split,
+                num_parallel_batches=self.num_splits))
+        ds = ds.prefetch(buffer_size=self.num_splits)
         ds_iterator = ds.make_one_shot_iterator()
-        # TODO(jsimsa): Use datasets' batch transformation instead of (see
-        # below) once the transformation implements parallel data copy.
-        #
-        # NOTE: The current implementation does not preserve the order of
-        # elements between the shuffle buffer and the batch.
-        for idx in xrange(self.batch_size):
-          label, image = ds_iterator.get_next()
-          split_index = idx % self.num_splits
-          labels[split_index].append(label)
-          images[split_index].append(image)
+        for d in xrange(self.num_splits):
+          labels[d], images[d] = ds_iterator.get_next()
 
       else:
         record_input = data_flow_ops.RecordInput(
@@ -525,8 +548,9 @@ class RecordInputImagePreprocessor(object):
           images[split_index].append(image)
 
       for split_index in xrange(self.num_splits):
-        images[split_index] = tf.parallel_stack(images[split_index])
-        labels[split_index] = tf.concat(labels[split_index], 0)
+        if not use_datasets:
+          images[split_index] = tf.parallel_stack(images[split_index])
+          labels[split_index] = tf.concat(labels[split_index], 0)
         images[split_index] = tf.cast(images[split_index], self.dtype)
         depth = 3
         images[split_index] = tf.reshape(
@@ -551,6 +575,7 @@ class Cifar10ImagePreprocessor(object):
                resize_method,
                shift_ratio,
                summary_verbosity=0,
+               distort_color_in_yiq=False,
                fuse_decode_and_crop=False):
     # Process images of this size. Depending on the model configuration, the
     # size of the input layer might differ from the original size of 32 x 32.
@@ -563,6 +588,7 @@ class Cifar10ImagePreprocessor(object):
     self.train = train
     self.distortions = distortions
     self.shift_ratio = shift_ratio
+    del distort_color_in_yiq
     del fuse_decode_and_crop
     del resize_method
     del shift_ratio  # unused, because a RecordInput is not used
@@ -593,7 +619,7 @@ class Cifar10ImagePreprocessor(object):
                                      [self.height, self.width, self.depth])
     # Randomly flip the image horizontally.
     distorted_image = tf.image.random_flip_left_right(distorted_image)
-    if self.summary_verbosity >= 2:
+    if self.summary_verbosity >= 3:
       tf.summary.image('distorted_image', tf.expand_dims(distorted_image, 0))
     return distorted_image
 
@@ -601,13 +627,13 @@ class Cifar10ImagePreprocessor(object):
     """Get the image for model evaluation."""
     distorted_image = tf.image.resize_image_with_crop_or_pad(
         image, self.width, self.height)
-    if self.summary_verbosity >= 2:
+    if self.summary_verbosity >= 3:
       tf.summary.image('cropped.image', tf.expand_dims(distorted_image, 0))
     return distorted_image
 
   def preprocess(self, raw_image):
     """Preprocessing raw image."""
-    if self.summary_verbosity >= 2:
+    if self.summary_verbosity >= 3:
       tf.summary.image('raw.image', tf.expand_dims(raw_image, 0))
     if self.train and self.distortions:
       image = self._distort_image(raw_image)
@@ -615,9 +641,10 @@ class Cifar10ImagePreprocessor(object):
       image = self._eval_image(raw_image)
     return image
 
-  def minibatch(self, dataset, subset, use_datasets, shift_ratio=-1):
-    # TODO(jsimsa): Implement data sets code path
-    del use_datasets, shift_ratio
+  def minibatch(self, dataset, subset, use_datasets, cache_data,
+                shift_ratio=-1):
+    # TODO(jsimsa): Implement datasets code path
+    del use_datasets, cache_data, shift_ratio
     with tf.name_scope('batch_processing'):
       all_images, all_labels = dataset.read_data_files(subset)
       all_images = tf.constant(all_images)
@@ -666,8 +693,10 @@ class SyntheticImagePreprocessor(object):
 
   def __init__(self, height, width, batch_size, num_splits,
                dtype, train, distortions, resize_method, shift_ratio,
-               summary_verbosity, fuse_decode_and_crop=False):
+               summary_verbosity, distort_color_in_yiq=False,
+               fuse_decode_and_crop=False):
     del train, distortions, resize_method, summary_verbosity
+    del distort_color_in_yiq
     del fuse_decode_and_crop
     self.batch_size = batch_size
     self.height = height
@@ -677,9 +706,10 @@ class SyntheticImagePreprocessor(object):
     self.num_splits = num_splits
     self.shift_ratio = shift_ratio
 
-  def minibatch(self, dataset, subset, use_datasets, shift_ratio=-1):
+  def minibatch(self, dataset, subset, use_datasets, cache_data,
+                shift_ratio=-1):
     """Get synthetic image batches."""
-    del subset, use_datasets, shift_ratio
+    del subset, use_datasets, cache_data, shift_ratio
     input_shape = [self.batch_size, self.height, self.width, self.depth]
     images = tf.truncated_normal(
         input_shape,
@@ -727,9 +757,10 @@ class TestImagePreprocessor(object):
                resize_method=None,
                shift_ratio=0,
                summary_verbosity=0,
+               distort_color_in_yiq=False,
                fuse_decode_and_crop=False):
     del height, width, train, distortions, resize_method
-    del summary_verbosity, fuse_decode_and_crop
+    del summary_verbosity, fuse_decode_and_crop, distort_color_in_yiq
     self.batch_size = batch_size
     self.num_splits = num_splits
     self.dtype = dtype
@@ -744,8 +775,9 @@ class TestImagePreprocessor(object):
     self.fake_images = fake_images
     self.fake_labels = fake_labels
 
-  def minibatch(self, dataset, subset, use_datasets, shift_ratio=-1):
-    del dataset, use_datasets, shift_ratio
+  def minibatch(self, dataset, subset, use_datasets, cache_data,
+                shift_ratio=-1):
+    del dataset, use_datasets, cache_data, shift_ratio
     if (not hasattr(self, 'fake_images') or
         not hasattr(self, 'fake_labels')):
       raise ValueError('Must call set_fake_data() before calling minibatch '

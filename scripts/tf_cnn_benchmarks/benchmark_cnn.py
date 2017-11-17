@@ -124,6 +124,13 @@ _DEFAULT_PARAMS = {
     'use_datasets':
         _ParamSpec('boolean', True,
                    'Enable use of datasets for input pipeline'),
+    'cache_data':
+        _ParamSpec('boolean', False,
+                   'Enable use of a special datasets pipeline that reads a '
+                   'single TFRecord into memory and repeats it infinitely many '
+                   'times. The purpose of this flag is to make it possible '
+                   'to write regression tests that are not bottlenecked by CNS '
+                   'throughput.'),
     'local_parameter_device':
         _ParamSpec('string', 'gpu',
                    'Device to use as parameter server: cpu or gpu. For '
@@ -190,11 +197,16 @@ _DEFAULT_PARAMS = {
                    'Useful for testing the benchmark script, as this allows '
                    'distributed mode to be run on a single machine. For '
                    'example, if there are two tasks, each can be allocated '
-                   '~40% of the memory on a single machine'),
+                   '~40 percent of the memory on a single machine'),
     'use_tf_layers':
         _ParamSpec('boolean', True,
                    'If True, use tf.layers for neural network layers. This '
                    'should not affect performance or accuracy in any way.'),
+    'tf_random_seed':
+        _ParamSpec('integer', 1234,
+                   'The TensorFlow random seed. Useful for debugging NaNs, as '
+                   'this can be set to various values to see if the NaNs '
+                   'depend on the seed.'),
 
     # Performance tuning parameters.
     'winograd_nonfused':
@@ -216,7 +228,9 @@ _DEFAULT_PARAMS = {
     'fuse_decode_and_crop':
         _ParamSpec('boolean', True,
                    'Fuse decode_and_crop for image preprocessing.'),
-
+    'distort_color_in_yiq':
+        _ParamSpec('boolean', False,
+                   'Distort color of input images in YIQ space.'),
     # Performance tuning specific to MKL.
     'mkl':
         _ParamSpec('boolean', False, 'If true, set MKL environment variables.'),
@@ -285,7 +299,7 @@ _DEFAULT_PARAMS = {
                    'replicated, distributed_replicated, independent, '
                    'distributed_all_reduce'),
     'all_reduce_spec':
-        _ParamSpec('string', 'nccl',
+        _ParamSpec('string', None,
                    'A specification of the all_reduce algorithm to be used for '
                    'reducing gradients.  For more details, see '
                    'parse_all_reduce_spec in variable_mgr.py.  An '
@@ -327,9 +341,12 @@ _DEFAULT_PARAMS = {
 
     # Summary and Save & load checkpoints.
     'summary_verbosity':
-        _ParamSpec('integer', 0,
-                   'Verbosity level for summary ops. Pass 0 to disable both '
-                   'summaries and checkpoints.'),
+        _ParamSpec(
+            'integer', 0, 'Verbosity level for summary ops. '
+            '  level 0: disable any summary. '
+            '  level 1: small and fast ops, e.g.: learning_rate, total_loss.'
+            '  level 2: medium-cost ops, e.g. histogram of all gradients.'
+            '  level 3: expensive ops: images and histogram of each gradient.'),
     'save_summaries_steps':
         _ParamSpec('integer', 0,
                    'How often to save summaries for trained models. Pass 0 to '
@@ -532,7 +549,7 @@ def benchmark_one_step(sess,
   if trace_filename is not None and step == -1:
     log_fn('Dumping trace to %s' % trace_filename)
     trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-    with open(trace_filename, 'w') as trace_file:
+    with gfile.Open(trace_filename, 'w') as trace_file:
       trace_file.write(trace.generate_chrome_trace_format(show_memory=True))
   return summary_str
 
@@ -653,6 +670,9 @@ class BenchmarkCNN(object):
         not self.params.mkl):
       raise ValueError('device=cpu requires that data_format=NHWC')
 
+    if self.params.use_tf_layers and self.params.use_fp16:
+      raise ValueError('if use_fp16=true, use_tf_layers must be false.')
+
     if ((self.params.num_epochs_per_decay or
          self.params.learning_rate_decay_factor) and
         not (self.params.learning_rate and self.params.num_epochs_per_decay and
@@ -669,7 +689,7 @@ class BenchmarkCNN(object):
 
     if (self.params.use_fp16 and self.params.fp16_vars and
         'replicated' in self.params.variable_update and
-        self.params.all_reduce_spec):
+        'nccl' in self.params.all_reduce_spec):
       raise ValueError('fp16 variables are not supported with NCCL')
 
     # Use the batch size from the command line if specified, otherwise use the
@@ -690,6 +710,10 @@ class BenchmarkCNN(object):
     self.ps_hosts = self.params.ps_hosts.split(',')
     self.worker_hosts = self.params.worker_hosts.split(',')
     self.controller_host = self.params.controller_host
+
+    if len(self.worker_hosts) > 1 and self.params.all_reduce_spec == 'nccl':
+      raise ValueError('--all_reduce_spec=nccl is invalid in a '
+                       'multi-worker job')
 
     # PS server is used for distributed jobs not using all-reduce.
     use_ps_server = self.job_name and (
@@ -1056,7 +1080,7 @@ class BenchmarkCNN(object):
         summary_writer=summary_writer)
 
     step_train_times = []
-    start_standard_services = (self.params.summary_verbosity > 0 or
+    start_standard_services = (self.params.summary_verbosity >= 1 or
                                self.dataset.queue_runner_required())
     if self.job_name == 'controller':
       master_target = self.worker_hosts[0]
@@ -1186,7 +1210,7 @@ class BenchmarkCNN(object):
       image_producer_stages = []
       images_splits, labels_splits = self.image_preprocessor.minibatch(
           self.dataset, subset=subset, use_datasets=self.params.use_datasets,
-          shift_ratio=shift_ratio)
+          cache_data=self.params.cache_data, shift_ratio=shift_ratio)
       images_shape = images_splits[0].get_shape()
       labels_shape = labels_splits[0].get_shape()
       for device_num in range(len(self.devices)):
@@ -1203,7 +1227,7 @@ class BenchmarkCNN(object):
 
   def _build_model(self):
     """Build the TensorFlow graph."""
-    tf.set_random_seed(1234)
+    tf.set_random_seed(self.params.tf_random_seed)
     np.random.seed(4321)
     phase_train = not (self.params.eval or self.params.forward_only)
 
@@ -1279,11 +1303,11 @@ class BenchmarkCNN(object):
     fetches = {'enqueue_ops': enqueue_ops}
     if all_top_1_ops:
       fetches['top_1_accuracy'] = tf.reduce_sum(all_top_1_ops) / self.batch_size
-      if self.task_index == 0 and self.params.summary_verbosity > 0:
+      if self.task_index == 0 and self.params.summary_verbosity >= 1:
         tf.summary.scalar('top_1_accuracy', fetches['top_1_accuracy'])
     if all_top_5_ops:
       fetches['top_5_accuracy'] = tf.reduce_sum(all_top_5_ops) / self.batch_size
-      if self.task_index == 0 and self.params.summary_verbosity > 0:
+      if self.task_index == 0 and self.params.summary_verbosity >= 1:
         tf.summary.scalar('top_5_accuracy', fetches['top_5_accuracy'])
 
     if not phase_train:
@@ -1353,15 +1377,29 @@ class BenchmarkCNN(object):
     train_op = tf.group(*(training_ops + update_ops))
 
     with tf.device(self.cpu_device):
-      if self.task_index == 0 and self.params.summary_verbosity > 0:
+      if self.task_index == 0 and self.params.summary_verbosity >= 1:
         tf.summary.scalar('learning_rate', learning_rate)
         tf.summary.scalar('total_loss', total_loss)
+
         if self.params.summary_verbosity >= 2:
+          # Histogram of log values of all non-zero gradients.
+          all_grads = []
+          for grad, var in avg_grads:
+            all_grads.append(tf.reshape(grad, [-1]))
+          grads = tf.abs(tf.concat(all_grads, 0))
+          # exclude grads with zero values.
+          indices_for_non_zero_grads = tf.where(tf.not_equal(grads, 0))
+          log_grads = tf.reshape(
+              tf.log(tf.gather(grads, indices_for_non_zero_grads)), [-1])
+          tf.summary.histogram('log_gradients', log_grads)
+
+        if self.params.summary_verbosity >= 3:
           for grad, var in avg_grads:
             if grad is not None:
               tf.summary.histogram(var.op.name + '/gradients', grad)
           for var in tf.trainable_variables():
             tf.summary.histogram(var.op.name, var)
+
     fetches['train_op'] = train_op
     fetches['total_loss'] = total_loss
     return fetches
@@ -1386,7 +1424,7 @@ class BenchmarkCNN(object):
     assert not self.params.forward_only
     assert not self.params.staged_vars
 
-    tf.set_random_seed(1234)
+    tf.set_random_seed(self.params.tf_random_seed)
     np.random.seed(4321)
     phase_train = True
 
@@ -1495,9 +1533,13 @@ class BenchmarkCNN(object):
         image_shape = [self.batch_size // self.num_gpus, image_size, image_size,
                        self.dataset.depth]
         labels_shape = [self.batch_size // self.num_gpus]
+        # Synthetic image should be within [0, 255].
         images = tf.truncated_normal(
-            image_shape, dtype=input_data_type,
-            stddev=1e-1, name='synthetic_images')
+            image_shape,
+            dtype=input_data_type,
+            mean=127,
+            stddev=60,
+            name='synthetic_images')
         images = tf.contrib.framework.local_variable(
             images, name='gpu_cached_images')
         labels = tf.random_uniform(
@@ -1622,6 +1664,7 @@ class BenchmarkCNN(object):
         resize_method=self.resize_method,
         shift_ratio=shift_ratio,
         summary_verbosity=self.params.summary_verbosity,
+        distort_color_in_yiq=self.params.distort_color_in_yiq,
         fuse_decode_and_crop=self.params.fuse_decode_and_crop)
 
   def add_sync_queues_and_barrier(self, name_prefix,

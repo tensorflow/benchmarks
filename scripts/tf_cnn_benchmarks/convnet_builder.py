@@ -181,11 +181,14 @@ class ConvNetBuilder(object):
                                    kernel_initializer=kernel_initializer)
         else:
           rate = 1  # Unused (for 'a trous' convolutions)
-          kernel_size_effective = k_height + (k_width - 1) * (rate - 1)
-          pad_total = kernel_size_effective - 1
-          pad_beg = pad_total // 2
-          pad_end = pad_total - pad_beg
-          padding = [[0, 0], [pad_beg, pad_end], [pad_beg, pad_end], [0, 0]]
+          kernel_height_effective = k_height + (k_height - 1) * (rate - 1)
+          pad_h_beg = (kernel_height_effective - 1) // 2
+          pad_h_end = kernel_height_effective - 1 - pad_h_beg
+          kernel_width_effective = k_width + (k_width - 1) * (rate - 1)
+          pad_w_beg = (kernel_width_effective - 1) // 2
+          pad_w_end = kernel_width_effective - 1 - pad_w_beg
+          padding = [[0, 0], [pad_h_beg, pad_h_end],
+                     [pad_w_beg, pad_w_end], [0, 0]]
           if self.data_format == 'NCHW':
             padding = [padding[0], padding[3], padding[1], padding[2]]
           input_layer = tf.pad(input_layer, padding)
@@ -438,11 +441,6 @@ class ConvNetBuilder(object):
     self.counts['batchnorm'] += 1
 
     with tf.variable_scope(name) as scope:
-      using_fp16 = (self.dtype == tf.float16)
-      if using_fp16:
-        # Currently fused batch norm does not support fp16, so we do a cast
-        # to fp32 here.
-        input_layer = tf.cast(input_layer, tf.float32)
       if self.use_tf_layers:
         bn = tf.contrib.layers.batch_norm(
             input_layer,
@@ -455,8 +453,6 @@ class ConvNetBuilder(object):
             scope=scope)
       else:
         bn = self._batch_norm_without_layers(input_layer, decay, scale, epsilon)
-      if using_fp16:
-        bn = tf.cast(bn, tf.float16)
     self.top_layer = bn
     self.top_size = bn.shape[3] if self.data_format == 'NHWC' else bn.shape[1]
     self.top_size = int(self.top_size)

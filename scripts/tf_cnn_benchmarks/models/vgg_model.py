@@ -25,7 +25,7 @@ References:
 """
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import model
+from models import model
 
 
 def _construct_vgg(cnn, num_conv_layers):

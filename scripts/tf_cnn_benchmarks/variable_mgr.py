@@ -705,6 +705,9 @@ class VariableMgrDistributedAllReduce(VariableMgr):
   def __init__(self, benchmark_cnn, all_reduce_spec, job_name,
                num_workers):
     super(VariableMgrDistributedAllReduce, self).__init__(benchmark_cnn)
+    if not all_reduce_spec:
+      raise ValueError(
+          'distributed_all_reduce requires a non-empty all_reduce_spec')
     self._all_reduce_spec = parse_all_reduce_spec(all_reduce_spec)
     self._all_reduce_device_prefixes = build_all_reduce_device_prefixes(
         job_name, num_workers)

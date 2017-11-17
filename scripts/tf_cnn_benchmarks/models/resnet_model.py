@@ -34,7 +34,8 @@ References:
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
-import model as model_lib
+import datasets
+from models import model as model_lib
 
 
 def bottleneck_block_v1(cnn, depth, depth_bottleneck, stride):
@@ -223,6 +224,13 @@ class ResnetModel(model_lib.Model):
       cnn.top_layer = tf.nn.relu(cnn.top_layer)
     cnn.spatial_mean()
 
+  def get_learning_rate(self, global_step, batch_size):
+    num_batches_per_epoch = (
+        float(datasets.IMAGENET_NUM_TRAIN_IMAGES) / batch_size)
+    boundaries = [int(num_batches_per_epoch * x) for x in [30, 60]]
+    values = [0.1, 0.01, 0.001]
+    return tf.train.piecewise_constant(global_step, boundaries, values)
+
 
 class ResnetCifar10Model(model_lib.Model):
   """Resnet cnn network configuration for Cifar 10 dataset.
@@ -266,9 +274,7 @@ class ResnetCifar10Model(model_lib.Model):
       cnn.top_layer = tf.nn.relu(cnn.top_layer)
     cnn.spatial_mean()
 
-  def get_learning_rate(self, global_step=None, batch_size=None):
-    if global_step is None or batch_size is None:
-      return self.learning_rate
+  def get_learning_rate(self, global_step, batch_size):
     num_batches_per_epoch = int(50000 / batch_size)
     boundaries = num_batches_per_epoch * np.array([82, 123, 300],
                                                   dtype=np.int64)

@@ -22,7 +22,7 @@ References:
   arXiv preprint arXiv:1409.4842 (2014)
 """
 
-import model
+from models import model
 
 
 class GooglenetModel(model.Model):
