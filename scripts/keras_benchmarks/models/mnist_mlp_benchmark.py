@@ -6,7 +6,6 @@ Benchmark a simple MLP model.
 
 from __future__ import print_function
 
-import time
 import keras
 from keras.models import Sequential
 from keras.layers import Dense, Dropout

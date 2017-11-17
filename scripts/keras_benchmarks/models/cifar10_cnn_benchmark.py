@@ -5,11 +5,10 @@ Benchmark CNN model
 '''
 
 from __future__ import print_function
-import time
 import numpy as np
 import keras
 from keras.models import Sequential
-from keras.layers import Dense, Dropout, Activation, Flatten
+from keras.layers import Dense, Dropout, Flatten
 from keras.layers import Conv2D, MaxPooling2D
 from keras.utils import multi_gpu_model
 

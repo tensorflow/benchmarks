@@ -11,7 +11,6 @@ from keras.layers import LSTM
 from keras.optimizers import RMSprop
 from keras.utils import multi_gpu_model
 
-import time
 from models import timehistory
 from data_generator import generate_text_input_data
 
