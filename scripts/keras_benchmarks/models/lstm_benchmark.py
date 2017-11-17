@@ -6,7 +6,7 @@ Benchmark for a LSTM model.
 from __future__ import print_function
 import keras
 from keras.models import Sequential
-from keras.layers import Dense, Activation
+from keras.layers import Dense
 from keras.layers import LSTM
 from keras.optimizers import RMSprop
 from keras.utils import multi_gpu_model
