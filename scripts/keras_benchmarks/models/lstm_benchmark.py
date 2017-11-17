@@ -54,7 +54,6 @@ class LstmBenchmark():
             x = x[start: end]
             y = y[start: end]
 
-        start_time = time.time()
         time_callback = timehistory.TimeHistory()
 
         model.fit(x, y,
@@ -62,4 +61,6 @@ class LstmBenchmark():
                   epochs=self.epochs,
                   callbacks=[time_callback])
 
-        self.total_time = time.time() - start_time - time_callback.times[0]
+        self.total_time = 0
+        for i in range(1, self.epochs):
+            self.total_time += time_callback.times[i]

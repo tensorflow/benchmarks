@@ -36,7 +36,6 @@ def get_backend_version():
         return cntk.__version__
     return "undefined"
 
-#TODO: We could just pass model and config to the uploads function here
 def _upload_metrics(current_model):
     bq.upload_metrics_to_bq(test_name=current_model.test_name,
                             total_time=current_model.total_time,

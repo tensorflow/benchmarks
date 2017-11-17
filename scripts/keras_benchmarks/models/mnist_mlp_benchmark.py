@@ -63,9 +63,10 @@ class MnistMlpBenchmark():
             x_train = x_train[start: end]
             y_train = y_train[start: end]
 
-        start_time = time.time()
         time_callback = timehistory.TimeHistory()
         model.fit(x_train, y_train, batch_size=self.batch_size,
                   epochs=self.epochs, verbose=1, callbacks=[time_callback])
 
-        self.total_time = time.time() - start_time - time_callback.times[0]
+        self.total_time = 0
+        for i in range(1, self.epochs):
+            self.total_time += time_callback.times[i]

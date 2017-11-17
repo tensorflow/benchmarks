@@ -44,17 +44,13 @@ class Cifar10CnnBenchmark():
 
         model = Sequential()
         model.add(Conv2D(32, (3, 3), padding='same',
-                         input_shape=x_train.shape[1:]))
-        model.add(Activation('relu'))
-        model.add(Conv2D(32, (3, 3)))
-        model.add(Activation('relu'))
+                         input_shape=x_train.shape[1:], activation='relu'))
+        model.add(Conv2D(32, (3, 3), activation='relu'))
         model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Dropout(0.25))
 
-        model.add(Conv2D(64, (3, 3), padding='same'))
-        model.add(Activation('relu'))
-        model.add(Conv2D(64, (3, 3)))
-        model.add(Activation('relu'))
+        model.add(Conv2D(64, (3, 3), padding='same', activation='relu'))
+        model.add(Conv2D(64, (3, 3), activation='relu'))
         model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Dropout(0.25))
 
@@ -63,13 +59,11 @@ class Cifar10CnnBenchmark():
         model.add(Dropout(0.5))
         model.add(Dense(num_classes, activation='softmax'))
 
-        # initiate RMSprop optimizer
         opt = keras.optimizers.rmsprop(lr=0.0001, decay=1e-6)
 
         if keras.backend.backend() is "tensorflow" and gpus > 1:
             model = multi_gpu_model(model, gpus=gpus)
 
-        # Let's train the model using RMSprop
         model.compile(loss='categorical_crossentropy',
                       optimizer=opt,
                       metrics=['accuracy'])
@@ -83,7 +77,6 @@ class Cifar10CnnBenchmark():
             x_train = x_train[start: end]
             y_train = y_train[start: end]
 
-        start_time = time.time()
         time_callback = timehistory.TimeHistory()
 
         model.fit(x_train,
@@ -93,4 +86,6 @@ class Cifar10CnnBenchmark():
                   shuffle=True,
                   callbacks=[time_callback])
 
-        self.total_time = time.time() - start_time - time_callback.times[0]
+        self.total_time = 0
+        for i in range(1, self.epochs):
+            self.total_time += time_callback.times[i]
