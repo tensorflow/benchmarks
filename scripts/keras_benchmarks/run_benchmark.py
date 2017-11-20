@@ -1,8 +1,12 @@
 """ Main entry point for running benchmarks with different Keras backends."""
 
-from models import mnist_mlp_benchmark
 from models import cifar10_cnn_benchmark
+from models import gru_benchmark
 from models import lstm_benchmark
+from models import mnist_mlp_benchmark
+from models import resnet50_benchmark
+from models import vgg16_benchmark
+from models import xception_benchmark
 import upload_benchmarks_bq as bq
 import argparse
 import keras
@@ -54,13 +58,13 @@ def _upload_metrics(current_model):
                             sample_type=current_model.sample_type)
 
 
-# MNIST MLP
-model = mnist_mlp_benchmark.MnistMlpBenchmark()
+# CIFAR10 CNN
+model = cifar10_cnn_benchmark.Cifar10CnnBenchmark()
 model.run_benchmark(gpus=config['gpus'])
 _upload_metrics(model)
 
-# CIFAR10 CNN
-model = cifar10_cnn_benchmark.Cifar10CnnBenchmark()
+# GRU
+model = gru_benchmark.GRUBenchmark()
 model.run_benchmark(gpus=config['gpus'])
 _upload_metrics(model)
 
@@ -68,3 +72,24 @@ _upload_metrics(model)
 model = lstm_benchmark.LstmBenchmark()
 model.run_benchmark(gpus=config['gpus'])
 _upload_metrics(model)
+
+# MNIST MLP
+model = mnist_mlp_benchmark.MnistMlpBenchmark()
+model.run_benchmark(gpus=config['gpus'])
+_upload_metrics(model)
+
+# RESNET50
+model = resnet50_benchmark.Resnet50Benchmark()
+model.run_benchmark(gpus=config['gpus'])
+_upload_metrics(model)
+
+# VGG16
+model = vgg16_benchmark.VGG16Benchmark()
+model.run_benchmark(gpus=config['gpus'])
+_upload_metrics(model)
+
+# Xception
+model = xception_benchmark.XceptionBenchmark()
+model.run_benchmark(gpus=config['gpus'])
+_upload_metrics(model)
+

@@ -1,13 +1,12 @@
 '''
-Original Model from keras/examples/lstm_text_generation.py
 
-Benchmark for a LSTM model.
+Benchmark for a GRU model.
 '''
 from __future__ import print_function
 import keras
 from keras.models import Sequential
 from keras.layers import Dense
-from keras.layers import LSTM
+from keras.layers import GRU
 from keras.optimizers import RMSprop
 from keras.utils import multi_gpu_model
 
@@ -18,7 +17,7 @@ if keras.backend.backend() == 'cntk':
   from gpu_mode import cntk_gpu_mode_config
 
 
-class LstmBenchmark:
+class GRUBenchmark:
 
     def __init__(self):
         self.test_name = "lstm"
@@ -37,7 +36,7 @@ class LstmBenchmark:
 
         # build the model: a single LSTM
         model = Sequential()
-        model.add(LSTM(128, input_shape=(input_dim_1, input_dim_2)))
+        model.add(GRU(self.batch_size, input_shape=(input_dim_1, input_dim_2)))
         model.add(Dense(input_dim_2), activation='softmax')
 
         optimizer = RMSprop(lr=0.01)

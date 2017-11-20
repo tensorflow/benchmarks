@@ -18,7 +18,7 @@ if keras.backend.backend() == 'cntk':
     from gpu_mode import cntk_gpu_mode_config
 
 
-class MnistMlpBenchmark():
+class MnistMlpBenchmark:
 
     def __init__(self):
         self.test_name = "mnist_mlp"
@@ -33,7 +33,7 @@ class MnistMlpBenchmark():
 
         # Generate random input data
         input_shape = (self.num_samples, 28, 28)
-        x_train, y_train = generate_img_input_data(input_shape)
+        x_train, y_train = generate_img_input_data(input_shape, num_classes)
 
         x_train = x_train.reshape(self.num_samples, 784)
         x_train = x_train.astype('float32')

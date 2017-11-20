@@ -18,7 +18,7 @@ if keras.backend.backend() == 'cntk':
     from gpu_mode import cntk_gpu_mode_config
 
 
-class Cifar10CnnBenchmark():
+class Cifar10CnnBenchmark:
 
     def __init__(self):
         self.test_name = "cifar10_cnn"
@@ -33,7 +33,7 @@ class Cifar10CnnBenchmark():
 
         # Generate random input data
         input_shape = (self.num_samples, 3, 32, 32)
-        x_train, y_train = generate_img_input_data(input_shape)
+        x_train, y_train = generate_img_input_data(input_shape, num_classes)
 
         y_train = np.reshape(y_train, (len(y_train), 1))
         y_train = keras.utils.to_categorical(y_train, 10)
