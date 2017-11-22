@@ -27,7 +27,7 @@ class XceptionBenchmark:
     self.num_samples = 1000
 
   def run_benchmark(self, gpus=0):
-    input_shape = (128, 3, 299, 299)
+    input_shape = (self.num_samples, 3, 299, 299)
     num_classes = 1000
 
     x_train, y_train = generate_img_input_data(input_shape, num_classes)

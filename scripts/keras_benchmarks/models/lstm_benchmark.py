@@ -24,7 +24,7 @@ class LstmBenchmark:
         self.test_name = "lstm"
         self.sample_type = "text"
         self.total_time = 0
-        self.batch_size = 128
+        self.batch_size = 32
         self.epochs = 2
         self.num_samples = 1000
 
