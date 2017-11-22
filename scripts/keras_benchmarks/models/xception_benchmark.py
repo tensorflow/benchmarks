@@ -22,7 +22,7 @@ class XceptionBenchmark:
     self.test_name = "xception"
     self.sample_type = "images"
     self.total_time = 0
-    self.batch_size = 128
+    self.batch_size = 32
     self.epochs = 2
     self.num_samples = 1000
 
@@ -68,3 +68,6 @@ class XceptionBenchmark:
     self.total_time = 0
     for i in range(1, self.epochs):
       self.total_time += time_callback.times[i]
+
+    keras.backend.clear_session()
+    

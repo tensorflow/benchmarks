@@ -12,6 +12,7 @@ import argparse
 import keras
 import json
 
+
 if keras.backend.backend() == "tensorflow":
   import tensorflow as tf
 if keras.backend.backend() == "theano":
