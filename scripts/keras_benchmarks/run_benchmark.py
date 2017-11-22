@@ -79,9 +79,9 @@ model.run_benchmark(gpus=config['gpus'])
 _upload_metrics(model)
 
 # RESNET50
-model = resnet50_benchmark.Resnet50Benchmark()
-model.run_benchmark(gpus=config['gpus'])
-_upload_metrics(model)
+#model = resnet50_benchmark.Resnet50Benchmark()
+#model.run_benchmark(gpus=config['gpus'])
+#_upload_metrics(model)
 
 # VGG16
 model = vgg16_benchmark.VGG16Benchmark()
