@@ -32,7 +32,7 @@ class XceptionBenchmark:
 
     x_train, y_train = generate_img_input_data(input_shape, num_classes)
 
-    model = applications.ResNet50(weights=None)
+    model = applications.Xception(weights=None)
 
     y_train = keras.utils.to_categorical(y_train, num_classes)
 
@@ -59,12 +59,8 @@ class XceptionBenchmark:
 
     time_callback = timehistory.TimeHistory()
 
-    model.fit(x_train,
-                        y_train,
-                        batch_size=self.batch_size,
-                        epochs=self.epochs,
-                        shuffle=True,
-                        callbacks=[time_callback])
+    model.fit(x_train, y_train, batch_size=self.batch_size, epochs=self.epochs,
+              shuffle=True, callbacks=[time_callback])
 
     self.total_time = 0
     for i in range(1, self.epochs):
