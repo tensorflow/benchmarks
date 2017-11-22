@@ -37,7 +37,7 @@ class GRUBenchmark:
         # build the model: a single LSTM
         model = Sequential()
         model.add(GRU(self.batch_size, input_shape=(input_dim_1, input_dim_2)))
-        model.add(Dense(input_dim_2), activation='softmax')
+        model.add(Dense(input_dim_2, activation='softmax'))
 
         optimizer = RMSprop(lr=0.01)
 
