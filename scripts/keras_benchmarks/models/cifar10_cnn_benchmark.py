@@ -28,7 +28,6 @@ class Cifar10CnnBenchmark:
         self.num_samples = 1000
 
     def run_benchmark(self, gpus=0):
-        print("Running Cifar10 Model")
         num_classes = 10
 
         # Generate random input data

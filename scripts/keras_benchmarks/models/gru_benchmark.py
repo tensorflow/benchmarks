@@ -28,7 +28,6 @@ class GRUBenchmark:
         self.num_samples = 1000
 
     def run_benchmark(self, gpus=0):
-        print("Running GRU Model")
         input_dim_1 = 40
         input_dim_2 = 60
 
