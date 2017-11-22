@@ -61,8 +61,8 @@ class XceptionBenchmark:
 
     model.fit(x_train,
                         y_train,
-                        batch_size=batch_size,
-                        epochs=epochs,
+                        batch_size=self.batch_size,
+                        epochs=self.epochs,
                         shuffle=True)
 
     self.total_time = 0
