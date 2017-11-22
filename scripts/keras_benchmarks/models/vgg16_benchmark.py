@@ -63,7 +63,8 @@ class VGG16Benchmark:
                         y_train,
                         batch_size=self.batch_size,
                         epochs=self.epochs,
-                        shuffle=True)
+                        shuffle=True,
+                        callbacks=[time_callback])
 
     self.total_time = 0
     for i in range(1, self.epochs):
