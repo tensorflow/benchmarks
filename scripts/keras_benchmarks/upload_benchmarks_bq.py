@@ -37,9 +37,7 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
                     as "images per epoch" etc.
     """
     bigquery_client = bigquery.Client()
-    dataset = bigquery_client.dataset('keras_benchmarks')
-    table = dataset.table('benchmarks')
-    table.reload()
+    test_id = uuid.uuid4().int >> 80
 
     query = """\
     INSERT keras_benchmarks.benchmarks (test_id,test_name,recorded_time,\
@@ -72,21 +70,9 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
       bigquery.ScalarQueryParameter('gpu_info_platform', 'STRING', gpu_platform)
       ]
 
-    test_id = uuid.uuid4().int >> 80
 
     job_config = bigquery.QueryJobConfig()
     job_config.query_parameters = query_parameters
     query_job = bigquery_client.query(query, job_config=job_config)
 
     query_job.result()  # Wait for job to complete
-
-
-    #query_job = bigquery_client.run_async_query(
-    #    str(uuid.uuid4()),
-    #    query,
-    #    ))
-
-    #query_job.use_legacy_sql = False
-
-    #query_job.begin()
-    #query_job.result()
