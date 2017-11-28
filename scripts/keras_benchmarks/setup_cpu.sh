@@ -22,9 +22,11 @@ conda update -q conda
 # Useful for debugging any issues with conda
 conda info -a
 conda create -q -n benchmarks-environment python="2.7" numpy scipy
+
 source activate benchmarks-environment
 # set library path
 export LD_LIBRARY_PATH=$HOME/miniconda/envs/test-environmcondent/lib/:$LD_LIBRARY_PATH
+
 
 # Install Pillow package
 conda install pil

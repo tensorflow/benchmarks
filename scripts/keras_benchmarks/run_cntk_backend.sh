@@ -9,8 +9,8 @@ echo -e "Running tests with the following config:\n$(cat ~/.keras/keras.json)"
 # Use "cpu_config", "gpu_config" and "multi_gpu_config" as command line arguments to load the right
 # config file.
 if [ "$1" = "multi_gpu_config" ]; then
-  mpiexec -n 4 python benchmarks/scripts/keras_benchmarks/run_benchmark.py "$1"
+  mpiexec -n 4 python benchmarks/scripts/keras_benchmarks/run_benchmark.py --mode="$1"
 fi
 
-python benchmarks/scripts/keras_benchmarks/run_benchmark.py "$1"
+python benchmarks/scripts/keras_benchmarks/run_benchmark.py --mode="$1"
 

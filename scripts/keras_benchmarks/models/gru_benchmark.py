@@ -63,4 +63,5 @@ class GRUBenchmark:
         for i in range(1, self.epochs):
             self.total_time += time_callback.times[i]
 
-        keras.backend.clear_session()
+        if keras.backend.backend() is "tensorflow":
+            keras.backend.clear_session()
