@@ -52,29 +52,41 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
      @keras_version,\
      (@gpu_info_count,@gpu_info_platform))
     """
+
+    query_parameters=[
+      bigquery.ScalarQueryParameter('testid', 'INTEGER', test_id),
+      bigquery.ScalarQueryParameter('testname', 'STRING', test_name),
+      bigquery.ScalarQueryParameter('metrics_totaltime', 'FLOAT', total_time),
+      bigquery.ScalarQueryParameter('metrics_epochs', 'INTEGER', epochs),
+      bigquery.ScalarQueryParameter('metrics_batch_size', 'INTEGER', batch_size),
+      bigquery.ScalarQueryParameter('metrics_sampletype', 'STRING', sample_type),
+      bigquery.ScalarQueryParameter('keras_backend_type', 'STRING', backend_type),
+      bigquery.ScalarQueryParameter('keras_backend_version', 'STRING', backend_version),
+      bigquery.ScalarQueryParameter('cpu_info_numcores', 'FLOAT', cpu_num_cores),
+      bigquery.ScalarQueryParameter('cpu_info_memory', 'FLOAT', cpu_memory),
+      bigquery.ScalarQueryParameter('cpu_info_memory_units', 'STRING', cpu_memory_info),
+      bigquery.ScalarQueryParameter('platform_info_type', 'STRING', platform_type),
+      bigquery.ScalarQueryParameter('platform_info_machine_type', 'STRING', platform_machine_type),
+      bigquery.ScalarQueryParameter('keras_version', 'STRING', keras_version),
+      bigquery.ScalarQueryParameter('gpu_info_count', 'FLOAT', gpu_count),
+      bigquery.ScalarQueryParameter('gpu_info_platform', 'STRING', gpu_platform)
+      ]
+
     test_id = uuid.uuid4().int >> 80
-    query_job = bigquery_client.run_async_query(
-        str(uuid.uuid4()),
-        query,
-        query_parameters=(
-          bigquery.ScalarQueryParameter('testid', 'INTEGER', test_id),
-          bigquery.ScalarQueryParameter('testname', 'STRING', test_name),
-          bigquery.ScalarQueryParameter('metrics_totaltime', 'FLOAT', total_time),
-          bigquery.ScalarQueryParameter('metrics_epochs', 'INTEGER', epochs),
-          bigquery.ScalarQueryParameter('metrics_batch_size', 'INTEGER', batch_size),
-          bigquery.ScalarQueryParameter('metrics_sampletype', 'STRING', sample_type),
-          bigquery.ScalarQueryParameter('keras_backend_type', 'STRING', backend_type),
-          bigquery.ScalarQueryParameter('keras_backend_version', 'STRING', backend_version),
-          bigquery.ScalarQueryParameter('cpu_info_numcores', 'FLOAT', cpu_num_cores),
-          bigquery.ScalarQueryParameter('cpu_info_memory', 'FLOAT', cpu_memory),
-          bigquery.ScalarQueryParameter('cpu_info_memory_units', 'STRING', cpu_memory_info),
-          bigquery.ScalarQueryParameter('platform_info_type', 'STRING', platform_type),
-          bigquery.ScalarQueryParameter('platform_info_machine_type', 'STRING', platform_machine_type),
-          bigquery.ScalarQueryParameter('keras_version', 'STRING', keras_version),
-          bigquery.ScalarQueryParameter('gpu_info_count', 'FLOAT', gpu_count),
-          bigquery.ScalarQueryParameter('gpu_info_platform', 'STRING', gpu_platform)))
 
-    query_job.use_legacy_sql = False
+    job_config = bigquery.QueryJobConfig()
+    job_config.query_parameters = query_parameters
+    query_job = bigquery_client.query(query, job_config=job_config)
 
-    query_job.begin()
-    query_job.result()
+    query_job.result()  # Wait for job to complete
+
+
+    #query_job = bigquery_client.run_async_query(
+    #    str(uuid.uuid4()),
+    #    query,
+    #    ))
+
+    #query_job.use_legacy_sql = False
+
+    #query_job.begin()
+    #query_job.result()
