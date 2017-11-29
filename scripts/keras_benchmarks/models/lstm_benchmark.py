@@ -29,6 +29,8 @@ class LstmBenchmark:
         self.num_samples = 1000
 
     def run_benchmark(self, gpus=0):
+        print("Running model ", self.test_name)
+
         input_dim_1 = 40
         input_dim_2 = 60
 

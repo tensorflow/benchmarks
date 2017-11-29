@@ -29,6 +29,8 @@ class MnistMlpBenchmark:
         self.num_samples = 1000
 
     def run_benchmark(self, gpus=0):
+        print("Running model ", self.test_name)
+
         num_classes = 10
 
         # Generate random input data

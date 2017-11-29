@@ -27,6 +27,8 @@ class Resnet50Benchmark:
     self.num_samples = 1000
 
   def run_benchmark(self, gpus=0):
+    print("Running model ", self.test_name)
+
     input_shape = (self.num_samples, 3, 224, 224)
     num_classes = 1000
 

@@ -1,10 +1,10 @@
 {
   "cpu_config": {
-    "cpu_num_cores": 1,
-    "cpu_memory": 3.75,
+    "cpu_num_cores": 4,
+    "cpu_memory": 15,
     "cpu_memory_info": "GB",
     "platform_type": "GCP",
-    "platform_machine_type": "n1-standard-1",
+    "platform_machine_type": "n1-standard-4",
     "gpus": 0,
     "gpu_platform": "None"
   },

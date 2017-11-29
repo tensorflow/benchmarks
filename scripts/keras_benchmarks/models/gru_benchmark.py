@@ -20,7 +20,7 @@ if keras.backend.backend() == 'cntk':
 class GRUBenchmark:
 
     def __init__(self):
-        self.test_name = "lstm"
+        self.test_name = "gru"
         self.sample_type = "text"
         self.total_time = 0
         self.batch_size = 32
@@ -28,6 +28,8 @@ class GRUBenchmark:
         self.num_samples = 1000
 
     def run_benchmark(self, gpus=0):
+        print("Running model ", self.test_name)
+
         input_dim_1 = 40
         input_dim_2 = 60
 
