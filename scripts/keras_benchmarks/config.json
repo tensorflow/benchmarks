@@ -9,20 +9,20 @@
     "gpu_platform": "None"
   },
   "gpu_config": {
-    "cpu_num_cores": 8,
-    "cpu_memory": 30,
+    "cpu_num_cores": 16,
+    "cpu_memory": 60,
     "cpu_memory_info": "GB",
     "platform_type": "GCP",
-    "platform_machine_type": "n1-standard-8",
+    "platform_machine_type": "n1-standard-16",
     "gpus": 1,
     "gpu_platform": "NVIDIA Tesla K80"
   },
   "multi_gpu_config": {
-    "cpu_num_cores": 8,
-    "cpu_memory": 30,
+    "cpu_num_cores": 16,
+    "cpu_memory": 60,
     "cpu_memory_info": "GB",
     "platform_type": "GCP",
-    "platform_machine_type": "n1-standard-8",
+    "platform_machine_type": "n1-standard-16",
     "gpus": 4,
     "gpu_platform": "NVIDIA Tesla K80"
   }
