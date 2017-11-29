@@ -22,8 +22,8 @@ class XceptionBenchmark:
     self.test_name = "xception"
     self.sample_type = "images"
     self.total_time = 0
-    self.batch_size = 32
-    self.epochs = 2
+    self.batch_size = 16
+    self.epochs = 4
     self.num_samples = 1000
 
   def run_benchmark(self, gpus=0):
@@ -44,7 +44,7 @@ class XceptionBenchmark:
 
     opt = keras.optimizers.rmsprop(lr=0.0001, decay=1e-6)
 
-    if keras.backend.backend() is "tensorflow" and gpus > 1:
+    if keras.backend.backend() == "tensorflow" and gpus > 1:
       model = multi_gpu_model(model, gpus=gpus)
 
     model.compile(loss='categorical_crossentropy',
@@ -52,7 +52,7 @@ class XceptionBenchmark:
                   metrics=['accuracy'])
 
     # create a distributed trainer for cntk
-    if keras.backend.backend() is "cntk" and gpus > 1:
+    if keras.backend.backend() == "cntk" and gpus > 1:
       start, end = cntk_gpu_mode_config(model, x_train.shape[0])
       x_train = x_train[start: end]
       y_train = y_train[start: end]
@@ -66,6 +66,6 @@ class XceptionBenchmark:
     for i in range(1, self.epochs):
       self.total_time += time_callback.times[i]
 
-    if keras.backend.backend() is "tensorflow":
+    if keras.backend.backend() == "tensorflow":
       keras.backend.clear_session()
 
