@@ -76,4 +76,4 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
     query_job = bigquery_client.query(query, job_config=job_config)
 
     query_job.result()  # Wait for job to complete
-    time.wait(30)
+    time.sleep(30)

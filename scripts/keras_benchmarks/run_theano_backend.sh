@@ -8,8 +8,13 @@ echo -e "Running tests with the following config:\n$(cat ~/.keras/keras.json)"
 
 # Use "cpu_config", "gpu_config" and "multi_gpu_config" as command line arguments to load the right
 # config file.
+models='cifar10_cnn gru lstm mnist_mlp resnet50 vgg16 xception'
+for name in $models
+do
 if [ "$1" = "cpu_config" ]; then
   python benchmarks/scripts/keras_benchmarks/run_benchmark.py "$1"
 else
   echo "GPU mode for Theano backend is not supported currently by the keras benchmarks script."
 fi
+done
+
