@@ -7,6 +7,7 @@ from models import mnist_mlp_benchmark
 from models import resnet50_benchmark
 from models import vgg16_benchmark
 from models import xception_benchmark
+from models import model_config
 import upload_benchmarks_bq as bq
 import argparse
 import keras
@@ -23,6 +24,8 @@ if keras.backend.backend() == "cntk":
 parser = argparse.ArgumentParser()
 parser.add_argument('--mode',
                     help='The benchmark can be run on cpu, gpu and multiple gpus.')
+parser.add_argument('--model_name',
+                    help='The name of the model that will be benchmarked.')
 
 args = parser.parse_args()
 
@@ -59,38 +62,6 @@ def _upload_metrics(current_model):
                             sample_type=current_model.sample_type)
 
 
-# CIFAR10 CNN
-model = cifar10_cnn_benchmark.Cifar10CnnBenchmark()
+model = model_config.get_model_config(args.model_name)
 model.run_benchmark(gpus=config['gpus'])
 _upload_metrics(model)
-
-# GRU
-model = gru_benchmark.GRUBenchmark()
-model.run_benchmark(gpus=config['gpus'])
-_upload_metrics(model)
-
-# LSTM
-model = lstm_benchmark.LstmBenchmark()
-model.run_benchmark(gpus=config['gpus'])
-_upload_metrics(model)
-
-# MNIST MLP
-model = mnist_mlp_benchmark.MnistMlpBenchmark()
-model.run_benchmark(gpus=config['gpus'])
-_upload_metrics(model)
-
-# RESNET50
-model = resnet50_benchmark.Resnet50Benchmark()
-model.run_benchmark(gpus=config['gpus'])
-_upload_metrics(model)
-
-# VGG16
-model = vgg16_benchmark.VGG16Benchmark()
-model.run_benchmark(gpus=config['gpus'])
-_upload_metrics(model)
-
-# Xception
-model = xception_benchmark.XceptionBenchmark()
-model.run_benchmark(gpus=config['gpus'])
-_upload_metrics(model)
-

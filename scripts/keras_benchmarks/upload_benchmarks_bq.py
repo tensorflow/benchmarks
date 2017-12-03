@@ -2,7 +2,7 @@
 to BigQuery."""
 from google.cloud import bigquery
 import uuid
-
+import time
 
 def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
     backend_type, backend_version, cpu_num_cores, cpu_memory, cpu_memory_info,
@@ -76,3 +76,4 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
     query_job = bigquery_client.query(query, job_config=job_config)
 
     query_job.result()  # Wait for job to complete
+    time.wait(30)

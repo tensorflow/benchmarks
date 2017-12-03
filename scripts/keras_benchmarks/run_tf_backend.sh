@@ -8,4 +8,8 @@ echo -e "Running tests with the following config:\n$(cat ~/.keras/keras.json)"
 
 # Use "cpu_config", "gpu_config" and "multi_gpu_config" as command line arguments to load the right
 # config file.
-python benchmarks/scripts/keras_benchmarks/run_benchmark.py  --mode="$1"
+models = 'cifar10_cnn gru'
+for name in models
+do
+  python benchmarks/scripts/keras_benchmarks/run_benchmark.py  --mode="$1"
+done
