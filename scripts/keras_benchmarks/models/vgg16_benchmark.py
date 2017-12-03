@@ -22,7 +22,7 @@ class VGG16Benchmark:
     self.test_name = "vgg16"
     self.sample_type = "images"
     self.total_time = 0
-    self.batch_size = 32
+    self.batch_size = 16
     self.epochs = 4
     self.num_samples = 1000
 
