@@ -42,9 +42,9 @@ export LD_LIBRARY_PATH=/usr/local/cudnn-6.0/cuda/lib64:$LD_LIBRARY_PATH
 sudo apt-get install openmpi-bin -y
 
 # Install CNTK GPU version
-pip install https://cntk.ai/PythonWheel/GPU/cntk-2.2-cp27-cp27mu-linux_x86_64.whl
+sudo pip install https://cntk.ai/PythonWheel/GPU/cntk-2.2-cp27-cp27mu-linux_x86_64.whl
 
-# Install other pacakges required for CNTK
+# Install other packages required for CNTK
 sudo apt-get install libopencv-dev python-opencv -y
 
 # Install keras

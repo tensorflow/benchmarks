@@ -13,7 +13,7 @@ from keras.utils import multi_gpu_model
 from models import timehistory
 from data_generator import generate_img_input_data
 if keras.backend.backend() == 'cntk':
-  from gpu_mode import cntk_gpu_mode_config
+  from gpu_mode import cntk_gpu_mode_config, finalize
 
 
 class Resnet50Benchmark:
@@ -74,4 +74,7 @@ class Resnet50Benchmark:
 
     if keras.backend.backend() == "tensorflow":
       keras.backend.clear_session()
+
+    if keras.backend.backend() == "cntk" and gpus > 1:
+      finalize()
 

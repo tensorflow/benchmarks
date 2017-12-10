@@ -15,7 +15,7 @@ from keras.utils import multi_gpu_model
 from models import timehistory
 from data_generator import generate_img_input_data
 if keras.backend.backend() == 'cntk':
-    from gpu_mode import cntk_gpu_mode_config
+    from gpu_mode import cntk_gpu_mode_config, finalize
 
 
 class MnistMlpBenchmark:
@@ -60,7 +60,7 @@ class MnistMlpBenchmark:
 
         # create a distributed trainer for cntk
         if keras.backend.backend() == "cntk" and gpus > 1:
-            start, end = cntk_gpu_mode_config(model, x_train.shape[0])
+            start, end = cntk_gpu_mode_config(model.model, x_train.shape[0])
             x_train = x_train[start: end]
             y_train = y_train[start: end]
 
@@ -75,3 +75,5 @@ class MnistMlpBenchmark:
         if keras.backend.backend() == "tensorflow":
             keras.backend.clear_session()
 
+        if keras.backend.backend() == "cntk" and gpus > 1:
+            finalize()

@@ -15,7 +15,7 @@ from models import timehistory
 from data_generator import generate_text_input_data
 
 if keras.backend.backend() == 'cntk':
-  from gpu_mode import cntk_gpu_mode_config
+  from gpu_mode import cntk_gpu_mode_config, finalize
 
 
 class LstmBenchmark:
@@ -51,7 +51,7 @@ class LstmBenchmark:
 
         # create a distributed trainer for cntk
         if keras.backend.backend() == "cntk" and gpus > 1:
-            start, end = cntk_gpu_mode_config(model, x.shape[0])
+            start, end = cntk_gpu_mode_config(model.model, x.shape[0])
             x = x[start: end]
             y = y[start: end]
 
@@ -69,3 +69,5 @@ class LstmBenchmark:
         if keras.backend.backend() == "tensorflow":
             keras.backend.clear_session()
 
+        if keras.backend.backend() == "cntk" and gpus > 1:
+            finalize()

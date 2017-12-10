@@ -1,6 +1,9 @@
 """ CNTK gpu config required for running keras models in multi gpu mode."""
 import cntk
 
+def finalize():
+    cntk.Communicator.finalize()
+
 def cntk_gpu_mode_config(model, num_samples):
     """Sets up a distributed trainer for keras models using CNTK backend
         in multi gpu mode.
@@ -16,8 +19,8 @@ def cntk_gpu_mode_config(model, num_samples):
     # Raises
         ValueError: when there are no learners in the
     """
-    model.model._make_train_function()
-    trainer = model.model.train_function.trainer
+    model._make_train_function()
+    trainer = model.train_function.trainer
     learner_no = len(trainer.parameter_learners)
     if learner_no < 1:
         raise ValueError("No learner in the trainer.")
@@ -27,7 +30,7 @@ def cntk_gpu_mode_config(model, num_samples):
     dist_learner = cntk.train.distributed. \
         data_parallel_distributed_learner(
         learner, num_quantization_bits=32, distributed_after=0)
-    model.model.train_function.trainer = cntk.trainer.Trainer(
+    model.train_function.trainer = cntk.trainer.Trainer(
         trainer.model, [trainer.loss_function,
                         trainer.evaluation_function], [dist_learner])
 
