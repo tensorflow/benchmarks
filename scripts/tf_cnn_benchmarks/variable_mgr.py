@@ -91,7 +91,7 @@ class ParamServerDeviceSetter(object):
   """Helper class to assign variables on the least loaded ps-device."""
 
   def __init__(self, worker_device, ps_devices):
-    """Initializer for ParamServerDevicSetter.
+    """Initializer for ParamServerDeviceSetter.
 
     Args:
       worker_device: the device to use for computer ops.
