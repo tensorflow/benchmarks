@@ -36,7 +36,4 @@ Some important flags are
     ,replicated, distributed_replicated, independent
 *   local_parameter_device: Device to use as parameter server: cpu or gpu.
 
-See
-[benchmark_cnn.py](https://github.com/tensorflow/benchmarks/blob/master/scripts/tf_cnn_benchmarks/benchmark_cnn.py)
-for the full list of flags. The `_DEFAULT_PARAMS` dict in that file contains the
-flags.
+To see the full list of flags, run `python tf_cnn_benchmarks.py --help`.
