@@ -25,7 +25,7 @@ class Resnet50Benchmark:
     self.batch_size = 16
     self.epochs = 4
     self.num_samples = 1000
-    self.test_type = 'channels_first exp'
+    self.test_type = 'channels_first, batchnorm'
 
   def run_benchmark(self, gpus=0):
     print("Running model ", self.test_name)
