@@ -42,21 +42,21 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
     test_id = uuid.uuid4().int >> 80
 
     query = """\
-    INSERT keras_benchmarks.benchmarks (test_id,test_name,recorded_time,\
+    INSERT keras_benchmarks.benchmarks (test_id,test_name,test_type,recorded_time,\
     metrics,keras_backend,cpu_info,platform_info,keras_version,gpu_info) \
-    VALUES(@testid,@testname,CURRENT_TIMESTAMP(),\
+    VALUES(@testid,@testname,@testtype,CURRENT_TIMESTAMP(),\
     (@metrics_totaltime,@metrics_epochs,@metrics_batch_size,@metrics_sampletype),\
     (@keras_backend_type, @keras_backend_version),\
     (@cpu_info_numcores,@cpu_info_memory, @cpu_info_memory_units),\
     (@platform_info_type,@platform_info_machine_type),\
      @keras_version,\
-     (@gpu_info_count,@gpu_info_platform),\
-     @test_type)
+     (@gpu_info_count,@gpu_info_platform))
     """
 
     query_parameters=[
       bigquery.ScalarQueryParameter('testid', 'INTEGER', test_id),
       bigquery.ScalarQueryParameter('testname', 'STRING', test_name),
+      bigquery.ScalarQueryParameter('testtype', 'STRING', test_type),
       bigquery.ScalarQueryParameter('metrics_totaltime', 'FLOAT', total_time),
       bigquery.ScalarQueryParameter('metrics_epochs', 'INTEGER', epochs),
       bigquery.ScalarQueryParameter('metrics_batch_size', 'INTEGER', batch_size),
@@ -70,8 +70,7 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
       bigquery.ScalarQueryParameter('platform_info_machine_type', 'STRING', platform_machine_type),
       bigquery.ScalarQueryParameter('keras_version', 'STRING', keras_version),
       bigquery.ScalarQueryParameter('gpu_info_count', 'FLOAT', gpu_count),
-      bigquery.ScalarQueryParameter('gpu_info_platform', 'STRING', gpu_platform),
-      bigquery.ScalarQueryParameter('test_type', 'STRING', test_type)
+      bigquery.ScalarQueryParameter('gpu_info_platform', 'STRING', gpu_platform)
       ]
 
 
