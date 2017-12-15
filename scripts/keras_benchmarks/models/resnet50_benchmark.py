@@ -22,10 +22,10 @@ class Resnet50Benchmark:
     self.test_name = "resnet50"
     self.sample_type = "images"
     self.total_time = 0
-    self.batch_size = 16
+    self.batch_size = 32
     self.epochs = 4
     self.num_samples = 1000
-    self.test_type = 'channels_first, batchnorm, learning_phase'
+    self.test_type = 'channels_first, batchnorm, learning_phase, batch_size'
 
   def run_benchmark(self, gpus=0):
     print("Running model ", self.test_name)
