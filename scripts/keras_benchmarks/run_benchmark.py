@@ -59,7 +59,8 @@ def _upload_metrics(current_model):
                             platform_type=config['platform_type'],
                             platform_machine_type=config['platform_machine_type'],
                             keras_version=keras.__version__,
-                            sample_type=current_model.sample_type)
+                            sample_type=current_model.sample_type,
+                            test_type=current_model.test_type)
 
 
 model = model_config.get_model_config(args.model_name)

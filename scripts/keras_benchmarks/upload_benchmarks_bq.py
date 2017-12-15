@@ -7,7 +7,7 @@ import time
 def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
     backend_type, backend_version, cpu_num_cores, cpu_memory, cpu_memory_info,
     gpu_count, gpu_platform, platform_type, platform_machine_type,
-    keras_version, sample_type=None):
+    keras_version, sample_type=None, test_type=None):
     """ Upload benchmark metrics of a model along with platform specs.
 
     # Arguments
@@ -35,6 +35,8 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
         keras_version: Version of Keras used to run the benchmark model.
         sample_type: This is a user specified string used to calculate metrics such
                     as "images per epoch" etc.
+        test_type: Tag that indicates if this is a regular benchmark or a benchmark
+                   experiment.
     """
     bigquery_client = bigquery.Client()
     test_id = uuid.uuid4().int >> 80
@@ -48,7 +50,8 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
     (@cpu_info_numcores,@cpu_info_memory, @cpu_info_memory_units),\
     (@platform_info_type,@platform_info_machine_type),\
      @keras_version,\
-     (@gpu_info_count,@gpu_info_platform))
+     (@gpu_info_count,@gpu_info_platform),\
+     @test_type)
     """
 
     query_parameters=[
@@ -67,7 +70,8 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
       bigquery.ScalarQueryParameter('platform_info_machine_type', 'STRING', platform_machine_type),
       bigquery.ScalarQueryParameter('keras_version', 'STRING', keras_version),
       bigquery.ScalarQueryParameter('gpu_info_count', 'FLOAT', gpu_count),
-      bigquery.ScalarQueryParameter('gpu_info_platform', 'STRING', gpu_platform)
+      bigquery.ScalarQueryParameter('gpu_info_platform', 'STRING', gpu_platform),
+      bigquery.ScalarQueryParameter('keras_type', 'STRING', test_type)
       ]
 
 
