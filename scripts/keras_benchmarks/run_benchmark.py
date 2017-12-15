@@ -47,7 +47,7 @@ def get_backend_version():
 def _upload_metrics(current_model):
     bq.upload_metrics_to_bq(test_name=current_model.test_name,
                             total_time=current_model.total_time,
-                            epochs=current_model.epochs,
+                            epochs=current_model.epochs-1,
                             batch_size=current_model.batch_size,
                             backend_type=keras.backend.backend(),
                             backend_version=get_backend_version(),

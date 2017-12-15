@@ -40,7 +40,6 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
     """
     bigquery_client = bigquery.Client()
     test_id = uuid.uuid4().int >> 80
-
     query = """\
     INSERT keras_benchmarks.benchmarks (test_id,test_name,test_type,recorded_time,\
     metrics,keras_backend,cpu_info,platform_info,keras_version,gpu_info) \
