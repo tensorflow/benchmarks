@@ -27,3 +27,15 @@ class TrivialModel(model.Model):
     cnn.reshape([-1, 227 * 227 * 3])
     cnn.affine(1)
     cnn.affine(4096)
+
+
+class TrivialCifar10Model(model.Model):
+  """Trivial cifar10 model configuration."""
+
+  def __init__(self):
+    super(TrivialCifar10Model, self).__init__('trivial', 32, 32, 0.005)
+
+  def add_inference(self, cnn):
+    cnn.reshape([-1, 32 * 32 * 3])
+    cnn.affine(1)
+    cnn.affine(4096)
