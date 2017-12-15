@@ -13,35 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Benchmark script for TensorFlow.
+"""Utility code for a certain platform.
 
-See the README for more information.
+This file simply imports everything from the default platform. To switch to a
+different platform, the import statement can be changed to point to a new
+platform.
+
+Creating a custom platform can be useful to, e.g., run some initialization code
+required by the platform or register a platform-specific model.
 """
 
-from __future__ import print_function
-
-from absl import flags
-import tensorflow as tf
-
-import benchmark_cnn
-import cnn_util
-from cnn_util import log_fn
-
-benchmark_cnn.define_flags()
-flags.adopt_module_key_flags(benchmark_cnn)
-
-
-def main(_):
-  params = benchmark_cnn.make_params_from_flags()
-  params = benchmark_cnn.setup(params)
-  bench = benchmark_cnn.BenchmarkCNN(params)
-
-  tfversion = cnn_util.tensorflow_version_tuple()
-  log_fn('TensorFlow:  %i.%i' % (tfversion[0], tfversion[1]))
-
-  bench.print_info()
-  bench.run()
-
-
-if __name__ == '__main__':
-  tf.app.run()
+from platforms.default.util import *  # pylint: disable=unused-import,wildcard-import

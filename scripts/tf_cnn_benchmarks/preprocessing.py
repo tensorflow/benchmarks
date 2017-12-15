@@ -332,22 +332,19 @@ def train_image(image_buffer,
                                    dct_method='INTEGER_FAST')
       image = tf.slice(image, bbox_begin, bbox_size)
 
-    if distortions:
-      # After this point, all image pixels reside in [0,1]. Before, they were
-      # uint8s in the range [0, 255].
-      image = tf.image.convert_image_dtype(image, dtype=tf.float32)
+    distorted_image = tf.image.random_flip_left_right(image)
 
     # This resizing operation may distort the images because the aspect
     # ratio is not respected.
     image_resize_method = get_image_resize_method(resize_method, batch_position)
     if cnn_util.tensorflow_version() >= 11:
       distorted_image = tf.image.resize_images(
-          image, [height, width],
+          distorted_image, [height, width],
           image_resize_method,
           align_corners=False)
     else:
       distorted_image = tf.image.resize_images(
-          image,
+          distorted_image,
           height,
           width,
           image_resize_method,
@@ -356,14 +353,13 @@ def train_image(image_buffer,
     # the third dimension.
     distorted_image.set_shape([height, width, 3])
     if summary_verbosity >= 3:
-      tf.summary.image(
-          'cropped_resized_image',
-          tf.expand_dims(distorted_image, 0))
-
-    # Randomly flip the image horizontally.
-    distorted_image = tf.image.random_flip_left_right(distorted_image)
+      tf.summary.image('cropped_resized_maybe_flipped_image',
+                       tf.expand_dims(distorted_image, 0))
 
     if distortions:
+      distorted_image = tf.cast(distorted_image, dtype=tf.float32)
+      # Images values are expected to be in [0,1] for color distortion.
+      distorted_image /= 255.
       # Randomly distort the colors.
       distorted_image = distort_color(distorted_image, batch_position,
                                       distort_color_in_yiq=distort_color_in_yiq)
