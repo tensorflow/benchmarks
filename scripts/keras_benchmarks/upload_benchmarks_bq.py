@@ -71,7 +71,7 @@ def upload_metrics_to_bq(test_name, total_time, epochs, batch_size,
       bigquery.ScalarQueryParameter('keras_version', 'STRING', keras_version),
       bigquery.ScalarQueryParameter('gpu_info_count', 'FLOAT', gpu_count),
       bigquery.ScalarQueryParameter('gpu_info_platform', 'STRING', gpu_platform),
-      bigquery.ScalarQueryParameter('keras_type', 'STRING', test_type)
+      bigquery.ScalarQueryParameter('test_type', 'STRING', test_type)
       ]
 
 
