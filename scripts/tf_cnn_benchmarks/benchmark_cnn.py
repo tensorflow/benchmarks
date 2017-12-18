@@ -906,9 +906,9 @@ class BenchmarkCNN(object):
       device_list = self.raw_devices_across_tasks()
     else:
       device_list = self.raw_devices
-    batch_size = self.num_workers * self.batch_size
-    log_fn('Batch size:  %s global' % batch_size)
-    log_fn('             %s per device' % (batch_size / len(device_list)))
+    log_fn('Batch size:  %s global' % (self.batch_size * self.num_workers))
+    log_fn('             %s per device' % (self.batch_size /
+                                           len(self.raw_devices)))
     if self.batch_group_size > 1:
       log_fn('             %d batches per prepocessing group' %
              self.batch_group_size)
@@ -1198,15 +1198,19 @@ class BenchmarkCNN(object):
         while not global_step_watcher.done():
           time.sleep(.25)
       if self.single_session:
-        num_steps = local_step
         elapsed_time = loop_end_time - loop_start_time
+        average_wall_time = elapsed_time / local_step if local_step > 0 else 0
+        images_per_sec = (self.num_workers * local_step * self.batch_size /
+                          elapsed_time)
+        num_steps = local_step * self.num_workers
       else:
+        # NOTE: Each worker independently increases the global step. So,
+        # num_steps will be the sum of the local_steps from each worker.
         num_steps = global_step_watcher.num_steps()
         elapsed_time = global_step_watcher.elapsed_time()
-
-      average_wall_time = elapsed_time / num_steps if num_steps > 0 else 0
-      images_per_sec = ((self.num_workers * self.batch_size) / average_wall_time
-                        if average_wall_time > 0 else 0)
+        average_wall_time = (elapsed_time * self.num_workers / num_steps
+                             if num_steps > 0 else 0)
+        images_per_sec = num_steps * self.batch_size / elapsed_time
 
       log_fn('-' * 64)
       log_fn('total images/sec: %.2f' % images_per_sec)
