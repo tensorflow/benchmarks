@@ -18,6 +18,7 @@ from __future__ import print_function
 
 import collections as pycoll
 import operator
+
 import tensorflow as tf
 
 from tensorflow.python.framework import ops
