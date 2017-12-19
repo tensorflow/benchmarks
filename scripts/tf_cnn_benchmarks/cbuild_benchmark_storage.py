@@ -22,7 +22,9 @@ from datetime import datetime
 import json
 import os
 import sys
+
 import six
+
 from google.cloud import datastore
 
 
