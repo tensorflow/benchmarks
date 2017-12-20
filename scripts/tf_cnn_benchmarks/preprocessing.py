@@ -102,9 +102,10 @@ def parse_example_proto(example_serialized):
 def get_image_resize_method(resize_method, batch_position=0):
   """Get tensorflow resize method.
 
-  If method is 'round_robin', return different methods based on batch position
-  in a round-robin fashion. NOTE: If the batch size is not a multiple of the
-  number of methods, then the distribution of methods will not be uniform.
+  If resize_method is 'round_robin', return different methods based on batch
+  position in a round-robin fashion. NOTE: If the batch size is not a multiple
+  of the number of methods, then the distribution of methods will not be
+  uniform.
 
   Args:
     resize_method: (string) nearest, bilinear, bicubic, area, or round_robin.
