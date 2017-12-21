@@ -137,7 +137,7 @@ class Cifar10Data(Dataset):
                                       num_classes=10)
 
   def read_data_files(self, subset='train'):
-    """Reads from data file and return images and labels in a numpy array."""
+    """Reads from data file and returns images and labels in a numpy array."""
     assert self.data_dir, ('Cannot call `read_data_files` when using synthetic '
                            'data')
     if subset == 'train':
