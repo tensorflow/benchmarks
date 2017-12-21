@@ -23,7 +23,10 @@ To run ResNet50 with synthetic data without distortions with a single GPU, run
 python tf_cnn_benchmarks.py --num_gpus=1 --batch_size=32 --model=resnet50 --variable_update=parameter_server
 ```
 
-Note that tf_cnn_benchmarks currently requires the latest nightly version of TensorFlow. You can install the nightly version by running `pip install tf-nightly-gpu` in a clean environment, or by installing TensorFlow from source.
+Note that tf_cnn_benchmarks currently requires the latest nightly version of
+TensorFlow. You can install the nightly version by running
+`pip install tf-nightly-gpu` in a clean environment, or by installing TensorFlow
+from source.
 
 Some important flags are
 
