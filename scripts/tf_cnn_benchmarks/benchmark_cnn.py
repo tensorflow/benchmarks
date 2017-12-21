@@ -238,7 +238,7 @@ _DEFAULT_PARAMS = {
         ParamSpec('boolean', True,
                   'Fuse decode_and_crop for image preprocessing.'),
     'distort_color_in_yiq':
-        ParamSpec('boolean', False,
+        ParamSpec('boolean', True,
                   'Distort color of input images in YIQ space.'),
     'enable_layout_optimizer':
         ParamSpec('boolean', False, 'whether to enable layout optimizer'),
@@ -1837,4 +1837,3 @@ def setup(params):
   platforms_util.initialize(params, create_config_proto(params))
 
   return params
-
