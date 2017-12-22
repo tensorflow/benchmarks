@@ -172,6 +172,16 @@ _DEFAULT_PARAMS = {
                   'Optimizer to use: momentum or sgd or rmsprop'),
     'learning_rate':
         ParamSpec('float', None, 'Initial learning rate for training.'),
+    'piecewise_learning_rate_schedule':
+        ParamSpec('string', None,
+                  'Specifies a piecewise learning rate schedule based on the '
+                  'number of epochs. This is the form LR0;E1;LR1;...;En;LRn, '
+                  'where each LRi is a learning rate and each Ei is an epoch '
+                  'indexed from 0. The learning rate is LRi if the '
+                  'E(i-1) <= current_epoch < Ei. For example, if this '
+                  'paramater is 0.3;10;0.2;25;0.1, the learning rate is 0.3 '
+                  'for the first 10 epochs, then is 0.2 for the next 15 '
+                  'epochs, then is 0.1 until training ends.'),
     'num_epochs_per_decay':
         ParamSpec('float', 0,
                   'Steps after which learning rate decays. If 0, the learning '
@@ -665,6 +675,93 @@ def make_params_from_flags():
   # _DEFAULT_PARAMS.
   flag_values = {name: getattr(FLAGS, name) for name in _DEFAULT_PARAMS.keys()}
   return Params(**flag_values)
+
+
+def get_piecewise_learning_rate(piecewise_learning_rate_schedule,
+                                global_step, num_batches_per_epoch):
+  """Returns a piecewise learning rate tensor.
+
+  Args:
+    piecewise_learning_rate_schedule: The --piecewise_learning_rate_schedule
+      parameter
+    global_step: Scalar tensor representing the global step.
+    num_batches_per_epoch: float indicating the number of batches per epoch.
+
+  Returns:
+    A scalar float tensor, representing the learning rate.
+
+  Raises:
+    ValueError: piecewise_learning_rate_schedule is not formatted correctly.
+  """
+  pieces = piecewise_learning_rate_schedule.split(';')
+  if len(pieces) % 2 == 0:
+    raise ValueError('--piecewise_learning_rate_schedule must have an odd '
+                     'number of components')
+  values = []
+  boundaries = []
+  for i, piece in enumerate(pieces):
+    if i % 2 == 0:
+      try:
+        values.append(float(piece))
+      except ValueError:
+        raise ValueError('Invalid learning rate: ' + piece)
+    else:
+      try:
+        boundaries.append(int(int(piece) * num_batches_per_epoch) - 1)
+      except ValueError:
+        raise ValueError('Invalid epoch: ' + piece)
+  return tf.train.piecewise_constant(global_step, boundaries, values,
+                                     name='piecewise_learning_rate')
+
+
+def get_learning_rate(params, global_step, num_examples_per_epoch, model,
+                      batch_size):
+  """Returns a learning rate tensor based on global_step.
+
+  Args:
+    params: Params tuple, typically created by make_params or
+      make_params_from_flags.
+    global_step: Scalar tensor representing the global step.
+    num_examples_per_epoch: The number of examples per epoch.
+    model: The model.Model object to obtain the default learning rate from if no
+      learning rate is specified.
+    batch_size: Number of examples per step
+
+  Returns:
+    A scalar float tensor, representing the learning rate. When evaluated, the
+    learning rate depends on the current value of global_step.
+
+  Raises:
+    ValueError: Invalid or unsupported params.
+  """
+  num_batches_per_epoch = (float(num_examples_per_epoch) / batch_size)
+
+  if params.piecewise_learning_rate_schedule:
+    if (params.learning_rate or params.learning_rate_decay_factor or
+        params.minimum_learning_rate or params.num_epochs_per_decay):
+      raise ValueError('No other learning rate-related flags can be specified '
+                       'if --piecewise_learning_rate_schedule is specified')
+    return get_piecewise_learning_rate(params.piecewise_learning_rate_schedule,
+                                       global_step, num_batches_per_epoch)
+
+  learning_rate = (
+      params.learning_rate or model.get_learning_rate(global_step, batch_size))
+  if (params.learning_rate and params.num_epochs_per_decay > 0 and
+      params.learning_rate_decay_factor > 0):
+    decay_steps = int(num_batches_per_epoch * params.num_epochs_per_decay)
+
+    # Decay the learning rate exponentially based on the number of steps.
+    learning_rate = tf.train.exponential_decay(
+        params.learning_rate,
+        global_step,
+        decay_steps,
+        params.learning_rate_decay_factor,
+        staircase=True)
+
+    if params.minimum_learning_rate != 0.:
+      learning_rate = tf.maximum(learning_rate,
+                                 params.minimum_learning_rate)
+  return learning_rate
 
 
 class BenchmarkCNN(object):
@@ -1380,29 +1477,9 @@ class BenchmarkCNN(object):
         avg_grads = self.variable_mgr.get_gradients_to_apply(d, gradient_state)
 
         gradient_clip = self.params.gradient_clip
-        learning_rate = (
-            self.params.learning_rate or
-            self.model.get_learning_rate(global_step, self.batch_size))
-        if ((not self.use_synthetic_gpu_images) and
-            self.params.learning_rate and
-            self.params.num_epochs_per_decay > 0 and
-            self.params.learning_rate_decay_factor > 0):
-          num_batches_per_epoch = (
-              float(self.dataset.num_examples_per_epoch()) / self.batch_size)
-          decay_steps = int(
-              num_batches_per_epoch * self.params.num_epochs_per_decay)
-
-          # Decay the learning rate exponentially based on the number of steps.
-          learning_rate = tf.train.exponential_decay(
-              self.params.learning_rate,
-              global_step,
-              decay_steps,
-              self.params.learning_rate_decay_factor,
-              staircase=True)
-
-          if self.params.minimum_learning_rate != 0.:
-            learning_rate = tf.maximum(learning_rate,
-                                       self.params.minimum_learning_rate)
+        learning_rate = get_learning_rate(self.params, global_step,
+                                          self.dataset.num_examples_per_epoch(),
+                                          self.model, self.batch_size)
 
         if gradient_clip is not None:
           clipped_grads = [(tf.clip_by_value(grad, -gradient_clip,
