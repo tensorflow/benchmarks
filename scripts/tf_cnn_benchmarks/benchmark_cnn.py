@@ -50,6 +50,10 @@ from cnn_util import ParamSpec
 from models import model_config
 from platforms import util as platforms_util
 
+
+_DEFAULT_NUM_BATCHES = 100
+
+
 # _DEFAULT_PARAMS maps from each parameter's name to its ParamSpec. For each
 # parameter listed here, a command line flag will be defined for
 # tf_cnn_benchmarks.py.
@@ -87,8 +91,11 @@ _DEFAULT_PARAMS = {
                   'number of groups of batches processed in the image '
                   'producer.'),
     'num_batches':
-        ParamSpec('integer', 100, 'number of batches to run, excluding '
-                  'warmup'),
+        ParamSpec('integer', None, 'number of batches to run, excluding '
+                  'warmup. Defaults to %d' % _DEFAULT_NUM_BATCHES),
+    'num_epochs':
+        ParamSpec('float', None, 'number of epochs to run, excluding warmup. '
+                  'This and --num_batches cannot both be specified.'),
     'num_warmup_batches':
         ParamSpec('integer', None, 'number of batches to run before timing'),
     'autotune_threshold':
@@ -677,6 +684,36 @@ def make_params_from_flags():
   return Params(**flag_values)
 
 
+def get_num_batches_and_epochs(params, batch_size, num_examples_per_epoch):
+  """Returns the number of batches and epochs to run for.
+
+  Args:
+    params: Params tuple, typically created by make_params or
+      make_params_from_flags.
+    batch_size: The number of images per step.
+    num_examples_per_epoch: The number of images in a single epoch.
+
+  Returns:
+    num_batches: The number of batches to run for.
+    num_epochs: The number of epochs to run for. This might be slightly
+      smaller than params.num_epochs if specified, because the number of batches
+      must be an integer.
+
+  Raises:
+    ValueError: Invalid or unsupported params.
+  """
+  if params.num_batches and params.num_epochs:
+    raise ValueError('At most one of --num_batches and --num_epochs may be '
+                     'specified.')
+  if params.num_epochs:
+    num_batches = int(float(params.num_epochs) * num_examples_per_epoch /
+                      batch_size)
+  else:
+    num_batches = params.num_batches or _DEFAULT_NUM_BATCHES
+  num_epochs = num_batches * batch_size / float(num_examples_per_epoch)
+  return (num_batches, num_epochs)
+
+
 def get_piecewise_learning_rate(piecewise_learning_rate_schedule,
                                 global_step, num_batches_per_epoch):
   """Returns a piecewise learning rate tensor.
@@ -783,7 +820,6 @@ class BenchmarkCNN(object):
     self.trace_filename = self.params.trace_file
     self.data_format = self.params.data_format
     self.enable_layout_optimizer = self.params.enable_layout_optimizer
-    self.num_batches = self.params.num_batches
     autotune_threshold = self.params.autotune_threshold if (
         self.params.autotune_threshold) else 1
     min_autotune_warmup = 5 * autotune_threshold * autotune_threshold
@@ -903,6 +939,11 @@ class BenchmarkCNN(object):
         for i in xrange(self.num_gpus)
     ]
 
+    subset = 'validation' if params.eval else 'train'
+    self.num_batches, self.num_epochs = get_num_batches_and_epochs(
+        params, self.batch_size * self.num_workers,
+        self.dataset.num_examples_per_epoch(subset))
+
     if (self.params.staged_vars and
         self.params.variable_update != 'parameter_server'):
       raise ValueError('staged_vars for now is only supported with '
@@ -1009,6 +1050,8 @@ class BenchmarkCNN(object):
     if self.batch_group_size > 1:
       log_fn('             %d batches per prepocessing group' %
              self.batch_group_size)
+    log_fn('Num batches: %d' % self.num_batches)
+    log_fn('Num epochs:  %.2f' % self.num_epochs)
     log_fn('Devices:     %s' % device_list)
     log_fn('Data format: %s' % self.data_format)
     log_fn('Layout optimizer: %s' % self.enable_layout_optimizer)
