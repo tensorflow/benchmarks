@@ -1866,7 +1866,7 @@ class BenchmarkCNN(object):
       enqueue_after_list: control dependency from ops.
 
     Returns:
-      an op that should be used as control dependency before starting next step.
+      An op that should be used as control dependency before starting next step.
     """
     self.sync_queue_counter += 1
     with tf.device(self.sync_queue_devices[(
