@@ -173,7 +173,7 @@ _DEFAULT_PARAMS = {
     'graph_file':
         ParamSpec('string', None,
                   'Write the model\'s graph definition to this file. Defaults '
-                  'to binary format unless filename ends in `txt`.'),
+                  'to binary format unless filename ends in "txt".'),
     'optimizer':
         ParamSpec('string', 'sgd',
                   'Optimizer to use: momentum or sgd or rmsprop'),
@@ -1174,7 +1174,7 @@ class BenchmarkCNN(object):
              (precision_at_1, recall_at_5, total_eval_count))
 
   def _benchmark_cnn(self):
-    """Run cnn in benchmark mode. When forward_only on, it forwards CNN.
+    """Run cnn in benchmark mode. Skip the backward pass if forward_only is on.
 
     Returns:
       Dictionary containing training statistics (num_workers, num_steps,
@@ -1957,3 +1957,4 @@ def setup(params):
   platforms_util.initialize(params, create_config_proto(params))
 
   return params
+
