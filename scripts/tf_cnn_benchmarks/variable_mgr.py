@@ -25,7 +25,7 @@ import variable_mgr_util
 
 
 class VariableMgr(object):
-  """Abstract superclass for class used by BenchmarkCnn to control variables.
+  """Abstract superclass for class used by BenchmarkCNN to control variables.
 
     Functions on this class are used to control how variables are created and
     managed, and how gradients are computed and applied.

@@ -1221,7 +1221,7 @@ class BenchmarkCNN(object):
                                              tf.get_default_graph())
 
     # We want to start the benchmark timer right after a image_producer barrier
-    # and avoids undesired wating times on barriers.
+    # and avoids undesired waiting times on barriers.
     if ((self.num_warmup_batches + len(enqueue_ops) - 1) %
         self.batch_group_size) != 0:
       self.num_warmup_batches = int(
