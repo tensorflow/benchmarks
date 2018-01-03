@@ -58,7 +58,7 @@ class Barrier(object):
   points.  Threads block on 'wait()' and simultaneously return once they have
   all made that call.
 
-  # Implementaion adpoted from boost/thread/barrier.hpp
+  # Implementation adopted from boost/thread/barrier.hpp
   """
 
   def __init__(self, parties):
