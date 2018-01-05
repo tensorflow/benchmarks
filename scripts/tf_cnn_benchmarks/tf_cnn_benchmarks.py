@@ -20,6 +20,7 @@ See the README for more information.
 
 from __future__ import print_function
 
+from absl import app
 from absl import flags
 import tensorflow as tf
 
@@ -44,4 +45,4 @@ def main(_):
 
 
 if __name__ == '__main__':
-  tf.app.run()
+  app.run(main)  # Raises error on invalid flags, unlike tf.app.run()
