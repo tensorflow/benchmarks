@@ -1143,7 +1143,7 @@ class BenchmarkCNN(object):
       for i in xrange(len(enqueue_ops)):
         sess.run(enqueue_ops[:(i + 1)])
         image_producer.notify_image_consumption()
-      start_time = time.time()
+      loop_start_time = start_time = time.time()
       top_1_accuracy_sum = 0.0
       top_5_accuracy_sum = 0.0
       total_eval_count = self.num_batches * self.batch_size
@@ -1163,6 +1163,7 @@ class BenchmarkCNN(object):
           log_fn('%i\t%.1f examples/sec' % (step + 1, examples_per_sec))
           start_time = time.time()
         image_producer.notify_image_consumption()
+      loop_end_time = time.time()
       image_producer.done()
       precision_at_1 = top_1_accuracy_sum / self.num_batches
       recall_at_5 = top_5_accuracy_sum / self.num_batches
@@ -1172,6 +1173,13 @@ class BenchmarkCNN(object):
       summary_writer.add_summary(summary, global_step)
       log_fn('Precision @ 1 = %.4f recall @ 5 = %.4f [%d examples]' %
              (precision_at_1, recall_at_5, total_eval_count))
+      elapsed_time = loop_end_time - loop_start_time
+      images_per_sec = (self.num_batches * self.batch_size / elapsed_time)
+      # Note that we compute the top 1 accuracy and top 5 accuracy for each
+      # batch, which will have a slight performance impact.
+      log_fn('-' * 64)
+      log_fn('total images/sec: %.2f' % images_per_sec)
+      log_fn('-' * 64)
 
   def _benchmark_cnn(self):
     """Run cnn in benchmark mode. Skip the backward pass if forward_only is on.
