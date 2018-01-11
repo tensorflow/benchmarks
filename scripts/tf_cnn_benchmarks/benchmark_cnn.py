@@ -602,6 +602,9 @@ def benchmark_one_step(sess,
   if trace_filename and step == -1:
     log_fn('Dumping trace to %s' % trace_filename)
     trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+    trace_dir = os.path.dirname(trace_filename)
+    if not gfile.Exists(trace_dir):
+      gfile.MakeDirs(trace_dir)
     with gfile.Open(trace_filename, 'w') as trace_file:
       trace_file.write(trace.generate_chrome_trace_format(show_memory=True))
   return summary_str
@@ -1965,4 +1968,3 @@ def setup(params):
   platforms_util.initialize(params, create_config_proto(params))
 
   return params
-
