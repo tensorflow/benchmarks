@@ -1,0 +1,18 @@
+CPU benchmark targets:
+
+cpu_benchmark (~900s): Generate a random named k8s cluster on tensorflow testing
+cpu_benchmark_with_cluster (~300s): use existing
+"cpu_benchmark-permanent-cluster" on tensorflow testing.
+
+Note: If we want to create a new permanent cluster, use the first target,
+change CLUSTER in cpu_prepare.sh to the new name, and comment the delete
+cluster command in teardown.sh
+
+
+GPU benchmark targets:
+
+token_print (~500s): Generate a k8s cluster token and upload to gcs bucket
+rbe-tensorflow-benchmarks.
+gpu_benchmark (>2500s): Generate a new k8s cluster with the existing token and
+run benchmark test.
+gpu_benchmark_with_cluster (~300s): Run the benchmark test with existing GPU cluster.
