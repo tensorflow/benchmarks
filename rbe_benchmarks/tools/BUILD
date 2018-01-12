@@ -205,7 +205,7 @@ integration_test(
         ],
     },
     test_docker_image = toolchain_container_images()["tensorflow"],
-    test_timeout = 450,
+    test_timeout = 1000,
 )
 
 sh_binary(
