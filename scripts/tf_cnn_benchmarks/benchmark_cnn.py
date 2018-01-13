@@ -35,6 +35,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python import debug as tf_debug
 from tensorflow.python.client import timeline
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import gfile
@@ -233,6 +234,12 @@ _DEFAULT_PARAMS = {
                   'The TensorFlow random seed. Useful for debugging NaNs, as '
                   'this can be set to various values to see if the NaNs '
                   'depend on the seed.'),
+    'debugger':
+        ParamSpec('string', None,
+                  'If set, use the TensorFlow debugger. If set to "cli", use '
+                  'the local CLI debugger. Otherwise, this must be in the form '
+                  'hostname:port (e.g., localhost:7007), in which case the '
+                  'experimental TensorBoard debugger will be used'),
 
     # Performance tuning parameters.
     'winograd_nonfused':
@@ -872,6 +879,11 @@ class BenchmarkCNN(object):
         raise ValueError('Automatic loss scaling is not supported with'
                          'staged_vars.')
 
+    if (self.params.debugger is not None and self.params.debugger != 'cli' and
+        ':' not in self.params.debugger):
+      raise ValueError('--debugger must be "cli" or in the form '
+                       'host:port')
+
     # Use the batch size from the command line if specified, otherwise use the
     # model's default batch size.  Scale the benchmark's batch size by the
     # number of GPUs.
@@ -1313,6 +1325,14 @@ class BenchmarkCNN(object):
         done_fn = lambda: local_step == self.num_batches
       else:
         done_fn = global_step_watcher.done
+      if self.params.debugger is not None:
+        if self.params.debugger == 'cli':
+          log_fn('The CLI TensorFlow debugger will be used.')
+          sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+        else:
+          log_fn('The TensorBoard debugger plugin will be used.')
+          sess = tf_debug.TensorBoardDebugWrapperSession(sess,
+                                                         self.params.debugger)
       loop_start_time = time.time()
       while not done_fn():
         if local_step == 0:
