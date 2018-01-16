@@ -139,6 +139,10 @@ def get_gpu_volume_mounts():
   return volume_specs
 
 
+class NoImageFoundError(Exception):
+    pass
+
+
 def main():
   config_text = open(FLAGS.benchmark_configs_file, 'r').read()
   configs = yaml.load(config_text)

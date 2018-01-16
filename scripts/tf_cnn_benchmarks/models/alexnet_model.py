@@ -22,7 +22,7 @@ References:
 """
 
 import tensorflow as tf
-import model
+from models import model
 
 
 class AlexnetModel(model.Model):
@@ -74,9 +74,7 @@ class AlexnetCifar10Model(model.Model):
     cnn.affine(384, stddev=0.04, bias=0.1)
     cnn.affine(192, stddev=0.04, bias=0.1)
 
-  def get_learning_rate(self, global_step=None, batch_size=None):
-    if global_step is None or batch_size is None:
-      return self.learning_rate
+  def get_learning_rate(self, global_step, batch_size):
     num_examples_per_epoch = 50000
     num_epochs_per_decay = 100
     decay_steps = int(num_epochs_per_decay * num_examples_per_epoch /

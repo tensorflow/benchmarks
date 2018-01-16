@@ -12,18 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Trivial model configuration."""
 
-import model
+"""Utility code for a certain platform.
 
+This file simply imports everything from the default platform. To switch to a
+different platform, the import statement can be changed to point to a new
+platform.
 
-class TrivialModel(model.Model):
-  """Trivial model configuration."""
+Creating a custom platform can be useful to, e.g., run some initialization code
+required by the platform or register a platform-specific model.
+"""
 
-  def __init__(self):
-    super(TrivialModel, self).__init__('trivial', 224 + 3, 32, 0.005)
-
-  def add_inference(self, cnn):
-    cnn.reshape([-1, 227 * 227 * 3])
-    cnn.affine(1)
-    cnn.affine(4096)
+from platforms.default.util import *  # pylint: disable=unused-import,wildcard-import
