@@ -1180,14 +1180,14 @@ class BenchmarkCNN(object):
         image_producer.notify_image_consumption()
       loop_end_time = time.time()
       image_producer.done()
-      precision_at_1 = top_1_accuracy_sum / self.num_batches
-      recall_at_5 = top_5_accuracy_sum / self.num_batches
+      accuracy_at_1 = top_1_accuracy_sum / self.num_batches
+      accuracy_at_5 = top_5_accuracy_sum / self.num_batches
       summary = tf.Summary()
-      summary.value.add(tag='eval/Accuracy@1', simple_value=precision_at_1)
-      summary.value.add(tag='eval/Recall@5', simple_value=recall_at_5)
+      summary.value.add(tag='eval/Accuracy@1', simple_value=accuracy_at_1)
+      summary.value.add(tag='eval/Accuracy@5', simple_value=accuracy_at_5)
       summary_writer.add_summary(summary, global_step)
-      log_fn('Precision @ 1 = %.4f recall @ 5 = %.4f [%d examples]' %
-             (precision_at_1, recall_at_5, total_eval_count))
+      log_fn('Accuracy @ 1 = %.4f Accuracy @ 5 = %.4f [%d examples]' %
+             (accuracy_at_1, accuracy_at_5, total_eval_count))
       elapsed_time = loop_end_time - loop_start_time
       images_per_sec = (self.num_batches * self.batch_size / elapsed_time)
       # Note that we compute the top 1 accuracy and top 5 accuracy for each
