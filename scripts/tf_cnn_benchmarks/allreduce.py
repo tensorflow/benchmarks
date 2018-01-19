@@ -189,7 +189,7 @@ def split_grads_by_size(threshold_size, device_grads):
   Args:
     threshold_size: int size cutoff for small vs large tensor.
     device_grads: List of lists of (gradient, variable) tuples.  The outer
-        list is over devices, the inner list is over individual gradients.
+        list is over devices. The inner list is over individual gradients.
 
   Returns:
     small_grads: Subset of device_grads where shape is <= theshold_size
