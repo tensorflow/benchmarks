@@ -34,6 +34,8 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+from google.protobuf import text_format
+
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import debug as tf_debug
 from tensorflow.python.client import timeline
@@ -266,6 +268,9 @@ _DEFAULT_PARAMS = {
                   'Distort color of input images in YIQ space.'),
     'enable_layout_optimizer':
         ParamSpec('boolean', False, 'whether to enable layout optimizer'),
+    'rewriter_config':
+        ParamSpec('string', None, 'Config for graph optimizers, described '
+                  'as a RewriterConfig proto buffer.'),
     # Performance tuning specific to MKL.
     'mkl':
         ParamSpec('boolean', False, 'If true, set MKL environment variables.'),
@@ -545,6 +550,10 @@ def create_config_proto(params):
   if params.enable_layout_optimizer:
     config.graph_options.rewrite_options.layout_optimizer = (
         rewriter_config_pb2.RewriterConfig.ON)
+  if params.rewriter_config:
+    rewriter_config = rewriter_config_pb2.RewriterConfig()
+    text_format.Merge(params.rewriter_config, rewriter_config)
+    config.graph_options.rewrite_options.CopyFrom(rewriter_config)
 
   return config
 
@@ -830,6 +839,7 @@ class BenchmarkCNN(object):
     self.trace_filename = self.params.trace_file
     self.data_format = self.params.data_format
     self.enable_layout_optimizer = self.params.enable_layout_optimizer
+    self.rewriter_config = self.params.rewriter_config
     autotune_threshold = self.params.autotune_threshold if (
         self.params.autotune_threshold) else 1
     min_autotune_warmup = 5 * autotune_threshold * autotune_threshold
@@ -1070,6 +1080,8 @@ class BenchmarkCNN(object):
     log_fn('Devices:     %s' % device_list)
     log_fn('Data format: %s' % self.data_format)
     log_fn('Layout optimizer: %s' % self.enable_layout_optimizer)
+    if self.rewriter_config:
+      log_fn('RewriterConfig: %s' % self.rewriter_config)
     log_fn('Optimizer:   %s' % self.params.optimizer)
     log_fn('Variables:   %s' % self.params.variable_update)
     if (self.params.variable_update == 'replicated' or
