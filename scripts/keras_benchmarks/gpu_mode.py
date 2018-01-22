@@ -1,3 +1,4 @@
+import warnings
 """ CNTK gpu config required for running keras models in multi gpu mode."""
 import cntk
 
@@ -39,4 +40,3 @@ def cntk_gpu_mode_config(model, num_samples):
     start = rank * total_items // workers
     end = min((rank+1) * total_items // workers, total_items)
     return start, end
-
