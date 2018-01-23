@@ -280,17 +280,26 @@ class VariableMgrLocalReplicated(VariableMgr):
           agg_small_grads_max_bytes=self._agg_small_grads_max_bytes,
           agg_small_grads_max_group=self._agg_small_grads_max_group)
     else:
-      agg_grads, self.grad_has_inf_nan = (
-          variable_mgr_util.
-          aggregate_gradients_using_copy_with_device_selection(
-              self.benchmark_cnn,
-              device_grads,
-              use_mean=False,
-              check_inf_nan=self.benchmark_cnn.enable_auto_loss_scale))
-      aggregated_device_grads = []
-      for arr in device_grads:
-        aggregated_device_grads.append(
-            [(g, v) for (_, v), (g, _) in zip(arr, agg_grads)])
+      if not self.benchmark_cnn.params.hierarchical_copy:
+        agg_grads, self.grad_has_inf_nan = (
+            variable_mgr_util.
+            aggregate_gradients_using_copy_with_device_selection(
+                self.benchmark_cnn,
+                device_grads,
+                use_mean=False,
+                check_inf_nan=self.benchmark_cnn.enable_auto_loss_scale))
+        aggregated_device_grads = []
+        for arr in device_grads:
+          aggregated_device_grads.append(
+              [(g, v) for (_, v), (g, _) in zip(arr, agg_grads)])
+      else:
+        aggregated_device_grads, self.grad_has_inf_nan = (
+            variable_mgr_util.aggregate_gradients_using_hierarchical_copy(
+                self.benchmark_cnn,
+                device_grads,
+                use_mean=False,
+                check_inf_nan=self.benchmark_cnn.enable_auto_loss_scale))
+
     return self.benchmark_cnn.devices, aggregated_device_grads
 
   def get_gradients_to_apply(self, device_num, gradient_state):

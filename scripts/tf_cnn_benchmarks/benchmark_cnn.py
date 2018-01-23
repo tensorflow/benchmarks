@@ -144,6 +144,8 @@ _DEFAULT_PARAMS = {
     'per_gpu_thread_count':
         ParamSpec('integer', 0, 'The number of threads to use for GPU.'
                   'Only valid when gpu_thread_mode is not global.'),
+    'hierarchical_copy':
+        ParamSpec('boolean', False, 'Use hierarchical copies'),
     'cache_data':
         ParamSpec('boolean', False,
                   'Enable use of a special datasets pipeline that reads a '

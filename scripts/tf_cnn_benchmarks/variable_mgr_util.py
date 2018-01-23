@@ -412,6 +412,110 @@ def aggregate_gradients_using_copy_with_device_selection(
     return agg_grads, None
 
 
+def aggregate_gradients_using_hierarchical_copy(benchmark_cnn, tower_grads,
+                                                use_mean, check_inf_nan):
+  """Aggregate gradients using hierarchical copies.
+
+  Args:
+    benchmark_cnn: benchmark_cnn class.
+    tower_grads: List of lists of (gradient, variable) tuples. The outer list
+      is over towers. The inner list is over individual gradients.
+    use_mean: if True, mean is taken, else sum of gradients is taken.
+    check_inf_nan: If true, check grads for nans and infs.
+
+  Returns:
+    The tuple ([(average_gradient, variable),], has_nan_or_inf) where the
+      gradient has been averaged across all towers. The variable is chosen from
+      the first tower. The has_nan_or_inf indicates the grads has nan or inf.
+
+  Raises:
+    ValueError: Unsupported options or device.
+  """
+  # This only works for DGX-1 type of machine topology
+  # Device peer to peer matrix
+  # DMA: 0 1 2 3 4 5 6 7
+  # 0:   Y Y Y Y Y N N N
+  # 1:   Y Y Y Y N Y N N
+  # 2:   Y Y Y Y N N Y N
+  # 3:   Y Y Y Y N N N Y
+  # 4:   Y N N N Y Y Y Y
+  # 5:   N Y N N Y Y Y Y
+  # 6:   N N Y N Y Y Y Y
+  # 7:   N N N Y Y Y Y Y
+  # TODO(huangyp): make this logic more general for arbitrary topology.
+  if benchmark_cnn.local_parameter_device_flag != 'gpu':
+    raise ValueError('Hierarchical copy currently only works with GPU local'
+                     'device: %s' % benchmark_cnn.local_parameter_device_flag)
+  if use_mean:
+    # TODO(huangyp): whether to support use_mean.
+    raise ValueError('Hierarchical copy currently does not work with use_mean')
+  if check_inf_nan:
+    # TODO(tanmingxing): support check_inf_nan.
+    raise ValueError(
+        'Hierarchical copy currently not working with check_inf_nan')
+  avail_devices = benchmark_cnn.raw_devices
+  agg_grads = []
+  has_nan_or_inf_list = []
+  num_devices = len(avail_devices)
+  # In the special case of DGX-1 machine topology, the two groups have equal
+  # size.
+  group_size = num_devices / 2
+  for i, single_grads in enumerate(zip(*tower_grads)):
+    group_0_main_device = i % num_devices
+    group_1_main_device = (group_0_main_device + group_size) % num_devices
+    if group_0_main_device < group_size:
+      group_0_begin = 0
+      group_1_begin = group_size
+    else:
+      group_0_begin = group_size
+      group_1_begin = 0
+
+    # Aggregate the first group.
+    group_0_device_grads = single_grads[group_0_begin:
+                                        group_0_begin + group_size]
+    with tf.device(avail_devices[group_0_main_device]):
+      group_0_agg_grads, _ = aggregate_single_gradient_using_copy(
+          group_0_device_grads, False, False)
+
+    # Aggregate the second group.
+    group_1_device_grads = single_grads[group_1_begin:
+                                        group_1_begin + group_size]
+    with tf.device(avail_devices[group_1_main_device]):
+      group_1_agg_grads, _ = aggregate_single_gradient_using_copy(
+          group_1_device_grads, False, False)
+
+    # Aggregate between the groups.
+    with tf.device(avail_devices[group_0_main_device]):
+      (agg_total_grads, _), _ = aggregate_single_gradient_using_copy(
+          [group_0_agg_grads, group_1_agg_grads], False, False)
+
+    # Broadcast the result back into the root of each group.
+    with tf.device(avail_devices[group_0_main_device]):
+      group_0_agg_grads_bcast = tf.identity(agg_total_grads)
+    with tf.device(avail_devices[group_1_main_device]):
+      group_1_agg_grads_bcast = tf.identity(agg_total_grads)
+
+    agg_grads_bcast = []
+    for j in range(len(single_grads)):
+      with tf.device(avail_devices[j]):
+        # Broadcast the result back to each member in the group from the root.
+        if (group_0_main_device < group_size) == (j < group_size):
+          src_device_grad = group_0_agg_grads_bcast
+        else:
+          src_device_grad = group_1_agg_grads_bcast
+        agg_grads_bcast.append(tf.identity(src_device_grad))
+
+    agg_grads.append(
+        [(g, v) for g, (_, v) in zip(agg_grads_bcast, single_grads)])
+
+  agg_grads = zip(*agg_grads)
+
+  if check_inf_nan:
+    return agg_grads, tf.reduce_any(has_nan_or_inf_list)
+  else:
+    return agg_grads, None
+
+
 def aggregate_gradients_using_copy_with_variable_colocation(
     tower_grads, use_mean, check_inf_nan):
   """Aggregate gradients, colocating computation with the gradient's variable.
