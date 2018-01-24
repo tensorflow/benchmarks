@@ -63,3 +63,20 @@ class Model(object):
 
   def add_inference(self, unused_cnn):
     raise ValueError('Must be implemented in derived classes')
+
+  def skip_final_affine_layer(self):
+    """Returns if the caller of this class should skip the final affine layer.
+
+    Normally, the caller of this class (BenchmarkCNN) adds a final affine layer
+    to the model after calling Model.add_inference, to generate the logits. If a
+    subclass override this method to return True, the caller should not add the
+    final affine layer.
+
+    This is useful for tests.
+    """
+    return False
+
+  # Subclasses can override this to define their own loss function. By default,
+  # benchmark_cnn.py defines its own loss function. If overridden, it must have
+  # the same signature as benchmark_cnn.loss_function.
+  loss_function = None

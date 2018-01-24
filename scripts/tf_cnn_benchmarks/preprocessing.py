@@ -767,14 +767,16 @@ class TestImagePreprocessor(object):
   def set_fake_data(self, fake_images, fake_labels):
     assert len(fake_images.shape) == 4
     assert len(fake_labels.shape) == 1
-    assert fake_images.shape[0] == fake_labels.shape[0]
-    assert fake_images.shape[0] % self.batch_size == 0
+    num_images = fake_images.shape[0]
+    assert num_images == fake_labels.shape[0]
+    assert num_images % self.batch_size == 0
     self.fake_images = fake_images
     self.fake_labels = fake_labels
 
   def minibatch(self, dataset, subset, use_datasets, cache_data,
-                shift_ratio=-1):
-    del dataset, use_datasets, cache_data, shift_ratio
+                shift_ratio=0):
+    """Get test image batches."""
+    del dataset, use_datasets, cache_data
     if (not hasattr(self, 'fake_images') or
         not hasattr(self, 'fake_labels')):
       raise ValueError('Must call set_fake_data() before calling minibatch '
@@ -782,9 +784,15 @@ class TestImagePreprocessor(object):
     if self.expected_subset is not None:
       assert subset == self.expected_subset
 
+    shift_ratio = shift_ratio or self.shift_ratio
+    fake_images = cnn_util.roll_numpy_batches(self.fake_images, self.batch_size,
+                                              shift_ratio)
+    fake_labels = cnn_util.roll_numpy_batches(self.fake_labels, self.batch_size,
+                                              shift_ratio)
+
     with tf.name_scope('batch_processing'):
       image_slice, label_slice = tf.train.slice_input_producer(
-          [self.fake_images, self.fake_labels],
+          [fake_images, fake_labels],
           shuffle=False,
           name='image_slice')
       raw_images, raw_labels = tf.train.batch(

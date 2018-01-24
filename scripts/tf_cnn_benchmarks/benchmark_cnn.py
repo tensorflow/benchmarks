@@ -431,6 +431,8 @@ def get_data_type(params):
   return tf.float16 if params.use_fp16 else tf.float32
 
 
+# Note that we monkey patch this function in the unit tests. So if this is
+# inlined or renamed, the unit tests must be updated.
 def loss_function(logits, labels, aux_logits):
   """Loss function."""
   with tf.name_scope('xentropy'):
@@ -494,6 +496,10 @@ def get_mode_from_params(params):
   return 'training'
 
 
+# How many digits to show for the loss and accuracies during training.
+LOSS_AND_ACCURACY_DIGITS_TO_SHOW = 3
+
+
 def benchmark_one_step(sess,
                        fetches,
                        step,
@@ -526,11 +532,13 @@ def benchmark_one_step(sess,
   train_time = time.time() - start_time
   step_train_times.append(train_time)
   if step >= 0 and (step == 0 or (step + 1) % params.display_every == 0):
-    log_str = '%i\t%s\t%.3f' % (
-        step + 1, get_perf_timing_str(batch_size, step_train_times), lossval)
+    log_str = '%i\t%s\t%.*f' % (
+        step + 1, get_perf_timing_str(batch_size, step_train_times),
+        LOSS_AND_ACCURACY_DIGITS_TO_SHOW, lossval)
     if 'top_1_accuracy' in results:
-      log_str += '\t%.3f\t%.3f' % (results['top_1_accuracy'],
-                                   results['top_5_accuracy'])
+      log_str += '\t%.*f\t%.*f' % (
+          LOSS_AND_ACCURACY_DIGITS_TO_SHOW, results['top_1_accuracy'],
+          LOSS_AND_ACCURACY_DIGITS_TO_SHOW, results['top_5_accuracy'])
     log_fn(log_str)
   if trace_filename and step == -1:
     log_fn('Dumping trace to %s' % trace_filename)
@@ -771,22 +779,46 @@ def get_learning_rate(params, global_step, num_examples_per_epoch, model,
   return learning_rate
 
 
+def get_optimizer(params, learning_rate):
+  """Returns the optimizer that should be used based on params."""
+  if params.optimizer == 'momentum':
+    opt = tf.train.MomentumOptimizer(
+        learning_rate, params.momentum, use_nesterov=True)
+  elif params.optimizer == 'sgd':
+    opt = tf.train.GradientDescentOptimizer(learning_rate)
+  elif params.optimizer == 'rmsprop':
+    opt = tf.train.RMSPropOptimizer(
+        learning_rate,
+        params.rmsprop_decay,
+        momentum=params.rmsprop_momentum,
+        epsilon=params.rmsprop_epsilon)
+  else:
+    raise ValueError('Optimizer "%s" was not recognized',
+                     params.optimizer)
+  return opt
+
+
 class BenchmarkCNN(object):
   """Class for benchmarking a cnn network."""
 
-  def __init__(self, params):
+  def __init__(self, params, dataset=None, model=None):
     """Initialize BenchmarkCNN.
 
     Args:
       params: Params tuple, typically created by make_params or
               make_params_from_flags.
+      dataset: If not None, the dataset to use. Otherwise, params is used to
+               obtain the dataset.
+      model: If not None, the model to use. Otherwise, params is used to obtain
+             the model.
     Raises:
       ValueError: Unsupported params settings.
     """
     self.params = params
-    self.dataset = datasets.create_dataset(self.params.data_dir,
-                                           self.params.data_name)
-    self.model = model_config.get_model_config(self.params.model, self.dataset)
+    self.dataset = dataset or datasets.create_dataset(self.params.data_dir,
+                                                      self.params.data_name)
+    self.model = model or model_config.get_model_config(self.params.model,
+                                                        self.dataset)
     self.trace_filename = self.params.trace_file
     self.data_format = self.params.data_format
     self.enable_layout_optimizer = self.params.enable_layout_optimizer
@@ -1196,6 +1228,13 @@ class BenchmarkCNN(object):
     variable_mgr_init_ops = [local_var_init_op]
     with tf.control_dependencies([local_var_init_op]):
       variable_mgr_init_ops.extend(self.variable_mgr.get_post_init_ops())
+    if (not self.single_session and self.job_name and
+        self.params.cross_replica_sync):
+      # Ensure all workers execute variable_mgr_init_ops before they start
+      # executing the model.
+      variable_mgr_init_ops.append(
+          self.add_sync_queues_and_barrier('init_ops_end_',
+                                           variable_mgr_init_ops))
     local_var_init_op_group = tf.group(*variable_mgr_init_ops)
 
     summary_op = tf.summary.merge_all()
@@ -1526,21 +1565,7 @@ class BenchmarkCNN(object):
           clipped_grads = avg_grads
 
         learning_rate = tf.identity(learning_rate, name='learning_rate')
-        if self.params.optimizer == 'momentum':
-          opt = tf.train.MomentumOptimizer(
-              learning_rate, self.params.momentum, use_nesterov=True)
-        elif self.params.optimizer == 'sgd':
-          opt = tf.train.GradientDescentOptimizer(learning_rate)
-        elif self.params.optimizer == 'rmsprop':
-          opt = tf.train.RMSPropOptimizer(
-              learning_rate,
-              self.params.rmsprop_decay,
-              momentum=self.params.rmsprop_momentum,
-              epsilon=self.params.rmsprop_epsilon)
-        else:
-          raise ValueError('Optimizer "%s" was not recognized',
-                           self.params.optimizer)
-
+        opt = get_optimizer(self.params, learning_rate)
         loss_scale_params = variable_mgr_util.AutoLossScaleParams(
             enable_auto_loss_scale=self.enable_auto_loss_scale,
             loss_scale=self.loss_scale,
@@ -1747,7 +1772,9 @@ class BenchmarkCNN(object):
       with tf.variable_scope('cg', custom_getter=network.get_custom_getter()):
         self.model.add_inference(network)
         # Add the final fully-connected class layer
-        logits = network.affine(nclass, activation='linear')
+        logits = (network.affine(nclass, activation='linear')
+                  if not self.model.skip_final_affine_layer()
+                  else network.top_layer)
         aux_logits = None
         if network.aux_top_layer is not None:
           with network.switch_to_aux_top_layer():
@@ -1771,7 +1798,8 @@ class BenchmarkCNN(object):
       if not phase_train:
         results['logits'] = logits
         return results
-      loss = loss_function(logits, labels, aux_logits=aux_logits)
+      loss_func = self.model.loss_function or loss_function
+      loss = loss_func(logits, labels, aux_logits=aux_logits)
       params = self.variable_mgr.trainable_variables_on_device(
           rel_device_num, abs_device_num)
       if data_type == tf.float16 and self.params.fp16_vars:

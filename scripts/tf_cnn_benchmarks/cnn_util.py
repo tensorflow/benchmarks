@@ -20,6 +20,7 @@ import sys
 import threading
 
 from absl import flags
+import numpy as np
 import tensorflow as tf
 flags.DEFINE_boolean('use_python32_barrier', False,
                      """When on, use threading.Barrier at python 3.2.""")
@@ -43,6 +44,34 @@ def log_fn(log):
   print(log)
   if FLAGS.flush_stdout:
     sys.stdout.flush()
+
+
+def roll_numpy_batches(array, batch_size, shift_ratio):
+  """Moves a proportion of batches from start to the end of the array.
+
+  This function moves a proportion of batches, specified by `shift_ratio`, from
+  the starts of the array to the end. The number of batches moved is rounded
+  down to the nearest integer. For example,
+
+  ```
+  roll_numpy_batches([1, 2, 3, 4, 5, 6], 2, 0.34) == [3, 4, 5, 6, 1, 2]
+  ```
+
+  Args:
+    array: A Numpy array whose first dimension is the batch dimension.
+    batch_size: The batch size.
+    shift_ratio: Proportion of batches to move from the start of the array to
+      the end of the array.
+  Returns:
+    A new Numpy array, with a proportion of the batches at the start of `array`
+    moved to the end.
+  """
+  num_items = array.shape[0]
+  assert num_items % batch_size == 0
+  num_batches = num_items // batch_size
+  starting_batch = int(num_batches * shift_ratio)
+  starting_item = starting_batch * batch_size
+  return np.roll(array, -starting_item, axis=0)
 
 
 # For Python 2.7 compatibility, we do not use threading.Barrier.
