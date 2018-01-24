@@ -18,16 +18,12 @@
 import cnn_util
 
 
-def get_platform_params():
-  """Returns a dict of platform-specific params.
+def define_platform_params():
+  """Defines platform-specific parameters.
 
-  No platform-specific flags are needed for the default platform, so this
-  returns an empty dict.
-
-  Returns:
-    A dict that maps from param name to ParamSpec.
+  Currently there are no platform-specific parameters to be defined.
   """
-  return {}
+  pass
 
 
 def get_cluster_manager(params, config_proto):

@@ -27,7 +27,7 @@ import os
 import threading
 import time
 
-from absl import flags
+from absl import flags as absl_flags
 import numpy as np
 
 import six
@@ -46,412 +46,327 @@ import benchmark_storage
 import cnn_util
 import convnet_builder
 import datasets
+import flags
 import variable_mgr
 import variable_mgr_util
 from cnn_util import log_fn
-from cnn_util import ParamSpec
 from models import model_config
 from platforms import util as platforms_util
 
 
 _DEFAULT_NUM_BATCHES = 100
 
+# TODO(reedwm): add upper_bound and lower_bounds to appropriate integer and
+# float flags, and change certain string flags to enum flags.
 
-# _DEFAULT_PARAMS maps from each parameter's name to its ParamSpec. For each
-# parameter listed here, a command line flag will be defined for
-# tf_cnn_benchmarks.py.
-_DEFAULT_PARAMS = {
-    'model':
-        ParamSpec('string', 'trivial', 'name of the model to run'),
+flags.DEFINE_string('model', 'trivial', 'name of the model to run')
 
-    # The code will first check if it's running under benchmarking mode
-    # or evaluation mode, depending on 'eval':
-    # Under the evaluation mode, this script will read a saved model,
-    #   and compute the accuracy of the model against a validation dataset.
-    #   Additional ops for accuracy and top_k predictors are only used under
-    #   this mode.
-    # Under the benchmarking mode, user can specify whether nor not to use
-    #   the forward-only option, which will only compute the loss function.
-    #   forward-only cannot be enabled with eval at the same time.
-    'eval':
-        ParamSpec('boolean', False, 'whether use eval or benchmarking'),
-    'eval_interval_secs':
-        ParamSpec('integer', 0,
-                  'How often to run eval on saved checkpoints. Usually the '
-                  'same as save_model_secs from the corresponding training '
-                  'run. Pass 0 to eval only once.'),
-    'forward_only':
-        ParamSpec('boolean', False,
-                  'whether use forward-only or training for benchmarking'),
-    'print_training_accuracy':
-        ParamSpec('boolean', False,
-                  'whether to calculate and print training accuracy during '
-                  'training'),
-    'batch_size':
-        ParamSpec('integer', 0, 'batch size per compute device'),
-    'batch_group_size':
-        ParamSpec('integer', 1,
-                  'number of groups of batches processed in the image '
-                  'producer.'),
-    'num_batches':
-        ParamSpec('integer', None, 'number of batches to run, excluding '
-                  'warmup. Defaults to %d' % _DEFAULT_NUM_BATCHES),
-    'num_epochs':
-        ParamSpec('float', None, 'number of epochs to run, excluding warmup. '
-                  'This and --num_batches cannot both be specified.'),
-    'num_warmup_batches':
-        ParamSpec('integer', None, 'number of batches to run before timing'),
-    'autotune_threshold':
-        ParamSpec('integer', None, 'The autotune threshold for the models'),
-    'num_gpus':
-        ParamSpec('integer', 1, 'the number of GPUs to run on'),
-    'gpu_indices':
-        ParamSpec('string', '', 'indices of worker GPUs in ring order'),
-    'display_every':
-        ParamSpec('integer', 10,
-                  'Number of local steps after which progress is printed out'),
-    'data_dir':
-        ParamSpec('string', None,
-                  'Path to dataset in TFRecord format (aka Example '
-                  'protobufs). If not specified, synthetic data will be '
-                  'used.'),
-    'data_name':
-        ParamSpec('string', None,
-                  'Name of dataset: imagenet or cifar10. If not specified, it '
-                  'is automatically guessed based on data_dir.'),
-    'resize_method':
-        ParamSpec('string', 'bilinear',
-                  'Method for resizing input images: crop, nearest, bilinear, '
-                  'bicubic, area, or round_robin. The `crop` mode requires '
-                  'source images to be at least as large as the network input '
-                  'size. The `round_robin` mode applies different resize '
-                  'methods based on position in a batch in a round-robin '
-                  'fashion. Other modes support any sizes and apply random '
-                  'bbox distortions before resizing (even with '
-                  'distortions=False).'),
-    'distortions':
-        ParamSpec('boolean', True,
-                  'Enable/disable distortions during image preprocessing. '
-                  'These include bbox and color distortions.'),
-    'use_datasets':
-        ParamSpec('boolean', True, 'Enable use of datasets for input pipeline'),
-    'gpu_thread_mode':
-        ParamSpec('string', 'gpu_private',
-                  'Methods to assign GPU host work to threads. '
-                  'global: all GPUs and CPUs share the same global threads; '
-                  'gpu_private: a private threadpool for each GPU; '
-                  'gpu_shared: all GPUs share the same threadpool.'),
-    'per_gpu_thread_count':
-        ParamSpec('integer', 0, 'The number of threads to use for GPU.'
-                  'Only valid when gpu_thread_mode is not global.'),
-    'hierarchical_copy':
-        ParamSpec('boolean', False, 'Use hierarchical copies'),
-    'cache_data':
-        ParamSpec('boolean', False,
-                  'Enable use of a special datasets pipeline that reads a '
-                  'single TFRecord into memory and repeats it infinitely many '
-                  'times. The purpose of this flag is to make it possible '
-                  'to write regression tests that are not bottlenecked by CNS '
-                  'throughput.'),
-    'local_parameter_device':
-        ParamSpec('string', 'gpu',
-                  'Device to use as parameter server: cpu or gpu. For '
-                  'distributed training, it can affect where caching of '
-                  'variables happens.'),
-    'device':
-        ParamSpec('string', 'gpu', 'Device to use for computation: cpu or gpu'),
-    'data_format':
-        ParamSpec('string', 'NCHW',
-                  'Data layout to use: NHWC (TF native) or NCHW (cuDNN '
-                  'native, requires GPU).'),
-    'num_intra_threads':
-        ParamSpec('integer', 1,
-                  'Number of threads to use for intra-op parallelism. If set '
-                  'to 0, the system will pick an appropriate number.'),
-    'num_inter_threads':
-        ParamSpec('integer', 0,
-                  'Number of threads to use for inter-op parallelism. If set '
-                  'to 0, the system will pick an appropriate number.'),
-    'trace_file':
-        ParamSpec('string', '',
-                  'Enable TensorFlow tracing and write trace to this file.'),
-    'graph_file':
-        ParamSpec('string', None,
-                  'Write the model\'s graph definition to this file. Defaults '
-                  'to binary format unless filename ends in "txt".'),
-    'optimizer':
-        ParamSpec('string', 'sgd',
-                  'Optimizer to use: momentum or sgd or rmsprop'),
-    'learning_rate':
-        ParamSpec('float', None, 'Initial learning rate for training.'),
-    'piecewise_learning_rate_schedule':
-        ParamSpec('string', None,
-                  'Specifies a piecewise learning rate schedule based on the '
-                  'number of epochs. This is the form LR0;E1;LR1;...;En;LRn, '
-                  'where each LRi is a learning rate and each Ei is an epoch '
-                  'indexed from 0. The learning rate is LRi if the '
-                  'E(i-1) <= current_epoch < Ei. For example, if this '
-                  'paramater is 0.3;10;0.2;25;0.1, the learning rate is 0.3 '
-                  'for the first 10 epochs, then is 0.2 for the next 15 '
-                  'epochs, then is 0.1 until training ends.'),
-    'num_epochs_per_decay':
-        ParamSpec('float', 0,
-                  'Steps after which learning rate decays. If 0, the learning '
-                  'rate does not decay.'),
-    'learning_rate_decay_factor':
-        ParamSpec('float', 0,
-                  'Learning rate decay factor. Decay by this factor every '
-                  '`num_epochs_per_decay` epochs. If 0, learning rate does '
-                  'not decay.'),
-    'minimum_learning_rate':
-        ParamSpec('float', 0,
-                  'The minimum learning rate. The learning rate will '
-                  'never decay past this value. Requires `learning_rate`, '
-                  '`num_epochs_per_decay` and `learning_rate_decay_factor` to '
-                  'be set.'),
-    'momentum':
-        ParamSpec('float', 0.9, 'Momentum for training.'),
-    'rmsprop_decay':
-        ParamSpec('float', 0.9, 'Decay term for RMSProp.'),
-    'rmsprop_momentum':
-        ParamSpec('float', 0.9, 'Momentum in RMSProp.'),
-    'rmsprop_epsilon':
-        ParamSpec('float', 1.0, 'Epsilon term for RMSProp.'),
-    'gradient_clip':
-        ParamSpec('float', None,
-                  'Gradient clipping magnitude. Disabled by default.'),
-    'weight_decay':
-        ParamSpec('float', 0.00004, 'Weight decay factor for training.'),
-    'gpu_memory_frac_for_testing':
-        ParamSpec('float', 0,
-                  'If non-zero, the fraction of GPU memory that will be used. '
-                  'Useful for testing the benchmark script, as this allows '
-                  'distributed mode to be run on a single machine. For '
-                  'example, if there are two tasks, each can be allocated '
-                  '~40 percent of the memory on a single machine'),
-    'use_tf_layers':
-        ParamSpec('boolean', True,
-                  'If True, use tf.layers for neural network layers. This '
-                  'should not affect performance or accuracy in any way.'),
-    'tf_random_seed':
-        ParamSpec('integer', 1234,
-                  'The TensorFlow random seed. Useful for debugging NaNs, as '
-                  'this can be set to various values to see if the NaNs '
-                  'depend on the seed.'),
-    'debugger':
-        ParamSpec('string', None,
-                  'If set, use the TensorFlow debugger. If set to "cli", use '
-                  'the local CLI debugger. Otherwise, this must be in the form '
-                  'hostname:port (e.g., localhost:7007), in which case the '
-                  'experimental TensorBoard debugger will be used'),
+# The code will first check if it's running under benchmarking mode
+# or evaluation mode, depending on 'eval':
+# Under the evaluation mode, this script will read a saved model,
+#   and compute the accuracy of the model against a validation dataset.
+#   Additional ops for accuracy and top_k predictors are only used under
+#   this mode.
+# Under the benchmarking mode, user can specify whether nor not to use
+#   the forward-only option, which will only compute the loss function.
+#   forward-only cannot be enabled with eval at the same time.
+flags.DEFINE_boolean('eval', False, 'whether use eval or benchmarking')
+flags.DEFINE_integer('eval_interval_secs', 0,
+                     'How often to run eval on saved checkpoints. Usually the '
+                     'same as save_model_secs from the corresponding training '
+                     'run. Pass 0 to eval only once.')
+flags.DEFINE_boolean('forward_only', False,
+                     'whether use forward-only or training for benchmarking')
+flags.DEFINE_boolean('print_training_accuracy', False,
+                     'whether to calculate and print training accuracy during '
+                     'training')
+flags.DEFINE_integer('batch_size', 0, 'batch size per compute device')
+flags.DEFINE_integer('batch_group_size', 1,
+                     'number of groups of batches processed in the image '
+                     'producer.')
+flags.DEFINE_integer('num_batches', None, 'number of batches to run, excluding '
+                     'warmup. Defaults to %d' % _DEFAULT_NUM_BATCHES)
+flags.DEFINE_float('num_epochs', None,
+                   'number of epochs to run, excluding warmup. '
+                   'This and --num_batches cannot both be specified.')
+flags.DEFINE_integer('num_warmup_batches', None,
+                     'number of batches to run before timing')
+flags.DEFINE_integer('autotune_threshold', None,
+                     'The autotune threshold for the models')
+flags.DEFINE_integer('num_gpus', 1, 'the number of GPUs to run on')
+flags.DEFINE_string('gpu_indices', '', 'indices of worker GPUs in ring order')
+flags.DEFINE_integer('display_every', 10,
+                     'Number of local steps after which progress is printed '
+                     'out')
+flags.DEFINE_string('data_dir', None,
+                    'Path to dataset in TFRecord format (aka Example '
+                    'protobufs). If not specified, synthetic data will be '
+                    'used.')
+flags.DEFINE_string('data_name', None,
+                    'Name of dataset: imagenet or cifar10. If not specified, '
+                    'it is automatically guessed based on data_dir.')
+flags.DEFINE_string('resize_method', 'bilinear',
+                    'Method for resizing input images: crop, nearest, '
+                    'bilinear, bicubic, area, or round_robin. The `crop` mode '
+                    'requires source images to be at least as large as the '
+                    'network input size. The `round_robin` mode applies '
+                    'different resize methods based on position in a batch in '
+                    'a round-robin fashion. Other modes support any sizes and '
+                    'apply random bbox distortions before resizing (even with '
+                    'distortions=False).')
+flags.DEFINE_boolean('distortions', True,
+                     'Enable/disable distortions during image preprocessing. '
+                     'These include bbox and color distortions.')
+flags.DEFINE_boolean('use_datasets', True,
+                     'Enable use of datasets for input pipeline')
+flags.DEFINE_string('gpu_thread_mode', 'gpu_private',
+                    'Methods to assign GPU host work to threads. '
+                    'global: all GPUs and CPUs share the same global threads; '
+                    'gpu_private: a private threadpool for each GPU; '
+                    'gpu_shared: all GPUs share the same threadpool.')
+flags.DEFINE_integer('per_gpu_thread_count', 0,
+                     'The number of threads to use for GPU. Only valid when '
+                     'gpu_thread_mode is not global.')
+flags.DEFINE_boolean('hierarchical_copy', False, 'Use hierarchical copies')
+flags.DEFINE_boolean('cache_data', False,
+                     'Enable use of a special datasets pipeline that reads a '
+                     'single TFRecord into memory and repeats it infinitely '
+                     'many times. The purpose of this flag is to make it '
+                     'possible to write regression tests that are not '
+                     'bottlenecked by CNS throughput.')
+flags.DEFINE_string('local_parameter_device', 'gpu',
+                    'Device to use as parameter server: cpu or gpu. For '
+                    'distributed training, it can affect where caching of '
+                    'variables happens.')
+flags.DEFINE_string('device', 'gpu',
+                    'Device to use for computation: cpu or gpu')
+flags.DEFINE_string('data_format', 'NCHW',
+                    'Data layout to use: NHWC (TF native) or NCHW (cuDNN '
+                    'native, requires GPU).')
+flags.DEFINE_integer('num_intra_threads', 1,
+                     'Number of threads to use for intra-op parallelism. If '
+                     'set to 0, the system will pick an appropriate number.')
+flags.DEFINE_integer('num_inter_threads', 0,
+                     'Number of threads to use for inter-op parallelism. If '
+                     'set to 0, the system will pick an appropriate number.')
+flags.DEFINE_string('trace_file', '',
+                    'Enable TensorFlow tracing and write trace to this file.')
+flags.DEFINE_string('graph_file', None,
+                    'Write the model\'s graph definition to this file. '
+                    'Defaults to binary format unless filename ends in "txt".')
+flags.DEFINE_string('optimizer', 'sgd',
+                    'Optimizer to use: momentum or sgd or rmsprop')
+flags.DEFINE_float('learning_rate', None,
+                   'Initial learning rate for training.')
+flags.DEFINE_string('piecewise_learning_rate_schedule', None,
+                    'Specifies a piecewise learning rate schedule based on the '
+                    'number of epochs. This is the form LR0;E1;LR1;...;En;LRn, '
+                    'where each LRi is a learning rate and each Ei is an epoch '
+                    'indexed from 0. The learning rate is LRi if the '
+                    'E(i-1) <= current_epoch < Ei. For example, if this '
+                    'paramater is 0.3;10;0.2;25;0.1, the learning rate is 0.3 '
+                    'for the first 10 epochs, then is 0.2 for the next 15 '
+                    'epochs, then is 0.1 until training ends.')
+flags.DEFINE_float('num_epochs_per_decay', 0,
+                   'Steps after which learning rate decays. If 0, the learning '
+                   'rate does not decay.')
+flags.DEFINE_float('learning_rate_decay_factor', 0,
+                   'Learning rate decay factor. Decay by this factor every '
+                   '`num_epochs_per_decay` epochs. If 0, learning rate does '
+                   'not decay.')
+flags.DEFINE_float('minimum_learning_rate', 0,
+                   'The minimum learning rate. The learning rate will '
+                   'never decay past this value. Requires `learning_rate`, '
+                   '`num_epochs_per_decay` and `learning_rate_decay_factor` to '
+                   'be set.')
+flags.DEFINE_float('momentum', 0.9, 'Momentum for training.')
+flags.DEFINE_float('rmsprop_decay', 0.9, 'Decay term for RMSProp.')
+flags.DEFINE_float('rmsprop_momentum', 0.9, 'Momentum in RMSProp.')
+flags.DEFINE_float('rmsprop_epsilon', 1.0, 'Epsilon term for RMSProp.')
+flags.DEFINE_float('gradient_clip', None,
+                   'Gradient clipping magnitude. Disabled by default.')
+flags.DEFINE_float('weight_decay', 0.00004,
+                   'Weight decay factor for training.')
+flags.DEFINE_float('gpu_memory_frac_for_testing', 0,
+                   'If non-zero, the fraction of GPU memory that will be used. '
+                   'Useful for testing the benchmark script, as this allows '
+                   'distributed mode to be run on a single machine. For '
+                   'example, if there are two tasks, each can be allocated '
+                   '~40 percent of the memory on a single machine',
+                   lower_bound=0., upper_bound=1.)
+flags.DEFINE_boolean('use_tf_layers', True,
+                     'If True, use tf.layers for neural network layers. This '
+                     'should not affect performance or accuracy in any way.')
+flags.DEFINE_integer('tf_random_seed', 1234,
+                     'The TensorFlow random seed. Useful for debugging NaNs, '
+                     'as this can be set to various values to see if the NaNs '
+                     'depend on the seed.')
+flags.DEFINE_string('debugger', None,
+                    'If set, use the TensorFlow debugger. If set to "cli", use '
+                    'the local CLI debugger. Otherwise, this must be in the '
+                    'form hostname:port (e.g., localhost:7007) in which case '
+                    'the experimental TensorBoard debugger will be used')
 
-    # Performance tuning parameters.
-    'winograd_nonfused':
-        ParamSpec('boolean', True,
-                  'Enable/disable using the Winograd non-fused algorithms.'),
-    'sync_on_finish':
-        ParamSpec('boolean', False,
-                  'Enable/disable whether the devices are synced after each '
-                  'step.'),
-    'staged_vars':
-        ParamSpec('boolean', False,
-                  'whether the variables are staged from the main '
-                  'computation'),
-    'force_gpu_compatible':
-        ParamSpec('boolean', True,
-                  'whether to enable force_gpu_compatible in GPU_Options'),
-    'xla':
-        ParamSpec('boolean', False, 'whether to enable XLA'),
-    'fuse_decode_and_crop':
-        ParamSpec('boolean', True,
-                  'Fuse decode_and_crop for image preprocessing.'),
-    'distort_color_in_yiq':
-        ParamSpec('boolean', True,
-                  'Distort color of input images in YIQ space.'),
-    'enable_layout_optimizer':
-        ParamSpec('boolean', False, 'whether to enable layout optimizer'),
-    'rewriter_config':
-        ParamSpec('string', None, 'Config for graph optimizers, described '
-                  'as a RewriterConfig proto buffer.'),
-    # Performance tuning specific to MKL.
-    'mkl':
-        ParamSpec('boolean', False, 'If true, set MKL environment variables.'),
-    'kmp_blocktime':
-        ParamSpec('integer', 30,
-                  'The time, in milliseconds, that a thread should wait, '
-                  'after completing the execution of a parallel region, '
-                  'before sleeping'),
-    'kmp_affinity':
-        ParamSpec('string', 'granularity=fine,verbose,compact,1,0',
-                  'Restricts execution of certain threads (virtual execution '
-                  'units) to a subset of the physical processing units in a '
-                  'multiprocessor computer.'),
-    'kmp_settings':
-        ParamSpec('integer', 1, 'If set to 1, MKL settings will be printed.'),
+# Performance tuning parameters.
+flags.DEFINE_boolean('winograd_nonfused', True,
+                     'Enable/disable using the Winograd non-fused algorithms.')
+flags.DEFINE_boolean('sync_on_finish', False,
+                     'Enable/disable whether the devices are synced after each '
+                     'step.')
+flags.DEFINE_boolean('staged_vars', False,
+                     'whether the variables are staged from the main '
+                     'computation')
+flags.DEFINE_boolean('force_gpu_compatible', True,
+                     'whether to enable force_gpu_compatible in GPU_Options')
+flags.DEFINE_boolean('xla', False, 'whether to enable XLA')
+flags.DEFINE_boolean('fuse_decode_and_crop', True,
+                     'Fuse decode_and_crop for image preprocessing.')
+flags.DEFINE_boolean('distort_color_in_yiq', True,
+                     'Distort color of input images in YIQ space.')
+flags.DEFINE_boolean('enable_layout_optimizer', False,
+                     'whether to enable layout optimizer')
+flags.DEFINE_string('rewriter_config', None,
+                    'Config for graph optimizers, described as a '
+                    'RewriterConfig proto buffer.')
+# Performance tuning specific to MKL.
+flags.DEFINE_boolean('mkl', False, 'If true, set MKL environment variables.')
+flags.DEFINE_integer('kmp_blocktime', 30,
+                     'The time, in milliseconds, that a thread should wait, '
+                     'after completing the execution of a parallel region, '
+                     'before sleeping')
+flags.DEFINE_string('kmp_affinity', 'granularity=fine,verbose,compact,1,0',
+                    'Restricts execution of certain threads (virtual execution '
+                    'units) to a subset of the physical processing units in a '
+                    'multiprocessor computer.')
+flags.DEFINE_integer('kmp_settings', 1,
+                     'If set to 1, MKL settings will be printed.')
 
-    # fp16 parameters. If use_fp16=False, no other fp16 parameters apply.
-    'use_fp16':
-        ParamSpec('boolean', False,
-                  'Use 16-bit floats for certain tensors instead of 32-bit '
-                  'floats. This is currently experimental.'),
-    # TODO(reedwm): The default loss scale of 128 causes most models to diverge
-    # on the second step with synthetic data. Changing the tf.set_random_seed
-    # call to tf.set_random_seed(1235) or most other seed values causes the
-    # issue not to occur.
-    'fp16_loss_scale':
-        ParamSpec('float', None,
-                  'If fp16 is enabled, the loss is multiplied by this amount '
-                  'right before gradients are computed, then each gradient '
-                  'is divided by this amount. Mathematically, this has no '
-                  'effect, but it helps avoid fp16 underflow. Set to 1 to '
-                  'effectively disable.'),
-    'fp16_vars':
-        ParamSpec('boolean', False,
-                  'If fp16 is enabled, also use fp16 for variables. If False, '
-                  'the variables are stored in fp32 and casted to fp16 when '
-                  'retrieved.  Recommended to leave as False.'),
-    'fp16_enable_auto_loss_scale':
-        ParamSpec('boolean', False,
-                  'If True and use_fp16 is True, automatically adjust the loss'
-                  ' scale during training.'),
-    'fp16_inc_loss_scale_every_n':
-        ParamSpec('integer', 1000,
-                  'If fp16 is enabled and fp16_enable_auto_loss_scale is True,'
-                  ' increase the loss scale every n steps.'),
+# fp16 parameters. If use_fp16=False, no other fp16 parameters apply.
+flags.DEFINE_boolean('use_fp16', False,
+                     'Use 16-bit floats for certain tensors instead of 32-bit '
+                     'floats. This is currently experimental.')
+# TODO(reedwm): The default loss scale of 128 causes most models to diverge
+# on the second step with synthetic data. Changing the tf.set_random_seed
+# call to tf.set_random_seed(1235) or most other seed values causes the
+# issue not to occur.
+flags.DEFINE_float('fp16_loss_scale', None,
+                   'If fp16 is enabled, the loss is multiplied by this amount '
+                   'right before gradients are computed, then each gradient '
+                   'is divided by this amount. Mathematically, this has no '
+                   'effect, but it helps avoid fp16 underflow. Set to 1 to '
+                   'effectively disable.')
+flags.DEFINE_boolean('fp16_vars', False,
+                     'If fp16 is enabled, also use fp16 for variables. If '
+                     'False, the variables are stored in fp32 and casted to '
+                     'fp16 when retrieved.  Recommended to leave as False.')
+flags.DEFINE_boolean('fp16_enable_auto_loss_scale', False,
+                     'If True and use_fp16 is True, automatically adjust the '
+                     'loss scale during training.')
+flags.DEFINE_integer('fp16_inc_loss_scale_every_n', 1000,
+                     'If fp16 is enabled and fp16_enable_auto_loss_scale is '
+                     'True, increase the loss scale every n steps.')
 
-    # The method for managing variables:
-    #   parameter_server: variables are stored on a parameter server that holds
-    #       the master copy of the variable. In local execution, a local device
-    #       acts as the parameter server for each variable; in distributed
-    #       execution, the parameter servers are separate processes in the
-    #       cluster.
-    #       For each step, each tower gets a copy of the variables from the
-    #       parameter server, and sends its gradients to the param server.
-    #   replicated: each GPU has its own copy of the variables. To apply
-    #       gradients, an all_reduce algorithm or or regular cross-device
-    #       aggregation is used to replicate the combined gradients to all
-    #       towers (depending on all_reduce_spec parameter setting).
-    #   independent: each GPU has its own copy of the variables, and gradients
-    #       are not shared between towers. This can be used to check performance
-    #       when no data is moved between GPUs.
-    #   distributed_replicated: Distributed training only. Each GPU has a copy
-    #       of the variables, and updates its copy after the parameter servers
-    #       are all updated with the gradients from all servers. Only works with
-    #       cross_replica_sync=true. Unlike 'replicated', currently never uses
-    #       nccl all-reduce for replicating within a server.
-    #   distributed_all_reduce: Distributed training where all replicas run
-    #       in a single session, using all-reduce to mutally reduce the
-    #       gradients.  Uses no parameter servers.  When there is only one
-    #       worker, this is the same as replicated.
-    'variable_update':
-        ParamSpec('string', 'parameter_server',
-                  'The method for managing variables: parameter_server, '
-                  'replicated, distributed_replicated, independent, '
-                  'distributed_all_reduce'),
-    'all_reduce_spec':
-        ParamSpec('string', None,
-                  'A specification of the all_reduce algorithm to be used for '
-                  'reducing gradients.  For more details, see '
-                  'parse_all_reduce_spec in variable_mgr.py.  An '
-                  'all_reduce_spec has BNF form:\n'
-                  'int ::= positive whole number\n'
-                  'g_int ::= int[KkMGT]?\n'
-                  'alg_spec ::= alg | alg#int\n'
-                  'range_spec ::= alg_spec | alg_spec/alg_spec\n'
-                  'spec ::= range_spec | range_spec:g_int:range_spec\n'
-                  'NOTE: not all syntactically correct constructs are '
-                  'supported.\n\n'
-                  'Examples:\n '
-                  '"xring" == use one global ring reduction for all '
-                  'tensors\n'
-                  '"pscpu" == use CPU at worker 0 to reduce all tensors\n'
-                  '"nccl" == use NCCL to locally reduce all tensors.  '
-                  'Limited to 1 worker.\n'
-                  '"nccl/xring" == locally (to one worker) reduce values '
-                  'using NCCL then ring reduce across workers.\n'
-                  '"pscpu:32k:xring" == use pscpu algorithm for tensors of '
-                  'size up to 32kB, then xring for larger tensors.'),
+# The method for managing variables:
+#   parameter_server: variables are stored on a parameter server that holds
+#       the master copy of the variable. In local execution, a local device
+#       acts as the parameter server for each variable; in distributed
+#       execution, the parameter servers are separate processes in the
+#       cluster.
+#       For each step, each tower gets a copy of the variables from the
+#       parameter server, and sends its gradients to the param server.
+#   replicated: each GPU has its own copy of the variables. To apply
+#       gradients, an all_reduce algorithm or or regular cross-device
+#       aggregation is used to replicate the combined gradients to all
+#       towers (depending on all_reduce_spec parameter setting).
+#   independent: each GPU has its own copy of the variables, and gradients
+#       are not shared between towers. This can be used to check performance
+#       when no data is moved between GPUs.
+#   distributed_replicated: Distributed training only. Each GPU has a copy
+#       of the variables, and updates its copy after the parameter servers
+#       are all updated with the gradients from all servers. Only works with
+#       cross_replica_sync=true. Unlike 'replicated', currently never uses
+#       nccl all-reduce for replicating within a server.
+#   distributed_all_reduce: Distributed training where all replicas run
+#       in a single session, using all-reduce to mutally reduce the
+#       gradients.  Uses no parameter servers.  When there is only one
+#       worker, this is the same as replicated.
+flags.DEFINE_string('variable_update', 'parameter_server',
+                    'The method for managing variables: parameter_server, '
+                    'replicated, distributed_replicated, independent, '
+                    'distributed_all_reduce')
+flags.DEFINE_string('all_reduce_spec', None,
+                    'A specification of the all_reduce algorithm to be used '
+                    'for reducing gradients.  For more details, see '
+                    'parse_all_reduce_spec in variable_mgr.py.  An '
+                    'all_reduce_spec has BNF form:\n'
+                    'int ::= positive whole number\n'
+                    'g_int ::= int[KkMGT]?\n'
+                    'alg_spec ::= alg | alg#int\n'
+                    'range_spec ::= alg_spec | alg_spec/alg_spec\n'
+                    'spec ::= range_spec | range_spec:g_int:range_spec\n'
+                    'NOTE: not all syntactically correct constructs are '
+                    'supported.\n\n'
+                    'Examples:\n '
+                    '"xring" == use one global ring reduction for all '
+                    'tensors\n'
+                    '"pscpu" == use CPU at worker 0 to reduce all tensors\n'
+                    '"nccl" == use NCCL to locally reduce all tensors.  '
+                    'Limited to 1 worker.\n'
+                    '"nccl/xring" == locally (to one worker) reduce values '
+                    'using NCCL then ring reduce across workers.\n'
+                    '"pscpu:32k:xring" == use pscpu algorithm for tensors of '
+                    'size up to 32kB, then xring for larger tensors.')
 
-    # If variable_update==distributed_all_reduce then it may be advantageous
-    # to aggregate small tensors into one prior to reduction.  These parameters
-    # control that aggregation.
-    'agg_small_grads_max_bytes':
-        ParamSpec('integer', 0, 'If > 0, try to aggregate tensors of less '
-                  'than this number of bytes prior to all-reduce.'),
-    'agg_small_grads_max_group':
-        ParamSpec('integer', 10, 'When aggregating small tensors for '
-                  'all-reduce do not aggregate more than this many into one '
-                  'new tensor.'),
+# If variable_update==distributed_all_reduce then it may be advantageous
+# to aggregate small tensors into one prior to reduction.  These parameters
+# control that aggregation.
+flags.DEFINE_integer('agg_small_grads_max_bytes', 0,
+                     'If > 0, try to aggregate tensors of less than this '
+                     'number of bytes prior to all-reduce.')
+flags.DEFINE_integer('agg_small_grads_max_group', 10,
+                     'When aggregating small tensors for all-reduce do not '
+                     'aggregate more than this many into one new tensor.')
 
-    # Distributed training parameters.
-    'job_name':
-        ParamSpec('string', '',
-                  'One of "ps", "worker", "".  Empty for local training'),
-    'ps_hosts':
-        ParamSpec('string', '', 'Comma-separated list of target hosts'),
-    'worker_hosts':
-        ParamSpec('string', '', 'Comma-separated list of target hosts'),
-    'controller_host':
-        ParamSpec('string', None, 'optional controller host'),
-    'task_index':
-        ParamSpec('integer', 0, 'Index of task within the job'),
-    'server_protocol':
-        ParamSpec('string', 'grpc', 'protocol for servers'),
-    'cross_replica_sync':
-        ParamSpec('boolean', True, ''),
+# Distributed training parameters.
+flags.DEFINE_enum('job_name', '', ('ps', 'worker', 'controller', ''),
+                  'One of "ps", "worker", "controller", "".  Empty for local '
+                  'training')
+flags.DEFINE_string('ps_hosts', '', 'Comma-separated list of target hosts')
+flags.DEFINE_string('worker_hosts', '', 'Comma-separated list of target hosts')
+flags.DEFINE_string('controller_host', None, 'optional controller host')
+flags.DEFINE_integer('task_index', 0, 'Index of task within the job')
+flags.DEFINE_string('server_protocol', 'grpc', 'protocol for servers')
+flags.DEFINE_boolean('cross_replica_sync', True, '')
 
-    # Summary and Save & load checkpoints.
-    'summary_verbosity':
-        ParamSpec(
-            'integer', 0, 'Verbosity level for summary ops. '
-            '  level 0: disable any summary. '
-            '  level 1: small and fast ops, e.g.: learning_rate, total_loss.'
-            '  level 2: medium-cost ops, e.g. histogram of all gradients.'
-            '  level 3: expensive ops: images and histogram of each gradient.'),
-    'save_summaries_steps':
-        ParamSpec('integer', 0,
-                  'How often to save summaries for trained models. Pass 0 to '
-                  'disable summaries.'),
-    'save_model_secs':
-        ParamSpec('integer', 0,
-                  'How often to save trained models. Pass 0 to disable '
-                  'checkpoints.'),
-    'train_dir':
-        ParamSpec('string', None,
-                  'Path to session checkpoints. Pass None to disable saving '
-                  'checkpoint at the end.'),
-    'eval_dir':
-        ParamSpec('string', '/tmp/tf_cnn_benchmarks/eval',
-                  'Directory where to write eval event logs.'),
-    'result_storage':
-        ParamSpec('string', None,
-                  'Specifies storage option for benchmark results. None means '
-                  'results won\'t be stored. `cbuild_benchmark_datastore` '
-                  'means results will be stored in cbuild datastore (note: '
-                  'this option requires special permissions and meant to be '
-                  'used from cbuilds).'),
-}
-_DEFAULT_PARAMS.update(platforms_util.get_platform_params())
+# Summary and Save & load checkpoints.
+flags.DEFINE_integer('summary_verbosity', 0, 'Verbosity level for summary ops. '
+                     'level 0: disable any summary.\n'
+                     'level 1: small and fast ops, e.g.: learning_rate, '
+                     'total_loss.\n'
+                     'level 2: medium-cost ops, e.g. histogram of all '
+                     'gradients.\n'
+                     'level 3: expensive ops: images and histogram of each '
+                     'gradient.\n')
+flags.DEFINE_integer('save_summaries_steps', 0,
+                     'How often to save summaries for trained models. Pass 0 '
+                     'to disable summaries.')
+flags.DEFINE_integer('save_model_secs', 0,
+                     'How often to save trained models. Pass 0 to disable '
+                     'checkpoints.')
+flags.DEFINE_string('train_dir', None,
+                    'Path to session checkpoints. Pass None to disable saving '
+                    'checkpoint at the end.')
+flags.DEFINE_string('eval_dir', '/tmp/tf_cnn_benchmarks/eval',
+                    'Directory where to write eval event logs.')
+flags.DEFINE_string('result_storage', None,
+                    'Specifies storage option for benchmark results. None '
+                    'means results won\'t be stored. '
+                    '`cbuild_benchmark_datastore` means results will be stored '
+                    'in cbuild datastore (note: this option requires special '
+                    'permissions and meant to be used from cbuilds).')
 
 
-def define_flags():
-  """Define a command line flag for each ParamSpec in _DEFAULT_PARAMS."""
-  define_flag = {
-      'boolean': flags.DEFINE_boolean,
-      'float': flags.DEFINE_float,
-      'integer': flags.DEFINE_integer,
-      'string': flags.DEFINE_string,
-  }
-  for name, param_spec in six.iteritems(_DEFAULT_PARAMS):
-    if param_spec.flag_type not in define_flag:
-      raise ValueError('Unknown flag_type %s' % param_spec.flag_type)
-    else:
-      define_flag[param_spec.flag_type](name, param_spec.default_value,
-                                        param_spec.description)
-      flags.declare_key_flag(name)
-
-
-FLAGS = flags.FLAGS
+platforms_util.define_platform_params()
 
 
 class GlobalStepWatcher(threading.Thread):
@@ -667,41 +582,75 @@ def load_checkpoint(saver, sess, ckpt_dir):
 
 
 # Params are passed to BenchmarkCNN's constructor. Params is a map from name
-# to value, with one field per key in _DEFAULT_PARAMS.
+# to value, with one field per key in flags.param_specs.
 #
 # Call make_params() or make_params_from_flags() below to construct a Params
-# tuple with default values from _DEFAULT_PARAMS, rather than constructing
+# tuple with default values from flags.param_specs, rather than constructing
 # Params directly.
-Params = namedtuple('Params', _DEFAULT_PARAMS.keys())  # pylint: disable=invalid-name
+Params = namedtuple('Params', flags.param_specs.keys())  # pylint: disable=invalid-name
+
+
+def validate_params(params):
+  """Validates that the Params tuple had valid values.
+
+  When command-line flags are defined for each ParamSpec by calling
+  flags.define_flags(), calling this function is unnecessary because absl
+  already does flag validation. Otherwise, this function should be called.
+
+  Args:
+     params: A Params tuple.
+  Raises:
+    ValueError: An element of params had an invalid value.
+  """
+  for name, value in params._asdict().items():
+    param_spec = flags.param_specs[name]
+    if param_spec.flag_type in ('integer', 'float'):
+      if (param_spec.kwargs['lower_bound'] is not None and
+          value < param_spec.kwargs['lower_bound']):
+        raise ValueError('Param %s value of %s is lower than the lower bound '
+                         'of %s' %
+                         (name, value, param_spec.kwargs['lower_bound']))
+      if (param_spec.kwargs['upper_bound'] is not None and
+          param_spec.kwargs['upper_bound'] < value):
+        raise ValueError('Param %s value of %s is higher than the upper bound '
+                         'of %s' %
+                         (name, value, param_spec.kwargs['upper_bound']))
+    elif (param_spec.flag_type == 'enum' and
+          value not in param_spec.kwargs['enum_values']):
+      raise ValueError('Param %s of value %s is not in %s'%
+                       (name, value, param_spec.kwargs['enum_values']))
 
 
 def make_params(**kwargs):
   """Create a Params tuple for BenchmarkCNN from kwargs.
 
-  Default values are filled in from _DEFAULT_PARAMS.
+  Default values are filled in from flags.param_specs.
 
   Args:
     **kwargs: kwarg values will override the default values.
   Returns:
     Params namedtuple for constructing BenchmarkCNN.
   """
-  # Create a (name: default_value) map from PARAMS.
+  # Create a (name: default_value) map from flags.param_specs.
   default_kwargs = {
-      name: _DEFAULT_PARAMS[name].default_value
-      for name in _DEFAULT_PARAMS
+      name: flags.param_specs[name].default_value
+      for name in flags.param_specs
   }
-  return Params(**default_kwargs)._replace(**kwargs)
+  params = Params(**default_kwargs)._replace(**kwargs)
+  validate_params(params)
+  return params
 
 
 def make_params_from_flags():
-  """Create a Params tuple for BenchmarkCNN from FLAGS.
+  """Create a Params tuple for BenchmarkCNN from absl_flags.FLAGS.
 
   Returns:
     Params namedtuple for constructing BenchmarkCNN.
   """
-  # Collect (name: value) pairs for FLAGS with matching names in
-  # _DEFAULT_PARAMS.
-  flag_values = {name: getattr(FLAGS, name) for name in _DEFAULT_PARAMS.keys()}
+  # Collect (name: value) pairs for absl_flags.FLAGS with matching names in
+  # flags.param_specs.
+  flag_values = {name: getattr(absl_flags.FLAGS, name)
+                 for name in flags.param_specs.keys()}
   return Params(**flag_values)
 
 

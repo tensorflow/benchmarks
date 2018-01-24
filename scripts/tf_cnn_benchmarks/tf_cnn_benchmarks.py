@@ -21,15 +21,18 @@ See the README for more information.
 from __future__ import print_function
 
 from absl import app
-from absl import flags
+from absl import flags as absl_flags
 import tensorflow as tf
 
 import benchmark_cnn
 import cnn_util
+import flags
 from cnn_util import log_fn
 
-benchmark_cnn.define_flags()
-flags.adopt_module_key_flags(benchmark_cnn)
+
+flags.define_flags()
+for name in flags.param_specs.keys():
+  absl_flags.declare_key_flag(name)
 
 
 def main(_):

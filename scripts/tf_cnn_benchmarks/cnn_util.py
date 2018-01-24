@@ -16,7 +16,6 @@
 """Utilities for CNN benchmarks."""
 from __future__ import print_function
 
-from collections import namedtuple
 import sys
 import threading
 
@@ -44,10 +43,6 @@ def log_fn(log):
   print(log)
   if FLAGS.flush_stdout:
     sys.stdout.flush()
-
-# ParamSpec describes one of benchmark_cnn.BenchmarkCNN's parameters.
-ParamSpec = namedtuple('_ParamSpec',
-                       ['flag_type', 'default_value', 'description'])
 
 
 # For Python 2.7 compatibility, we do not use threading.Barrier.
