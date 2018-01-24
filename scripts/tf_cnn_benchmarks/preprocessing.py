@@ -503,7 +503,7 @@ class RecordInputImagePreprocessor(object):
         if not file_names:
           raise ValueError('Found no files in --data_dir matching: {}'
                            .format(glob_pattern))
-        ds = tf.data.TFRecordDataset.list_files(file_names)
+        ds = tf.data.TFRecordDataset.list_files(glob_pattern)
         ds = ds.apply(
             interleave_ops.parallel_interleave(
                 tf.data.TFRecordDataset, cycle_length=10))
