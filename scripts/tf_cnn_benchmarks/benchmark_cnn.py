@@ -228,6 +228,14 @@ flags.DEFINE_boolean('enable_layout_optimizer', False,
 flags.DEFINE_string('rewriter_config', None,
                     'Config for graph optimizers, described as a '
                     'RewriterConfig proto buffer.')
+flags.DEFINE_enum('loss_type_to_report', 'total_loss',
+                  ('base_loss', 'total_loss'),
+                  'Which type of loss to output and to write summaries for. '
+                  'The total loss includes L2 loss while the base loss does '
+                  'not. Note that the total loss is always used while '
+                  'computing gradients during training if weight_decay > 0, '
+                  'but explicitly computing the total loss, instead of just '
+                  'computing its gradients, can have a performance impact.')
 # Performance tuning specific to MKL.
 flags.DEFINE_boolean('mkl', False, 'If true, set MKL environment variables.')
 flags.DEFINE_integer('kmp_blocktime', 30,
@@ -525,7 +533,7 @@ def benchmark_one_step(sess,
         [fetches, summary_op], options=run_options, run_metadata=run_metadata)
 
   if not params.forward_only:
-    lossval = results['total_loss']
+    lossval = results['average_loss']
   else:
     lossval = 0.
   image_producer.notify_image_consumption()
@@ -1344,7 +1352,8 @@ class BenchmarkCNN(object):
             assert global_step_watcher.start_time == 0
             sess.run([execution_barrier])
 
-          header_str = 'Step\tImg/sec\tloss'
+          header_str = ('Step\tImg/sec\t' +
+                        self.params.loss_type_to_report.replace('/', ' '))
           if self.params.print_training_accuracy or self.params.forward_only:
             header_str += '\ttop_1_accuracy\ttop_5_accuracy'
           log_fn(header_str)
@@ -1549,7 +1558,7 @@ class BenchmarkCNN(object):
     training_ops = []
     for d, device in enumerate(apply_gradient_devices):
       with tf.device(device):
-        total_loss = tf.reduce_mean(losses)
+        average_loss = tf.reduce_mean(losses)
         avg_grads = self.variable_mgr.get_gradients_to_apply(d, gradient_state)
 
         gradient_clip = self.params.gradient_clip
@@ -1580,7 +1589,7 @@ class BenchmarkCNN(object):
     with tf.device(self.cpu_device):
       if self.task_index == 0 and self.params.summary_verbosity >= 1:
         tf.summary.scalar('learning_rate', learning_rate)
-        tf.summary.scalar('total_loss', total_loss)
+        tf.summary.scalar(self.params.loss_type_to_report, average_loss)
         if self.loss_scale is not None:
           tf.summary.scalar('loss_scale', self.loss_scale)
           tf.summary.scalar('loss_scale_normal_steps',
@@ -1606,7 +1615,7 @@ class BenchmarkCNN(object):
             tf.summary.histogram(var.op.name, var)
 
     fetches['train_op'] = train_op
-    fetches['total_loss'] = total_loss
+    fetches['average_loss'] = average_loss
     return fetches
 
   def _build_model_single_session(self):
@@ -1799,7 +1808,7 @@ class BenchmarkCNN(object):
         results['logits'] = logits
         return results
       loss_func = self.model.loss_function or loss_function
-      loss = loss_func(logits, labels, aux_logits=aux_logits)
+      base_loss = loss_func(logits, labels, aux_logits=aux_logits)
       params = self.variable_mgr.trainable_variables_on_device(
           rel_device_num, abs_device_num)
       if data_type == tf.float16 and self.params.fp16_vars:
@@ -1811,12 +1820,14 @@ class BenchmarkCNN(object):
         l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in fp32_params])
       else:
         l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in params])
+      total_loss = base_loss
       weight_decay = self.params.weight_decay
       if weight_decay is not None and weight_decay != 0.:
-        loss += weight_decay * l2_loss
+        total_loss += weight_decay * l2_loss
 
       aggmeth = tf.AggregationMethod.DEFAULT
-      scaled_loss = loss if self.loss_scale is None else loss * self.loss_scale
+      scaled_loss = (total_loss if self.loss_scale is None
+                     else total_loss * self.loss_scale)
       grads = tf.gradients(scaled_loss, params, aggregation_method=aggmeth)
       if self.loss_scale is not None:
         # TODO(reedwm): If automatic loss scaling is not used, we could avoid
@@ -1845,7 +1856,10 @@ class BenchmarkCNN(object):
       param_refs = self.variable_mgr.trainable_variables_on_device(
           rel_device_num, abs_device_num, writable=True)
       gradvars = list(zip(grads, param_refs))
-      results['loss'] = loss
+      if self.params.loss_type_to_report == 'total_loss':
+        results['loss'] = total_loss
+      else:
+        results['loss'] = base_loss
       results['gradvars'] = gradvars
       return results
 
