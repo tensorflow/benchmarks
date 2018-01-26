@@ -236,6 +236,10 @@ flags.DEFINE_enum('loss_type_to_report', 'total_loss',
                   'computing gradients during training if weight_decay > 0, '
                   'but explicitly computing the total loss, instead of just '
                   'computing its gradients, can have a performance impact.')
+flags.DEFINE_boolean('single_l2_loss_op', False,
+                     'If True, instead of using an L2 loss op per variable, '
+                     'concatenate the variables into a single tensor and do a '
+                     'single L2 loss on the concatenated tensor.')
 # Performance tuning specific to MKL.
 flags.DEFINE_boolean('mkl', False, 'If true, set MKL environment variables.')
 flags.DEFINE_integer('kmp_blocktime', 30,
@@ -1812,15 +1816,20 @@ class BenchmarkCNN(object):
       base_loss = loss_func(logits, labels, aux_logits=aux_logits)
       params = self.variable_mgr.trainable_variables_on_device(
           rel_device_num, abs_device_num)
+      fp32_params = params
       if data_type == tf.float16 and self.params.fp16_vars:
         # fp16 reductions are very slow on GPUs, so cast to fp32 before calling
         # tf.nn.l2_loss and tf.add_n.
         # TODO(b/36217816): Once the bug is fixed, investigate if we should do
         # this reduction in fp16.
         fp32_params = (tf.cast(p, tf.float32) for p in params)
-        l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in fp32_params])
+      if self.params.single_l2_loss_op:
+        # TODO(reedwm): If faster, create a fused op that does the L2 loss on
+        # multiple tensors, and use that instead of concatenating tensors.
+        reshaped_params = [tf.reshape(p, (-1,)) for p in fp32_params]
+        l2_loss = tf.nn.l2_loss(tf.concat(reshaped_params, axis=0))
       else:
-        l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in params])
+        l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in fp32_params])
       total_loss = base_loss
       weight_decay = self.params.weight_decay
       if weight_decay is not None and weight_decay != 0.:
