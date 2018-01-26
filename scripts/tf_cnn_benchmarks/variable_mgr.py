@@ -158,7 +158,18 @@ class VariableMgrIndependent(VariableMgr):
 
   def get_gradients_to_apply(self, device_num, gradient_state):
     device_grads = gradient_state
-    return device_grads[device_num]
+    tower_grad = device_grads[device_num]
+
+    if self.benchmark_cnn.enable_auto_loss_scale and device_num == 0:
+      # Since we don't aggregate variables in --independent mode, we cannot tell
+      # if there are NaNs on all GPUs. So we arbitrarily choose to only check
+      # NaNs on the first GPU.
+      has_inf_nan_list = []
+      for grad, _ in tower_grad:
+        has_inf_nan_list.append(tf.reduce_all(tf.is_finite(grad)))
+      self.grad_has_inf_nan = tf.logical_not(tf.reduce_all(has_inf_nan_list))
+
+    return tower_grad
 
   def get_devices(self):
     return self.benchmark_cnn.raw_devices

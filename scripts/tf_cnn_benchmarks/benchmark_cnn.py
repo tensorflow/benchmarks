@@ -873,7 +873,8 @@ class BenchmarkCNN(object):
     if self.params.use_fp16 and self.params.fp16_enable_auto_loss_scale:
       if self.params.all_reduce_spec and 'nccl' in self.params.all_reduce_spec:
         raise ValueError('Automatic loss scaling is not supported with NCCL.')
-      if self.params.variable_update not in ('parameter_server', 'replicated'):
+      if self.params.variable_update not in ('parameter_server', 'replicated',
+                                             'independent'):
         raise ValueError('Automatic loss scaling is not supported with '
                          'variable_update=%s.' % self.params.variable_update)
       if self.params.staged_vars:
