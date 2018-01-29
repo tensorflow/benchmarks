@@ -355,8 +355,8 @@ flags.DEFINE_string('server_protocol', 'grpc', 'protocol for servers')
 flags.DEFINE_boolean('cross_replica_sync', True, '')
 flags.DEFINE_string('horovod_device', '', 'Device to do Horovod all-reduce on: '
                     'empty (default), cpu or gpu. Default with utilize GPU if '
-                    'Horovod was compiled with the HOROVOD_GPU_ALLREDUCE option, '
-                    'and CPU otherwise.')
+                    'Horovod was compiled with the HOROVOD_GPU_ALLREDUCE '
+                    'option, and CPU otherwise.')
 
 # Summary and Save & load checkpoints.
 flags.DEFINE_integer('summary_verbosity', 0, 'Verbosity level for summary ops. '
@@ -494,7 +494,7 @@ def create_config_proto(params):
     text_format.Merge(params.rewriter_config, rewriter_config)
     config.graph_options.rewrite_options.CopyFrom(rewriter_config)
   if params.variable_update == 'horovod':
-    import horovod.tensorflow as hvd
+    import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
     config.gpu_options.visible_device_list = str(hvd.local_rank())
 
   return config
@@ -962,7 +962,7 @@ class BenchmarkCNN(object):
     if self.cluster_manager:
       self.num_workers = self.cluster_manager.num_workers()
     elif self.params.variable_update == 'horovod':
-      import horovod.tensorflow as hvd
+      import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
       self.num_workers = hvd.size()
     else:
       self.num_workers = 1
@@ -1278,7 +1278,7 @@ class BenchmarkCNN(object):
     local_var_init_op_group = tf.group(*variable_mgr_init_ops)
 
     if self.params.variable_update == 'horovod':
-      import horovod.tensorflow as hvd
+      import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
       # First worker will be 'chief' - it will write summaries and
       # save checkpoints.
       is_chief = hvd.rank() == 0
@@ -1321,7 +1321,7 @@ class BenchmarkCNN(object):
       ready_for_local_init_op = tf.report_uninitialized_variables(
           tf.global_variables())
     if self.params.variable_update == 'horovod':
-      import horovod.tensorflow as hvd
+      import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
       bcast_global_variables_op = hvd.broadcast_global_variables(0)
     else:
       bcast_global_variables_op = None
@@ -1329,10 +1329,10 @@ class BenchmarkCNN(object):
         # For the purpose of Supervisor, all Horovod workers are 'chiefs',
         # since we want session to be initialized symmetrically on all the
         # workers.
-        is_chief = is_chief or self.params.variable_update == 'horovod',
+        is_chief=is_chief or self.params.variable_update == 'horovod',
         # Log dir should be unset on non-chief workers to prevent Horovod
         # workers from corrupting each other's checkpoints.
-        logdir = self.params.train_dir if is_chief else None,
+        logdir=self.params.train_dir if is_chief else None,
         ready_for_local_init_op=ready_for_local_init_op,
         local_init_op=local_var_init_op_group,
         saver=saver,
@@ -1380,7 +1380,7 @@ class BenchmarkCNN(object):
       local_step = -1 * self.num_warmup_batches
 
       if (self.single_session or (self.params.cross_replica_sync and
-                                 self.params.job_name) or
+                                  self.params.job_name) or
           self.params.variable_update == 'horovod'):
         # In cross-replica sync mode, all workers must run the same number of
         # local steps, or else the workers running the extra step will block.
@@ -1899,7 +1899,7 @@ class BenchmarkCNN(object):
         ]
 
       if self.params.variable_update == 'horovod':
-        import horovod.tensorflow as hvd
+        import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
         if self.params.horovod_device:
           horovod_device = '/%s:0' % self.params.horovod_device
         else:
@@ -2058,7 +2058,7 @@ def setup(params):
     params = params._replace(num_inter_threads=main_thread_count)
 
   if params.variable_update == 'horovod':
-    import horovod.tensorflow as hvd
+    import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
     hvd.init()
 
   platforms_util.initialize(params, create_config_proto(params))
