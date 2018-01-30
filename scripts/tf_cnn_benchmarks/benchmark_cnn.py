@@ -302,10 +302,14 @@ flags.DEFINE_integer('fp16_inc_loss_scale_every_n', 1000,
 #       in a single session, using all-reduce to mutally reduce the
 #       gradients.  Uses no parameter servers.  When there is only one
 #       worker, this is the same as replicated.
+#   horovod: Distributed training using Horovod library. Runs workers using
+#       an MPI framework (e.g. Open MPI). Each worker runs training on
+#       single GPU, and averages gradients using NCCL or MPI all-reduce.
+#       See https://github.com/uber/horovod for more details.
 flags.DEFINE_string('variable_update', 'parameter_server',
                     'The method for managing variables: parameter_server, '
                     'replicated, distributed_replicated, independent, '
-                    'distributed_all_reduce')
+                    'distributed_all_reduce, horovod')
 flags.DEFINE_string('all_reduce_spec', None,
                     'A specification of the all_reduce algorithm to be used '
                     'for reducing gradients.  For more details, see '
@@ -349,6 +353,10 @@ flags.DEFINE_string('controller_host', None, 'optional controller host')
 flags.DEFINE_integer('task_index', 0, 'Index of task within the job')
 flags.DEFINE_string('server_protocol', 'grpc', 'protocol for servers')
 flags.DEFINE_boolean('cross_replica_sync', True, '')
+flags.DEFINE_string('horovod_device', '', 'Device to do Horovod all-reduce on: '
+                    'empty (default), cpu or gpu. Default with utilize GPU if '
+                    'Horovod was compiled with the HOROVOD_GPU_ALLREDUCE '
+                    'option, and CPU otherwise.')
 
 # Summary and Save & load checkpoints.
 flags.DEFINE_integer('summary_verbosity', 0, 'Verbosity level for summary ops. '
@@ -485,6 +493,9 @@ def create_config_proto(params):
     rewriter_config = rewriter_config_pb2.RewriterConfig()
     text_format.Merge(params.rewriter_config, rewriter_config)
     config.graph_options.rewrite_options.CopyFrom(rewriter_config)
+  if params.variable_update == 'horovod':
+    import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
+    config.gpu_options.visible_device_list = str(hvd.local_rank())
 
   return config
 
@@ -874,6 +885,12 @@ class BenchmarkCNN(object):
         self.params.all_reduce_spec and 'nccl' in self.params.all_reduce_spec):
       raise ValueError('fp16 variables are not supported with NCCL')
 
+    if self.params.variable_update == 'horovod' and self.params.num_gpus > 1:
+      raise ValueError('Horovod benchmarks require num_gpus=1 on each worker')
+
+    if self.params.variable_update == 'horovod' and self.params.job_name:
+      raise ValueError('job_name should not be specified for Horovod.')
+
     if self.params.use_fp16 and self.params.fp16_enable_auto_loss_scale:
       if self.params.all_reduce_spec and 'nccl' in self.params.all_reduce_spec:
         raise ValueError('Automatic loss scaling is not supported with NCCL.')
@@ -942,8 +959,13 @@ class BenchmarkCNN(object):
       self.param_server_device = '/%s:0' % self.params.local_parameter_device
       self.sync_queue_devices = [self.param_server_device]
 
-    self.num_workers = (
-        self.cluster_manager.num_workers() if self.cluster_manager else 1)
+    if self.cluster_manager:
+      self.num_workers = self.cluster_manager.num_workers()
+    elif self.params.variable_update == 'horovod':
+      import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
+      self.num_workers = hvd.size()
+    else:
+      self.num_workers = 1
     self.num_ps = self.cluster_manager.num_ps() if self.cluster_manager else 0
 
     if self.num_workers > 1 and self.params.all_reduce_spec == 'nccl':
@@ -1005,7 +1027,7 @@ class BenchmarkCNN(object):
         raise ValueError('Invalid variable_update in local mode: %s' %
                          self.params.variable_update)
       self.variable_mgr = variable_mgr.VariableMgrDistributedReplicated(self)
-    elif self.params.variable_update == 'independent':
+    elif self.params.variable_update in ('independent', 'horovod'):
       if self.job_name:
         raise ValueError('Invalid variable_update in distributed mode: %s' %
                          self.params.variable_update)
@@ -1063,6 +1085,9 @@ class BenchmarkCNN(object):
     log_fn('SingleSess:  %s' % single_session)
     if single_session:
       device_list = self.raw_devices_across_tasks()
+    elif self.params.variable_update == 'horovod':
+      device_list = ['horovod/%s:%d' % (self.params.device, idx)
+                     for idx in range(self.num_workers)]
     else:
       device_list = self.raw_devices
     log_fn('Batch size:  %s global' % (self.batch_size * self.num_workers))
@@ -1087,6 +1112,8 @@ class BenchmarkCNN(object):
       log_fn('Sync:        %s' % self.params.cross_replica_sync)
     if self.params.staged_vars:
       log_fn('Staged vars: %s' % self.params.staged_vars)
+    if self.params.variable_update == 'horovod' and self.params.horovod_device:
+      log_fn('Horovod on:  %s' % self.params.horovod_device)
     log_fn('==========')
 
   def run(self):
@@ -1250,8 +1277,15 @@ class BenchmarkCNN(object):
                                            variable_mgr_init_ops))
     local_var_init_op_group = tf.group(*variable_mgr_init_ops)
 
+    if self.params.variable_update == 'horovod':
+      import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
+      # First worker will be 'chief' - it will write summaries and
+      # save checkpoints.
+      is_chief = hvd.rank() == 0
+    else:
+      is_chief = (not self.job_name or self.task_index == 0)
+
     summary_op = tf.summary.merge_all()
-    is_chief = (not self.job_name or self.task_index == 0)
     summary_writer = None
     if (is_chief and self.params.summary_verbosity and self.params.train_dir and
         self.params.save_summaries_steps > 0):
@@ -1286,9 +1320,19 @@ class BenchmarkCNN(object):
       # in replicated mode).
       ready_for_local_init_op = tf.report_uninitialized_variables(
           tf.global_variables())
+    if self.params.variable_update == 'horovod':
+      import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
+      bcast_global_variables_op = hvd.broadcast_global_variables(0)
+    else:
+      bcast_global_variables_op = None
     sv = tf.train.Supervisor(
-        is_chief=is_chief,
-        logdir=self.params.train_dir,
+        # For the purpose of Supervisor, all Horovod workers are 'chiefs',
+        # since we want session to be initialized symmetrically on all the
+        # workers.
+        is_chief=is_chief or self.params.variable_update == 'horovod',
+        # Log dir should be unset on non-chief workers to prevent Horovod
+        # workers from corrupting each other's checkpoints.
+        logdir=self.params.train_dir if is_chief else None,
         ready_for_local_init_op=ready_for_local_init_op,
         local_init_op=local_var_init_op_group,
         saver=saver,
@@ -1306,6 +1350,8 @@ class BenchmarkCNN(object):
         master=target,
         config=create_config_proto(self.params),
         start_standard_services=start_standard_services) as sess:
+      if bcast_global_variables_op:
+        sess.run(bcast_global_variables_op)
       image_producer = cnn_util.ImageProducer(sess, image_producer_ops,
                                               self.batch_group_size)
       image_producer.start()
@@ -1313,7 +1359,7 @@ class BenchmarkCNN(object):
         sess.run(enqueue_ops[:(i + 1)])
         image_producer.notify_image_consumption()
       self.init_global_step, = sess.run([global_step])
-      if not self.single_session:
+      if not self.single_session and self.params.variable_update != 'horovod':
         global_step_watcher = GlobalStepWatcher(
             sess, global_step,
             self.num_workers * self.num_warmup_batches +
@@ -1333,8 +1379,9 @@ class BenchmarkCNN(object):
       log_fn('Running warm up')
       local_step = -1 * self.num_warmup_batches
 
-      if self.single_session or (self.params.cross_replica_sync and
-                                 self.params.job_name):
+      if (self.single_session or (self.params.cross_replica_sync and
+                                  self.params.job_name) or
+          self.params.variable_update == 'horovod'):
         # In cross-replica sync mode, all workers must run the same number of
         # local steps, or else the workers running the extra step will block.
         done_fn = lambda: local_step == self.num_batches
@@ -1384,7 +1431,7 @@ class BenchmarkCNN(object):
       if global_step_watcher:
         while not global_step_watcher.done():
           time.sleep(.25)
-      if self.single_session:
+      if self.single_session or self.params.variable_update == 'horovod':
         elapsed_time = loop_end_time - loop_start_time
         average_wall_time = elapsed_time / local_step if local_step > 0 else 0
         images_per_sec = (self.num_workers * local_step * self.batch_size /
@@ -1851,6 +1898,16 @@ class BenchmarkCNN(object):
             grad * tf.cast(1. / self.loss_scale, grad.dtype) for grad in grads
         ]
 
+      if self.params.variable_update == 'horovod':
+        import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
+        if self.params.horovod_device:
+          horovod_device = '/%s:0' % self.params.horovod_device
+        else:
+          horovod_device = ''
+        # All-reduce gradients using Horovod.
+        grads = [hvd.allreduce(grad, device_dense=horovod_device)
+                 for grad in grads]
+
       if self.params.staged_vars:
         grad_dtypes = [grad.dtype for grad in grads]
         grad_shapes = [grad.shape for grad in grads]
@@ -1999,6 +2056,10 @@ def setup(params):
     cpu_count = multiprocessing.cpu_count()
     main_thread_count = max(cpu_count - total_gpu_thread_count, 1)
     params = params._replace(num_inter_threads=main_thread_count)
+
+  if params.variable_update == 'horovod':
+    import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
+    hvd.init()
 
   platforms_util.initialize(params, create_config_proto(params))
 
