@@ -59,4 +59,4 @@ We are currently recording the total time taken to run N epochs. N here is chose
 the model for 4 epochs but discard the first epoch since the time interval will include time taken
 to build the model.
 
-We upload the model's metadata along with the metrics generated to our table in BigQuery. 
+We upload the model's metadata along with the metrics generated to our table in BigQuery.

@@ -28,6 +28,8 @@ class MnistMlpBenchmark:
         self.epochs = 4
         self.num_samples = 1000
 
+    # TODO(anjalisridhar): Increase the model size to see a valid improvement when we use multi gpu
+    # Add more layers and parameters.
     def run_benchmark(self, gpus=0):
         print("Running model ", self.test_name)
 

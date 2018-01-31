@@ -1,5 +1,6 @@
 """ CNTK gpu config required for running keras models in multi gpu mode."""
 import cntk
+import warnings
 
 def finalize():
     cntk.Communicator.finalize()

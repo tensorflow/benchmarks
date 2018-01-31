@@ -15,6 +15,8 @@ from data_generator import generate_img_input_data
 if keras.backend.backend() == 'cntk':
   from gpu_mode import cntk_gpu_mode_config, finalize
 
+if keras.backend.backend() == 'tensorflow':
+  from tensorflow.contrib.data import Dataset
 
 class Resnet50Benchmark:
 
@@ -22,7 +24,7 @@ class Resnet50Benchmark:
     self.test_name = "resnet50"
     self.sample_type = "images"
     self.total_time = 0
-    self.batch_size = 32
+    self.batch_size = 64
     self.epochs = 4
     self.num_samples = 1000
     self.test_type = 'channels_first, batchnorm, learning_phase, batch_size'
@@ -40,7 +42,7 @@ class Resnet50Benchmark:
 
     keras.backend.set_learning_phase(True)
 
-    model = applications.ResNet50(weights=None)
+    resnet_model = applications.ResNet50(weights=None)
 
     y_train = keras.utils.to_categorical(y_train, num_classes)
 
@@ -50,14 +52,32 @@ class Resnet50Benchmark:
     x_train = x_train.astype('float32')
     x_train /= 255
 
+    # Create the dataset and its associated one-shot iterator.
+    dataset = Dataset.from_tensor_slices((x_train, y_train))
+    dataset = dataset.repeat()
+    dataset = dataset.shuffle(10000)
+    dataset = dataset.batch(self.batch_size)
+    iterator = dataset.make_one_shot_iterator()
+
+    # Model creation using tensors from the get_next() graph node.
+    inputs, targets = iterator.get_next()
+    model_input = keras.layers.Input(tensor=inputs)
+    model_output = resnet_model(model_input)
+    model = keras.models.Model(inputs=model_input, outputs=model_output)
+
+
     opt = keras.optimizers.rmsprop(lr=0.0001, decay=1e-6)
 
     if keras.backend.backend() == "tensorflow" and gpus > 1:
       model = multi_gpu_model(model, gpus=gpus)
 
-    model.compile(loss='categorical_crossentropy',
-                  optimizer=opt,
-                  metrics=['accuracy'])
+    # model.compile(loss='categorical_crossentropy',
+    #               optimizer=opt,
+    #               metrics=['accuracy'])
+    model.compile(optimizer=keras.optimizers.RMSprop(lr=2e-3, decay=1e-5),
+                  loss='categorical_crossentropy',
+                  metrics=['accuracy'],
+                  target_tensors=[targets])
 
     # create a distributed trainer for cntk
     if keras.backend.backend() == "cntk" and gpus > 1:
@@ -67,12 +87,14 @@ class Resnet50Benchmark:
 
     time_callback = timehistory.TimeHistory()
 
-    model.fit(x_train,
-                        y_train,
-                        batch_size=self.batch_size,
-                        epochs=self.epochs,
-                        shuffle=True,
-                        callbacks=[time_callback])
+    # model.fit(x_train,
+    #                     y_train,
+    #                     batch_size=self.batch_size,
+    #                     epochs=self.epochs,
+    #                     shuffle=True,
+    #                     callbacks=[time_callback])
+    model.fit(epochs=self.epochs,
+                    steps_per_epoch=10)
 
     self.total_time = 0
     for i in range(1, self.epochs):

@@ -26,14 +26,19 @@ parser.add_argument('--mode',
                     help='The benchmark can be run on cpu, gpu and multiple gpus.')
 parser.add_argument('--model_name',
                     help='The name of the model that will be benchmarked.')
+parser.add_argument('--dry_run', type=bool,
+                    help='Flag to output metrics to the console instead of '
+                         'uploading metrics to BigQuery. This is useful when '
+                         'you are testing new models and do not want data '
+                         'corruption.')
 
 args = parser.parse_args()
 
 # Load the json config file for the requested mode.
+# TODO(anjalisridhar): Can we set the benchmarks home dir? Lets add that as an argument that is part of our setup script
 config_file = open("benchmarks/scripts/keras_benchmarks/config.json", 'r')
 config_contents = config_file.read()
 config = json.loads(config_contents)[args.mode]
-
 
 def get_backend_version():
     if keras.backend.backend() == "tensorflow":
@@ -65,4 +70,7 @@ def _upload_metrics(current_model):
 
 model = model_config.get_model_config(args.model_name)
 model.run_benchmark(gpus=config['gpus'])
-_upload_metrics(model)
+if args.dry_run:
+  print("Model :total_time", model.test_name, model.total_time)
+else:
+  _upload_metrics(model)
