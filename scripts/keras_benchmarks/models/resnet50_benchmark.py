@@ -43,9 +43,6 @@ class Resnet50Benchmark:
     num_classes = 1000
 
     x_train, y_train = generate_img_input_data(input_shape, num_classes)
-    if self.use_logits_loss:
-      x_train = x_train.astype('float32')
-      y_train = y_train.astype('float32')
     y_train = keras.utils.to_categorical(y_train, num_classes)
 
     if keras.backend.backend == "tensorflow" and gpus > 1:
@@ -78,12 +75,11 @@ class Resnet50Benchmark:
     if keras.backend.backend() == "tensorflow" and gpus > 1:
       model = multi_gpu_model(model, gpus=gpus)
 
-    if self.use_logits_loss:
-      loss = self.crossentropy_from_logits.__name__
-    else:
-      loss = 'categorical_crossentropy'
-
     if self.use_dataset_tensors:
+      if self.use_logits_loss:
+        loss = crossentropy_from_logits
+      else:
+        loss = 'categorical_crossentropy'
       model.compile(loss=loss,
                     optimizer=keras.optimizers.rmsprop(lr=0.0001, decay=1e-6),
                     metrics=['accuracy'],
