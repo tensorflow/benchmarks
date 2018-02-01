@@ -43,4 +43,6 @@ class OverfeatModel(model.Model):
     cnn.mpool(2, 2)
     cnn.reshape([-1, 1024 * 6 * 6])
     cnn.affine(3072)
+    cnn.dropout()
     cnn.affine(4096)
+    cnn.dropout()
