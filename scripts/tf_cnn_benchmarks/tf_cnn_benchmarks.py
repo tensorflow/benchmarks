@@ -35,7 +35,16 @@ for name in flags.param_specs.keys():
   absl_flags.declare_key_flag(name)
 
 
-def main(_):
+def main(positional_arguments):
+  # Command-line arguments like '--distortions False' are equivalent to
+  # '--distortions=True False', where False is a positional argument. To prevent
+  # this from silently running with distortions, we do not allow positional
+  # arguments.
+  assert len(positional_arguments) >= 1
+  if len(positional_arguments) > 1:
+    raise ValueError('Received unknown positional arguments: %s'
+                     % positional_arguments[1:])
+
   params = benchmark_cnn.make_params_from_flags()
   params = benchmark_cnn.setup(params)
   bench = benchmark_cnn.BenchmarkCNN(params)
