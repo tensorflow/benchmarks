@@ -79,7 +79,7 @@ class Resnet50Benchmark:
       model = multi_gpu_model(model, gpus=gpus)
 
     if self.use_logits_loss:
-      loss = self.crossentropy_from_logits
+      loss = self.crossentropy_from_logits.__name__
     else:
       loss = 'categorical_crossentropy'
 
