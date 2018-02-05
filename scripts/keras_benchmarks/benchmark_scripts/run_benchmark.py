@@ -1,18 +1,11 @@
 """ Main entry point for running benchmarks with different Keras backends."""
 
-from models import cifar10_cnn_benchmark
-from models import gru_benchmark
-from models import lstm_benchmark
-from models import mnist_mlp_benchmark
-from models import resnet50_benchmark
-from models import vgg16_benchmark
-from models import xception_benchmark
-from models import model_config
-import upload_benchmarks_bq as bq
 import argparse
-import keras
 import json
+import keras
 
+import upload_benchmarks_bq as bq
+from models import model_config
 
 if keras.backend.backend() == "tensorflow":
   import tensorflow as tf

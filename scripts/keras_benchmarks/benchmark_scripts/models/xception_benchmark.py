@@ -42,7 +42,7 @@ class XceptionBenchmark:
 
     x_train, y_train = generate_img_input_data(input_shape, num_classes)
     y_train = keras.utils.to_categorical(y_train, num_classes)
-    
+
     if keras.backend.backend == "tensorflow" and gpus > 1:
       keras.backend.set_image_data_format('channels_first')
 
