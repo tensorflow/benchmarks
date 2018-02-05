@@ -19,18 +19,8 @@ RUN apt-get update && \
 
 RUN git clone https://github.com/tensorflow/benchmarks.git
 
-# WORKDIR /opt/keras-models
 RUN git checkout keras-benchmarks
-
-# ENV PYTHONPATH $PYTHONPATH:/opt/keras-models/benchmarks/scripts/keras_benchamarks
-
-# TODO(karmel): For some reason, files created in my branch can't be run
-# directly from the git pull, or so it seems. Copying directly.
-
-# ADD ENTRYPOINT run_tf_backend.sh 'cpu_config'
-# CMD ENTRYPOINT sh run_tf_backend.sh 'cpu_config'
-
 
 COPY scripts/keras_benchamrks ./keras_benchmarks/
 RUN touch keras_benchmarks/__init__.py
-ENTRYPOINT ["sh", "keras_benchmarks/run_tf_backend.sh"]
+ENTRYPOINT ["sh", "keras_benchmarks/benchmark_scripts/run_tf_backend.sh"]

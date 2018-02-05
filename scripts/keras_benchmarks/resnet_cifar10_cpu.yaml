@@ -22,4 +22,4 @@
 #   local_parameter_device: "cpu"
   worker_count: 2
   ps_count: 2
-  docker_file: "benchmarks/scripts/keras_benchmarks/Dockerfile.resnet_cpu"
+  docker_file: "scripts/keras_benchmarks/Dockerfile.resnet_cpu"
