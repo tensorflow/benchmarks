@@ -69,7 +69,9 @@ def _upload_metrics(current_model):
 
 
 model = model_config.get_model_config(args.model_name)
-model.run_benchmark(gpus=config['gpus'])
+if keras.backend.backend() == 'tensorflow':
+  use_dataset_tensors=True
+model.run_benchmark(gpus=config['gpus'], use_dataset_tensors=use_dataset_tensors)
 if args.dry_run:
   print("Model :total_time", model.test_name, model.total_time)
 else:
