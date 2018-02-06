@@ -206,6 +206,8 @@ flags.DEFINE_string('debugger', None,
                     'the local CLI debugger. Otherwise, this must be in the '
                     'form hostname:port (e.g., localhost:7007) in which case '
                     'the experimental TensorBoard debugger will be used')
+flags.DEFINE_boolean('use_python32_barrier', False,
+                     'When on, use threading.Barrier at Python 3.2.')
 
 # Performance tuning parameters.
 flags.DEFINE_boolean('winograd_nonfused', True,
@@ -1188,7 +1190,8 @@ class BenchmarkCNN(object):
       if self.dataset.queue_runner_required():
         tf.train.start_queue_runners(sess=sess)
       image_producer = cnn_util.ImageProducer(sess, image_producer_ops,
-                                              self.batch_group_size)
+                                              self.batch_group_size,
+                                              self.params.use_python32_barrier)
       image_producer.start()
       for i in xrange(len(enqueue_ops)):
         sess.run(enqueue_ops[:(i + 1)])
@@ -1353,7 +1356,8 @@ class BenchmarkCNN(object):
       if bcast_global_variables_op:
         sess.run(bcast_global_variables_op)
       image_producer = cnn_util.ImageProducer(sess, image_producer_ops,
-                                              self.batch_group_size)
+                                              self.batch_group_size,
+                                              self.params.use_python32_barrier)
       image_producer.start()
       for i in xrange(len(enqueue_ops)):
         sess.run(enqueue_ops[:(i + 1)])

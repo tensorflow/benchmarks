@@ -19,14 +19,8 @@ from __future__ import print_function
 import sys
 import threading
 
-from absl import flags
 import numpy as np
 import tensorflow as tf
-flags.DEFINE_boolean('use_python32_barrier', False,
-                     """When on, use threading.Barrier at python 3.2.""")
-flags.DEFINE_boolean('flush_stdout', False,
-                     """When on, flush stdout everytime log_fn is called.""")
-FLAGS = flags.FLAGS
 
 
 def tensorflow_version_tuple():
@@ -42,8 +36,6 @@ def tensorflow_version():
 
 def log_fn(log):
   print(log)
-  if FLAGS.flush_stdout:
-    sys.stdout.flush()
 
 
 def roll_numpy_batches(array, batch_size, shift_ratio):
@@ -159,13 +151,13 @@ class ImageProducer(object):
   ```
   """
 
-  def __init__(self, sess, put_ops, batch_group_size):
+  def __init__(self, sess, put_ops, batch_group_size, use_python32_barrier):
     self.sess = sess
     self.num_gets = 0
     self.put_ops = put_ops
     self.batch_group_size = batch_group_size
     self.done_event = threading.Event()
-    if (FLAGS.use_python32_barrier and
+    if (use_python32_barrier and
         sys.version_info[0] == 3 and sys.version_info[1] >= 2):
       self.put_barrier = threading.Barrier(2)
     else:
