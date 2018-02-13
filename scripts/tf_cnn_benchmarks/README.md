@@ -42,3 +42,32 @@ Some important flags are
 *   local_parameter_device: Device to use as parameter server: cpu or gpu.
 
 To see the full list of flags, run `python tf_cnn_benchmarks.py --help`.
+
+## Running the tests
+
+To run the tests, run
+
+```bash
+pip install portpicker
+python run_tests.py && python run_tests.py --run_distributed_tests
+```
+
+Note the tests require portpicker.
+
+The command above runs a subset of tests that is both fast and fairly
+comprehensive. Alternatively, all the tests can be run, but this will take a
+long time:
+
+```bash
+python run_tests.py --full_tests && python run_tests.py --full_tests --run_distributed_tests
+```
+
+We will run all tests on every PR before merging them, so it is not necessary
+to pass `--full_tests` when running tests yourself.
+
+To run an individual test, such as method `testParameterServer` of test class
+`TfCnnBenchmarksTest` of module `benchmark_cnn_test`, run
+
+```bash
+python -m unittest -v benchmark_cnn_test.TfCnnBenchmarksTest.testParameterServer
+```

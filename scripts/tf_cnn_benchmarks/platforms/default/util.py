@@ -15,7 +15,14 @@
 
 """Utility code for the default platform."""
 
+import os
+import sys
+import tempfile
+
 import cnn_util
+
+
+_ROOT_PROJECT_DIR = os.path.dirname(cnn_util.__file__)
 
 
 def define_platform_params():
@@ -29,6 +36,29 @@ def define_platform_params():
 def get_cluster_manager(params, config_proto):
   """Returns the cluster manager to be used."""
   return cnn_util.GrpcClusterManager(params, config_proto)
+
+
+def get_command_to_run_python_module(module):
+  """Returns a command to run a Python module."""
+  python_interpretter = sys.executable
+  if not python_interpretter:
+    raise ValueError('Could not find Python interpreter')
+  return [python_interpretter,
+          os.path.join(_ROOT_PROJECT_DIR, module + '.py')]
+
+
+def get_test_output_dir():
+  """Returns a directory where test outputs should be placed."""
+  base_dir = os.environ.get('TEST_OUTPUTS_DIR',
+                            '/tmp/tf_cnn_benchmarks_test_outputs')
+  if not os.path.exists(base_dir):
+    os.mkdir(base_dir)
+  return tempfile.mkdtemp(dir=base_dir)
+
+
+def get_test_data_dir():
+  """Returns the path to the test_data directory."""
+  return os.path.join(_ROOT_PROJECT_DIR, 'test_data')
 
 
 def _initialize(params, config_proto):
