@@ -151,6 +151,10 @@ flags.DEFINE_integer('num_inter_threads', 0,
                      'set to 0, the system will pick an appropriate number.')
 flags.DEFINE_string('trace_file', '',
                     'Enable TensorFlow tracing and write trace to this file.')
+flags.DEFINE_boolean('use_chrome_trace_format', True,
+                     'If True, the trace_file, if specified, will be in a '
+                     'Chrome trace format. If False, then it will be a '
+                     'StepStats raw proto.')
 flags.DEFINE_string('graph_file', None,
                     'Write the model\'s graph definition to this file. '
                     'Defaults to binary format unless filename ends in "txt".')
@@ -567,12 +571,15 @@ def benchmark_one_step(sess,
     log_fn(log_str)
   if trace_filename and step == -1:
     log_fn('Dumping trace to %s' % trace_filename)
-    trace = timeline.Timeline(step_stats=run_metadata.step_stats)
     trace_dir = os.path.dirname(trace_filename)
     if not gfile.Exists(trace_dir):
       gfile.MakeDirs(trace_dir)
     with gfile.Open(trace_filename, 'w') as trace_file:
-      trace_file.write(trace.generate_chrome_trace_format(show_memory=True))
+      if params.use_chrome_trace_format:
+        trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+        trace_file.write(trace.generate_chrome_trace_format(show_memory=True))
+      else:
+        trace_file.write(str(run_metadata.step_stats))
   return summary_str
 
 
@@ -1424,9 +1431,9 @@ class BenchmarkCNN(object):
           fetch_summary = None
         summary_str = benchmark_one_step(
             sess, fetches, local_step,
-            self.batch_size * (self.num_workers if self.single_session else 1),
-            step_train_times, self.trace_filename, image_producer, self.params,
-            fetch_summary)
+            self.batch_size * (self.num_workers
+                               if self.single_session else 1), step_train_times,
+            self.trace_filename, image_producer, self.params, fetch_summary)
         if summary_str is not None and is_chief:
           sv.summary_computed(sess, summary_str)
         local_step += 1
