@@ -207,7 +207,7 @@ class ResnetModel(model_lib.Model):
     cnn.use_batch_norm = True
     cnn.batch_norm_config = {'decay': 0.997, 'epsilon': 1e-5, 'scale': True}
     cnn.conv(64, 7, 7, 2, 2, mode='SAME_RESNET', use_batch_norm=True)
-    cnn.mpool(3, 3, 2, 2)
+    cnn.mpool(3, 3, 2, 2, mode='SAME')
     for _ in xrange(self.layer_counts[0]):
       bottleneck_block(cnn, 256, 64, 1, self.pre_activation)
     for i in xrange(self.layer_counts[1]):
