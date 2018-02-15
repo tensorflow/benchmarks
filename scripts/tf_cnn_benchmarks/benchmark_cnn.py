@@ -216,6 +216,10 @@ flags.DEFINE_boolean('use_python32_barrier', False,
 # Performance tuning parameters.
 flags.DEFINE_boolean('winograd_nonfused', True,
                      'Enable/disable using the Winograd non-fused algorithms.')
+flags.DEFINE_boolean(
+    'batchnorm_persistent', True,
+    'Enable/disable using the CUDNN_BATCHNORM_SPATIAL_PERSISTENT '
+    'mode for batchnorm.')
 flags.DEFINE_boolean('sync_on_finish', False,
                      'Enable/disable whether the devices are synced after each '
                      'step.')
@@ -2023,6 +2027,10 @@ def setup(params):
   Raises:
     ValueError: invalid parames combinations.
   """
+  if params.batchnorm_persistent:
+    os.environ['TF_USE_CUDNN_BATCHNORM_SPATIAL_PERSISTENT'] = '1'
+  else:
+    os.environ.pop('TF_USE_CUDNN_BATCHNORM_SPATIAL_PERSISTENT', None)
   if params.winograd_nonfused:
     os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '1'
   else:
