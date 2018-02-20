@@ -99,6 +99,14 @@ def parse_example_proto(example_serialized):
   return features['image/encoded'], label, bbox, features['image/class/text']
 
 
+_RESIZE_METHOD_MAP = {
+    'nearest': tf.image.ResizeMethod.NEAREST_NEIGHBOR,
+    'bilinear': tf.image.ResizeMethod.BILINEAR,
+    'bicubic': tf.image.ResizeMethod.BICUBIC,
+    'area': tf.image.ResizeMethod.AREA
+}
+
+
 def get_image_resize_method(resize_method, batch_position=0):
   """Get tensorflow resize method.
 
@@ -114,18 +122,12 @@ def get_image_resize_method(resize_method, batch_position=0):
   Returns:
     one of resize type defined in tf.image.ResizeMethod.
   """
-  resize_methods_map = {
-      'nearest': tf.image.ResizeMethod.NEAREST_NEIGHBOR,
-      'bilinear': tf.image.ResizeMethod.BILINEAR,
-      'bicubic': tf.image.ResizeMethod.BICUBIC,
-      'area': tf.image.ResizeMethod.AREA
-  }
 
   if resize_method != 'round_robin':
-    return resize_methods_map[resize_method]
+    return _RESIZE_METHOD_MAP[resize_method]
 
   # return a resize method based on batch position in a round-robin fashion.
-  resize_methods = resize_methods_map.values()
+  resize_methods = list(_RESIZE_METHOD_MAP.values())
   def lookup(index):
     return resize_methods[index]
 

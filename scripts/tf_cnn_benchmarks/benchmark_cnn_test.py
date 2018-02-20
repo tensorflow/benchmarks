@@ -775,10 +775,10 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
   def testPreprocessingTrain(self):
     test_data_dir = os.path.join(platforms_util.get_test_data_dir(), 'images')
     black_file = os.path.join(test_data_dir, 'black_image.jpg')
-    with open(black_file, 'r') as f:
+    with open(black_file, 'rb') as f:
       black_jpg_buffer = f.read()
     white_file = os.path.join(test_data_dir, 'white_image.jpg')
-    with open(white_file, 'r') as f:
+    with open(white_file, 'rb') as f:
       white_jpg_buffer = f.read()
     bbox = tf.zeros((1, 0, 4), dtype=tf.float32)
     batch_position = 0
