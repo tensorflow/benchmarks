@@ -1885,17 +1885,24 @@ class BenchmarkCNN(object):
         # TODO(b/36217816): Once the bug is fixed, investigate if we should do
         # this reduction in fp16.
         fp32_params = (tf.cast(p, tf.float32) for p in params)
-      if self.params.single_l2_loss_op:
-        # TODO(reedwm): If faster, create a fused op that does the L2 loss on
-        # multiple tensors, and use that instead of concatenating tensors.
-        reshaped_params = [tf.reshape(p, (-1,)) for p in fp32_params]
-        l2_loss = tf.nn.l2_loss(tf.concat(reshaped_params, axis=0))
-      else:
-        l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in fp32_params])
       total_loss = base_loss
-      weight_decay = self.params.weight_decay
-      if weight_decay is not None and weight_decay != 0.:
-        total_loss += weight_decay * l2_loss
+      if rel_device_num == len(self.devices) - 1:
+        # We compute the L2 loss for only one device instead of all of them,
+        # because the L2 loss for each device is the same. To adjust for this,
+        # we multiply the L2 loss by the number of devices. We choose the last
+        # device because for some reason, on a Volta DGX1, the first four
+        # GPUs take slightly longer to complete a step than the last four.
+        # TODO(reedwm): Shard the L2 loss computations across GPUs.
+        if self.params.single_l2_loss_op:
+          # TODO(reedwm): If faster, create a fused op that does the L2 loss on
+          # multiple tensors, and use that instead of concatenating tensors.
+          reshaped_params = [tf.reshape(p, (-1,)) for p in fp32_params]
+          l2_loss = tf.nn.l2_loss(tf.concat(reshaped_params, axis=0))
+        else:
+          l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in fp32_params])
+        weight_decay = self.params.weight_decay
+        if weight_decay is not None and weight_decay != 0.:
+          total_loss += len(self.devices) * weight_decay * l2_loss
 
       aggmeth = tf.AggregationMethod.DEFAULT
       scaled_loss = (total_loss if self.loss_scale is None
