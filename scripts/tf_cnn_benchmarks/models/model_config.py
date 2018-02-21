@@ -21,6 +21,7 @@ from models import densenet_model
 from models import googlenet_model
 from models import inception_model
 from models import lenet_model
+from models import nasnet_model
 from models import overfeat_model
 from models import resnet_model
 from models import trivial_model
@@ -44,6 +45,8 @@ _model_name_to_imagenet_model = {
     'resnet101_v2': resnet_model.create_resnet101_v2_model,
     'resnet152': resnet_model.create_resnet152_model,
     'resnet152_v2': resnet_model.create_resnet152_v2_model,
+    'nasnet': nasnet_model.NasnetModel,
+    'nasnetlarge': nasnet_model.NasnetLargeModel,
 }
 
 
@@ -63,6 +66,7 @@ _model_name_to_cifar_model = {
     'densenet40_k12': densenet_model.create_densenet40_k12_model,
     'densenet100_k12': densenet_model.create_densenet100_k12_model,
     'densenet100_k24': densenet_model.create_densenet100_k24_model,
+    'nasnet': nasnet_model.NasnetCifarModel,
 }
 
 
