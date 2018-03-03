@@ -31,8 +31,8 @@ def get_model_config(model_name):
     return xception_benchmark.XceptionBenchmark()
 
   if model_name == 'resnet50_eager':
-    return resnet50_benchmark_eager.Resnet50Benchmark()
+    return resnet50_benchmark_eager.Resnet50EagerBenchmark()
 
   if model_name == 'resnet50_subclass':
-    return resnet50_benchmark_subclass.Resnet50Benchmark()
+    return resnet50_benchmark_subclass.Resnet50SubclassBenchmark()
 
