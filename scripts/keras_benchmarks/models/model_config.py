@@ -27,3 +27,8 @@ def get_model_config(model_name):
 
   if model_name == 'xception':
     return xception_benchmark.XceptionBenchmark()
+  if model_name == 'resnet50_eager':
+    return resnet50_benchmark.Resnet50Benchmark()
+  if model_name == 'resnet50_subclass':
+    return resnet50_benchmark.Resnet50Benchmark()
+

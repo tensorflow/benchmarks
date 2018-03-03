@@ -20,27 +20,33 @@ See the README for more information.
 
 from __future__ import print_function
 
-
+from absl import app
+from absl import flags as absl_flags
 import tensorflow as tf
 
 import benchmark_cnn
 import cnn_util
+import flags
 from cnn_util import log_fn
 
-benchmark_cnn.define_flags()
+
+flags.define_flags()
+for name in flags.param_specs.keys():
+  absl_flags.declare_key_flag(name)
 
 
-def main(extra_flags):
-  # extra_flags is a list of command line arguments, excluding those defined
-  # in tf.flags.FLAGS. extra_flags[0] is always the program name. It is an error
-  # to supply flags not defined with tf.flags.FLAGS, so we raise an ValueError
-  # in that case.
-  assert len(extra_flags) >= 1
-  if len(extra_flags) > 1:
-    raise ValueError('Received unknown flags: %s' % extra_flags[1:])
+def main(positional_arguments):
+  # Command-line arguments like '--distortions False' are equivalent to
+  # '--distortions=True False', where False is a positional argument. To prevent
+  # this from silently running with distortions, we do not allow positional
+  # arguments.
+  assert len(positional_arguments) >= 1
+  if len(positional_arguments) > 1:
+    raise ValueError('Received unknown positional arguments: %s'
+                     % positional_arguments[1:])
 
   params = benchmark_cnn.make_params_from_flags()
-  benchmark_cnn.setup(params)
+  params = benchmark_cnn.setup(params)
   bench = benchmark_cnn.BenchmarkCNN(params)
 
   tfversion = cnn_util.tensorflow_version_tuple()
@@ -51,4 +57,4 @@ def main(extra_flags):
 
 
 if __name__ == '__main__':
-  tf.app.run()
+  app.run(main)  # Raises error on invalid flags, unlike tf.app.run()

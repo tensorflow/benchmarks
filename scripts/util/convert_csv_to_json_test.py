@@ -28,7 +28,7 @@ class ConvertCsvToJsonTest(unittest.TestCase):
         ['abc,2017-06-26 02:59:29.325579,10,2.15,0.1'])
     timestamp, stat_entries = convert_csv_to_json.get_data_from_csv(csv_reader)
     self.assertEqual(
-        datetime.datetime(2017, 06, 26, 2, 59, 29, 325579),
+        datetime.datetime(2017, 6, 26, 2, 59, 29, 325579),
         timestamp)
     self.assertEqual(1, len(stat_entries))
     self.assertEqual('abc', stat_entries[0].name)
@@ -41,7 +41,7 @@ class ConvertCsvToJsonTest(unittest.TestCase):
          'def,2017-06-26 02:59:29.325579,10,10.1,0.1'])
     timestamp, stat_entries = convert_csv_to_json.get_data_from_csv(csv_reader)
     self.assertEqual(
-        datetime.datetime(2017, 06, 26, 2, 59, 35, 425579),
+        datetime.datetime(2017, 6, 26, 2, 59, 35, 425579),
         timestamp)
     self.assertEqual(2, len(stat_entries))
     self.assertEqual('abc', stat_entries[0].name)

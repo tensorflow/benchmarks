@@ -207,7 +207,7 @@ class ResnetModel(model_lib.Model):
     cnn.use_batch_norm = True
     cnn.batch_norm_config = {'decay': 0.997, 'epsilon': 1e-5, 'scale': True}
     cnn.conv(64, 7, 7, 2, 2, mode='SAME_RESNET', use_batch_norm=True)
-    cnn.mpool(3, 3, 2, 2)
+    cnn.mpool(3, 3, 2, 2, mode='SAME')
     for _ in xrange(self.layer_counts[0]):
       bottleneck_block(cnn, 256, 64, 1, self.pre_activation)
     for i in xrange(self.layer_counts[1]):
@@ -230,6 +230,30 @@ class ResnetModel(model_lib.Model):
     boundaries = [int(num_batches_per_epoch * x) for x in [30, 60]]
     values = [0.1, 0.01, 0.001]
     return tf.train.piecewise_constant(global_step, boundaries, values)
+
+
+def create_resnet50_model():
+  return ResnetModel('resnet50', (3, 4, 6, 3))
+
+
+def create_resnet50_v2_model():
+  return ResnetModel('resnet50_v2', (3, 4, 6, 3))
+
+
+def create_resnet101_model():
+  return ResnetModel('resnet101', (3, 4, 23, 3))
+
+
+def create_resnet101_v2_model():
+  return ResnetModel('resnet101_v2', (3, 4, 23, 3))
+
+
+def create_resnet152_model():
+  return ResnetModel('resnet152', (3, 8, 36, 3))
+
+
+def create_resnet152_v2_model():
+  return ResnetModel('resnet152_v2', (3, 8, 36, 3))
 
 
 class ResnetCifar10Model(model_lib.Model):
@@ -281,3 +305,43 @@ class ResnetCifar10Model(model_lib.Model):
     boundaries = [x for x in boundaries]
     values = [0.1, 0.01, 0.001, 0.0002]
     return tf.train.piecewise_constant(global_step, boundaries, values)
+
+
+def create_resnet20_cifar_model():
+  return ResnetCifar10Model('resnet20', (3, 3, 3))
+
+
+def create_resnet20_v2_cifar_model():
+  return ResnetCifar10Model('resnet20_v2', (3, 3, 3))
+
+
+def create_resnet32_cifar_model():
+  return ResnetCifar10Model('resnet32_v2', (5, 5, 5))
+
+
+def create_resnet32_v2_cifar_model():
+  return ResnetCifar10Model('resnet32_v2', (5, 5, 5))
+
+
+def create_resnet44_cifar_model():
+  return ResnetCifar10Model('resnet44', (7, 7, 7))
+
+
+def create_resnet44_v2_cifar_model():
+  return ResnetCifar10Model('resnet44_v2', (7, 7, 7))
+
+
+def create_resnet56_cifar_model():
+  return ResnetCifar10Model('resnet56', (9, 9, 9))
+
+
+def create_resnet56_v2_cifar_model():
+  return ResnetCifar10Model('resnet56_v2', (9, 9, 9))
+
+
+def create_resnet110_cifar_model():
+  return ResnetCifar10Model('resnet110', (18, 18, 18))
+
+
+def create_resnet110_v2_cifar_model():
+  return ResnetCifar10Model('resnet110_v2', (18, 18, 18))

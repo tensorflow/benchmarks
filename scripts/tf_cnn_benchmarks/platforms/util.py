@@ -13,13 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 
-- task_name: "keras_resnet_cpu"
-#  args:
-#   data_format: "NHWC"
-#   model: "resnet50"
-#   result_storage: "cbuild_benchmark_datastore"
-#   num_gpus: 8
-#   local_parameter_device: "cpu"
-  worker_count: 2
-  ps_count: 2
-  docker_file: "scripts/keras_benchmarks/Dockerfile.resnet_cpu"
+"""Utility code for a certain platform.
+
+This file simply imports everything from the default platform. To switch to a
+different platform, the import statement can be changed to point to a new
+platform.
+
+Creating a custom platform can be useful to, e.g., run some initialization code
+required by the platform or register a platform-specific model.
+"""
+
+from platforms.default.util import *  # pylint: disable=unused-import,wildcard-import

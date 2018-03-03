@@ -35,12 +35,12 @@ IMAGENET_NUM_VAL_IMAGES = 50000
 def create_dataset(data_dir, data_name):
   """Create a Dataset instance based on data_dir and data_name."""
   supported_datasets = {
-      'synthetic': SyntheticData,
       'imagenet': ImagenetData,
       'cifar10': Cifar10Data,
   }
-  if not data_dir:
-    data_name = 'synthetic'
+  if not data_dir and not data_name:
+    # When using synthetic data, use synthetic imagenet images by default.
+    data_name = 'imagenet'
 
   if data_name is None:
     for supported_name in supported_datasets:
@@ -101,15 +101,13 @@ class Dataset(object):
     return self._queue_runner_required
 
   def use_synthetic_gpu_images(self):
-    return False
+    return not self.data_dir
 
 
 class ImagenetData(Dataset):
   """Configuration for Imagenet dataset."""
 
   def __init__(self, data_dir=None):
-    if data_dir is None:
-      raise ValueError('Data directory not specified')
     super(ImagenetData, self).__init__('imagenet', 300, 300, data_dir=data_dir)
 
   def num_examples_per_epoch(self, subset='train'):
@@ -121,20 +119,10 @@ class ImagenetData(Dataset):
       raise ValueError('Invalid data subset "%s"' % subset)
 
   def get_image_preprocessor(self):
-    return preprocessing.RecordInputImagePreprocessor
-
-
-class SyntheticData(Dataset):
-  """Configuration for synthetic dataset."""
-
-  def __init__(self, unused_data_dir):
-    super(SyntheticData, self).__init__('synthetic')
-
-  def get_image_preprocessor(self):
-    return preprocessing.SyntheticImagePreprocessor
-
-  def use_synthetic_gpu_images(self):
-    return True
+    if self.use_synthetic_gpu_images():
+      return preprocessing.SyntheticImagePreprocessor
+    else:
+      return preprocessing.RecordInputImagePreprocessor
 
 
 class Cifar10Data(Dataset):
@@ -144,14 +132,14 @@ class Cifar10Data(Dataset):
   """
 
   def __init__(self, data_dir=None):
-    if data_dir is None:
-      raise ValueError('Data directory not specified')
     super(Cifar10Data, self).__init__('cifar10', 32, 32, data_dir=data_dir,
                                       queue_runner_required=True,
                                       num_classes=10)
 
   def read_data_files(self, subset='train'):
-    """Reads from data file and return images and labels in a numpy array."""
+    """Reads from data file and returns images and labels in a numpy array."""
+    assert self.data_dir, ('Cannot call `read_data_files` when using synthetic '
+                           'data')
     if subset == 'train':
       filenames = [os.path.join(self.data_dir, 'data_batch_%d' % i)
                    for i in xrange(1, 6)]
@@ -181,4 +169,7 @@ class Cifar10Data(Dataset):
       raise ValueError('Invalid data subset "%s"' % subset)
 
   def get_image_preprocessor(self):
-    return preprocessing.Cifar10ImagePreprocessor
+    if self.use_synthetic_gpu_images():
+      return preprocessing.SyntheticImagePreprocessor
+    else:
+      return preprocessing.Cifar10ImagePreprocessor

@@ -99,12 +99,21 @@ def parse_example_proto(example_serialized):
   return features['image/encoded'], label, bbox, features['image/class/text']
 
 
+_RESIZE_METHOD_MAP = {
+    'nearest': tf.image.ResizeMethod.NEAREST_NEIGHBOR,
+    'bilinear': tf.image.ResizeMethod.BILINEAR,
+    'bicubic': tf.image.ResizeMethod.BICUBIC,
+    'area': tf.image.ResizeMethod.AREA
+}
+
+
 def get_image_resize_method(resize_method, batch_position=0):
   """Get tensorflow resize method.
 
-  If method is 'round_robin', return different methods based on batch position
-  in a round-robin fashion. NOTE: If the batch size is not a multiple of the
-  number of methods, then the distribution of methods will not be uniform.
+  If resize_method is 'round_robin', return different methods based on batch
+  position in a round-robin fashion. NOTE: If the batch size is not a multiple
+  of the number of methods, then the distribution of methods will not be
+  uniform.
 
   Args:
     resize_method: (string) nearest, bilinear, bicubic, area, or round_robin.
@@ -113,18 +122,12 @@ def get_image_resize_method(resize_method, batch_position=0):
   Returns:
     one of resize type defined in tf.image.ResizeMethod.
   """
-  resize_methods_map = {
-      'nearest': tf.image.ResizeMethod.NEAREST_NEIGHBOR,
-      'bilinear': tf.image.ResizeMethod.BILINEAR,
-      'bicubic': tf.image.ResizeMethod.BICUBIC,
-      'area': tf.image.ResizeMethod.AREA
-  }
 
   if resize_method != 'round_robin':
-    return resize_methods_map[resize_method]
+    return _RESIZE_METHOD_MAP[resize_method]
 
   # return a resize method based on batch position in a round-robin fashion.
-  resize_methods = resize_methods_map.values()
+  resize_methods = list(_RESIZE_METHOD_MAP.values())
   def lookup(index):
     return resize_methods[index]
 
@@ -332,22 +335,19 @@ def train_image(image_buffer,
                                    dct_method='INTEGER_FAST')
       image = tf.slice(image, bbox_begin, bbox_size)
 
-    if distortions:
-      # After this point, all image pixels reside in [0,1]. Before, they were
-      # uint8s in the range [0, 255].
-      image = tf.image.convert_image_dtype(image, dtype=tf.float32)
+    distorted_image = tf.image.random_flip_left_right(image)
 
     # This resizing operation may distort the images because the aspect
     # ratio is not respected.
     image_resize_method = get_image_resize_method(resize_method, batch_position)
     if cnn_util.tensorflow_version() >= 11:
       distorted_image = tf.image.resize_images(
-          image, [height, width],
+          distorted_image, [height, width],
           image_resize_method,
           align_corners=False)
     else:
       distorted_image = tf.image.resize_images(
-          image,
+          distorted_image,
           height,
           width,
           image_resize_method,
@@ -356,14 +356,13 @@ def train_image(image_buffer,
     # the third dimension.
     distorted_image.set_shape([height, width, 3])
     if summary_verbosity >= 3:
-      tf.summary.image(
-          'cropped_resized_image',
-          tf.expand_dims(distorted_image, 0))
-
-    # Randomly flip the image horizontally.
-    distorted_image = tf.image.random_flip_left_right(distorted_image)
+      tf.summary.image('cropped_resized_maybe_flipped_image',
+                       tf.expand_dims(distorted_image, 0))
 
     if distortions:
+      distorted_image = tf.cast(distorted_image, dtype=tf.float32)
+      # Images values are expected to be in [0,1] for color distortion.
+      distorted_image /= 255.
       # Randomly distort the colors.
       distorted_image = distort_color(distorted_image, batch_position,
                                       distort_color_in_yiq=distort_color_in_yiq)
@@ -770,14 +769,16 @@ class TestImagePreprocessor(object):
   def set_fake_data(self, fake_images, fake_labels):
     assert len(fake_images.shape) == 4
     assert len(fake_labels.shape) == 1
-    assert fake_images.shape[0] == fake_labels.shape[0]
-    assert fake_images.shape[0] % self.batch_size == 0
+    num_images = fake_images.shape[0]
+    assert num_images == fake_labels.shape[0]
+    assert num_images % self.batch_size == 0
     self.fake_images = fake_images
     self.fake_labels = fake_labels
 
   def minibatch(self, dataset, subset, use_datasets, cache_data,
-                shift_ratio=-1):
-    del dataset, use_datasets, cache_data, shift_ratio
+                shift_ratio=0):
+    """Get test image batches."""
+    del dataset, use_datasets, cache_data
     if (not hasattr(self, 'fake_images') or
         not hasattr(self, 'fake_labels')):
       raise ValueError('Must call set_fake_data() before calling minibatch '
@@ -785,9 +786,15 @@ class TestImagePreprocessor(object):
     if self.expected_subset is not None:
       assert subset == self.expected_subset
 
+    shift_ratio = shift_ratio or self.shift_ratio
+    fake_images = cnn_util.roll_numpy_batches(self.fake_images, self.batch_size,
+                                              shift_ratio)
+    fake_labels = cnn_util.roll_numpy_batches(self.fake_labels, self.batch_size,
+                                              shift_ratio)
+
     with tf.name_scope('batch_processing'):
       image_slice, label_slice = tf.train.slice_input_producer(
-          [self.fake_images, self.fake_labels],
+          [fake_images, fake_labels],
           shuffle=False,
           name='image_slice')
       raw_images, raw_labels = tf.train.batch(

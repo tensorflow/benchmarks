@@ -22,8 +22,10 @@ from datetime import datetime
 import json
 import os
 import sys
-from google.cloud import datastore
+
 import six
+
+from google.cloud import datastore
 
 
 _TEST_NAME_ENV_VAR = 'TF_DIST_BENCHMARK_NAME'

@@ -152,14 +152,14 @@ class ConvNetBuilder(object):
            use_batch_norm=None,
            stddev=None,
            activation='relu',
-           bias=0.0):
+           bias=0.0,
+           kernel_initializer=None):
     """Construct a conv2d layer on top of cnn."""
     if input_layer is None:
       input_layer = self.top_layer
     if num_channels_in is None:
       num_channels_in = self.top_size
-    kernel_initializer = None
-    if stddev is not None:
+    if stddev is not None and kernel_initializer is None:
       kernel_initializer = tf.truncated_normal_initializer(stddev=stddev)
     name = 'conv' + str(self.counts['conv'])
     self.counts['conv'] += 1
