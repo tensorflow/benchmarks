@@ -3,6 +3,8 @@ from models import gru_benchmark
 from models import lstm_benchmark
 from models import mnist_mlp_benchmark
 from models import resnet50_benchmark
+from models import resnet50_benchmark_eager
+from models import resnet50_benchmark_subclass
 from models import vgg16_benchmark
 from models import xception_benchmark
 
@@ -27,8 +29,10 @@ def get_model_config(model_name):
 
   if model_name == 'xception':
     return xception_benchmark.XceptionBenchmark()
+
   if model_name == 'resnet50_eager':
-    return resnet50_benchmark.Resnet50Benchmark()
+    return resnet50_benchmark_eager.Resnet50Benchmark()
+
   if model_name == 'resnet50_subclass':
-    return resnet50_benchmark.Resnet50Benchmark()
+    return resnet50_benchmark_subclass.Resnet50Benchmark()
 

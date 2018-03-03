@@ -23,7 +23,7 @@ def device_and_data_format():
     return ('/gpu:0', 'channels_first') if tfe.num_gpus() > 0 else ('/cpu:0',
                                                                     'channels_last')
 
-class Resnet50EagerBenchmark:
+class Resnet50SubclassBenchmark:
 
     def __init__(self):
         self.test_name = "resnet50_subclass"
@@ -67,10 +67,6 @@ class Resnet50EagerBenchmark:
         with tf.device(device):
             inputs = tf.keras.layers.Input(shape=shape)
             resnet50_model = resnet50_layers.ResNet50(data_format)
-            # outputs = tf.keras.applications.ResNet50(include_top=False,
-            #                                          pooling='avg',
-            #                                          weights=None)(inputs)
-            #predictions = tf.keras.layers.Dense(num_classes)(outputs)
             predictions = resnet50_model(inputs)
             model = tf.keras.models.Model(inputs, predictions)
             model.compile(loss=crossentropy_from_logits,
