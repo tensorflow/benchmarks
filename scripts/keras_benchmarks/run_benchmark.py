@@ -1,12 +1,11 @@
 """ Main entry point for running benchmarks with different Keras backends."""
 
-from models import mnist_mlp_benchmark
-from models import cifar10_cnn_benchmark
-from models import lstm_benchmark
-import upload_benchmarks_bq as bq
 import argparse
-import keras
 import json
+import keras
+
+import upload_benchmarks_bq as bq
+from models import model_config
 
 if keras.backend.backend() == "tensorflow":
   import tensorflow as tf
@@ -18,14 +17,21 @@ if keras.backend.backend() == "cntk":
 parser = argparse.ArgumentParser()
 parser.add_argument('--mode',
                     help='The benchmark can be run on cpu, gpu and multiple gpus.')
+parser.add_argument('--model_name',
+                    help='The name of the model that will be benchmarked.')
+parser.add_argument('--dry_run', type=bool,
+                    help='Flag to output metrics to the console instead of '
+                         'uploading metrics to BigQuery. This is useful when '
+                         'you are testing new models and do not want data '
+                         'corruption.')
 
 args = parser.parse_args()
 
 # Load the json config file for the requested mode.
+# TODO(anjalisridhar): Can we set the benchmarks home dir? Lets add that as an argument that is part of our setup script
 config_file = open("benchmarks/scripts/keras_benchmarks/config.json", 'r')
 config_contents = config_file.read()
 config = json.loads(config_contents)[args.mode]
-
 
 def get_backend_version():
     if keras.backend.backend() == "tensorflow":
@@ -39,7 +45,7 @@ def get_backend_version():
 def _upload_metrics(current_model):
     bq.upload_metrics_to_bq(test_name=current_model.test_name,
                             total_time=current_model.total_time,
-                            epochs=current_model.epochs,
+                            epochs=current_model.epochs-1,
                             batch_size=current_model.batch_size,
                             backend_type=keras.backend.backend(),
                             backend_version=get_backend_version(),
@@ -51,20 +57,15 @@ def _upload_metrics(current_model):
                             platform_type=config['platform_type'],
                             platform_machine_type=config['platform_machine_type'],
                             keras_version=keras.__version__,
-                            sample_type=current_model.sample_type)
+                            sample_type=current_model.sample_type,
+                            test_type=current_model.test_type)
 
 
-# MNIST MLP
-model = mnist_mlp_benchmark.MnistMlpBenchmark()
-model.run_benchmark(gpus=config['gpus'])
-_upload_metrics(model)
-
-# CIFAR10 CNN
-model = cifar10_cnn_benchmark.Cifar10CnnBenchmark()
-model.run_benchmark(gpus=config['gpus'])
-_upload_metrics(model)
-
-# LSTM
-model = lstm_benchmark.LstmBenchmark()
-model.run_benchmark(gpus=config['gpus'])
-_upload_metrics(model)
+model = model_config.get_model_config(args.model_name)
+if keras.backend.backend() == 'tensorflow':
+  use_dataset_tensors=True
+model.run_benchmark(gpus=config['gpus'], use_dataset_tensors=use_dataset_tensors)
+if args.dry_run:
+  print("Model :total_time", model.test_name, model.total_time)
+else:
+  _upload_metrics(model)

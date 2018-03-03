@@ -1,30 +1,31 @@
 '''
-Original Model from keras/examples/lstm_text_generation.py
 
-Benchmark for a LSTM model.
+Benchmark for a GRU model.
 '''
 from __future__ import print_function
 import keras
 from keras.models import Sequential
 from keras.layers import Dense
-from keras.layers import LSTM
+from keras.layers import GRU
 from keras.optimizers import RMSprop
 from keras.utils import multi_gpu_model
 
 from models import timehistory
 from data_generator import generate_text_input_data
+
 if keras.backend.backend() == 'tensorflow':
   import tensorflow as tf
+
 if keras.backend.backend() == 'cntk':
   from gpu_mode import cntk_gpu_mode_config, finalize
 
 def crossentropy_from_logits(y_true, y_pred):
   return tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred)
 
-class LstmBenchmark:
+class GRUBenchmark:
 
     def __init__(self):
-        self.test_name = "lstm"
+        self.test_name = "gru"
         self.sample_type = "text"
         self.total_time = 0
         self.batch_size = 32
@@ -42,15 +43,14 @@ class LstmBenchmark:
         x_train, y_train = generate_text_input_data(input_shape)
         x_train = x_train.astype('float32')
         y_train = y_train.astype('float32')
-
         # build the model: a single LSTM
         model = Sequential()
-        model.add(LSTM(128, input_shape=(input_dim_1, input_dim_2)))
+        model.add(GRU(self.batch_size, input_shape=(input_dim_1, input_dim_2)))
 
         optimizer = RMSprop(lr=0.01)
 
         if use_dataset_tensors:
-        # Create the dataset and its associated one-shot iterator.
+          # Create the dataset and its associated one-shot iterator.
           dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
           dataset = dataset.repeat()
           dataset = dataset.shuffle(10000)
@@ -72,7 +72,7 @@ class LstmBenchmark:
             model = multi_gpu_model(model, gpus=gpus)
 
         if use_dataset_tensors:
-          model.compile(loss=crossentropy_from_logits,
+         model.compile(loss=crossentropy_from_logits,
                         optimizer=optimizer,
                         metrics=['accuracy'],
                         target_tensors=[targets])
@@ -86,7 +86,6 @@ class LstmBenchmark:
             y_train = y_train[start: end]
 
         time_callback = timehistory.TimeHistory()
-
         if use_dataset_tensors:
           model.fit(epochs=self.epochs, steps_per_epoch=15, callbacks=[time_callback])
         else:

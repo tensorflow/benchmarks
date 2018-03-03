@@ -1,10 +1,14 @@
 #!/bin/bash
 
 # setup script for running benchmarks on GPU
+# run `sudo sh setup_gpu.sh`
 
 # Install pip
 wget https://bootstrap.pypa.io/get-pip.py
 sudo python get-pip.py
+
+# We might need to install certain version of tensorflow for CudaNN lib compatibility
+#sudo pip install --upgrade tensorflow-gpu==1.4
 
 # Install Nvidia drivers CUDA 8
 curl -O http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/cuda-repo-ubuntu1604_8.0.61-1_amd64.deb
@@ -42,9 +46,9 @@ export LD_LIBRARY_PATH=/usr/local/cudnn-6.0/cuda/lib64:$LD_LIBRARY_PATH
 sudo apt-get install openmpi-bin -y
 
 # Install CNTK GPU version
-pip install https://cntk.ai/PythonWheel/GPU/cntk-2.2-cp27-cp27mu-linux_x86_64.whl
+sudo pip install https://cntk.ai/PythonWheel/GPU/cntk-2.2-cp27-cp27mu-linux_x86_64.whl
 
-# Install other pacakges required for CNTK
+# Install other packages required for CNTK
 sudo apt-get install libopencv-dev python-opencv -y
 
 # Install keras
