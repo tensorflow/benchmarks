@@ -1,3 +1,17 @@
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 """ResNet50 model definition compatible with TensorFlow's eager execution.
 
 Reference [Deep Residual Learning for Image
@@ -5,9 +19,14 @@ Recognition](https://arxiv.org/abs/1512.03385)
 
 Adapted from tf.keras.applications.ResNet50. A notable difference is that the
 model here outputs logits while the Keras model outputs probability.
-
-Adapted from tf.contrib.eager.example.resnet50 for testing model subclasses
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import functools
+
+import google3
 import tensorflow as tf
 
 
@@ -31,23 +50,23 @@ class _IdentityBlock(tf.keras.Model):
         bn_name_base = 'bn' + str(stage) + block + '_branch'
         bn_axis = 1 if data_format == 'channels_first' else 3
 
-        self.conv2a = tf.layers.Conv2D(
+        self.conv2a = tf.keras.layers.Conv2D(
             filters1, (1, 1), name=conv_name_base + '2a', data_format=data_format)
-        self.bn2a = tf.layers.BatchNormalization(
+        self.bn2a = tf.keras.layers.BatchNormalization(
             axis=bn_axis, name=bn_name_base + '2a')
 
-        self.conv2b = tf.layers.Conv2D(
+        self.conv2b = tf.keras.layers.Conv2D(
             filters2,
             kernel_size,
             padding='same',
             data_format=data_format,
             name=conv_name_base + '2b')
-        self.bn2b = tf.layers.BatchNormalization(
+        self.bn2b = tf.keras.layers.BatchNormalization(
             axis=bn_axis, name=bn_name_base + '2b')
 
-        self.conv2c = tf.layers.Conv2D(
+        self.conv2c = tf.keras.layers.Conv2D(
             filters3, (1, 1), name=conv_name_base + '2c', data_format=data_format)
-        self.bn2c = tf.layers.BatchNormalization(
+        self.bn2c = tf.keras.layers.BatchNormalization(
             axis=bn_axis, name=bn_name_base + '2c')
 
     def call(self, input_tensor, training=False):
@@ -95,34 +114,34 @@ class _ConvBlock(tf.keras.Model):
         bn_name_base = 'bn' + str(stage) + block + '_branch'
         bn_axis = 1 if data_format == 'channels_first' else 3
 
-        self.conv2a = tf.layers.Conv2D(
+        self.conv2a = tf.keras.layers.Conv2D(
             filters1, (1, 1),
             strides=strides,
             name=conv_name_base + '2a',
             data_format=data_format)
-        self.bn2a = tf.layers.BatchNormalization(
+        self.bn2a = tf.keras.layers.BatchNormalization(
             axis=bn_axis, name=bn_name_base + '2a')
 
-        self.conv2b = tf.layers.Conv2D(
+        self.conv2b = tf.keras.layers.Conv2D(
             filters2,
             kernel_size,
             padding='same',
             name=conv_name_base + '2b',
             data_format=data_format)
-        self.bn2b = tf.layers.BatchNormalization(
+        self.bn2b = tf.keras.layers.BatchNormalization(
             axis=bn_axis, name=bn_name_base + '2b')
 
-        self.conv2c = tf.layers.Conv2D(
+        self.conv2c = tf.keras.layers.Conv2D(
             filters3, (1, 1), name=conv_name_base + '2c', data_format=data_format)
-        self.bn2c = tf.layers.BatchNormalization(
+        self.bn2c = tf.keras.layers.BatchNormalization(
             axis=bn_axis, name=bn_name_base + '2c')
 
-        self.conv_shortcut = tf.layers.Conv2D(
+        self.conv_shortcut = tf.keras.layers.Conv2D(
             filters3, (1, 1),
             strides=strides,
             name=conv_name_base + '1',
             data_format=data_format)
-        self.bn_shortcut = tf.layers.BatchNormalization(
+        self.bn_shortcut = tf.keras.layers.BatchNormalization(
             axis=bn_axis, name=bn_name_base + '1')
 
     def call(self, input_tensor, training=False):
@@ -182,6 +201,7 @@ class ResNet50(tf.keras.Model):
                  classes=1000):
         super(ResNet50, self).__init__(name='')
 
+
         valid_channel_values = ('channels_first', 'channels_last')
         if data_format not in valid_channel_values:
             raise ValueError('Unknown data_format: %s. Valid values: %s' %
@@ -201,15 +221,15 @@ class ResNet50(tf.keras.Model):
             return _IdentityBlock(
                 3, filters, stage=stage, block=block, data_format=data_format)
 
-        self.conv1 = tf.layers.Conv2D(
+        self.conv1 = tf.keras.layers.Conv2D(
             64, (7, 7),
             strides=(2, 2),
             data_format=data_format,
             padding='same',
             name='conv1')
         bn_axis = 1 if data_format == 'channels_first' else 3
-        self.bn_conv1 = tf.layers.BatchNormalization(axis=bn_axis, name='bn_conv1')
-        self.max_pool = tf.layers.MaxPooling2D(
+        self.bn_conv1 = tf.keras.layers.BatchNormalization(axis=bn_axis, name='bn_conv1')
+        self.max_pool = tf.keras.layers.MaxPooling2D(
             (3, 3), strides=(2, 2), data_format=data_format)
 
         self.l2a = conv_block([64, 64, 256], stage=2, block='a', strides=(1, 1))
@@ -232,11 +252,11 @@ class ResNet50(tf.keras.Model):
         self.l5b = id_block([512, 512, 2048], stage=5, block='b')
         self.l5c = id_block([512, 512, 2048], stage=5, block='c')
 
-        self.avg_pool = tf.layers.AveragePooling2D(
+        self.avg_pool = tf.keras.layers.AveragePooling2D(
             (7, 7), strides=(7, 7), data_format=data_format)
 
         if self.include_top:
-            self.fc1000 = tf.layers.Dense(classes, name='fc1000')
+            self.fc1000 = tf.keras.layers.Dense(classes, name='fc1000')
         else:
             reduction_indices = [1, 2] if data_format == 'channels_last' else [2, 3]
             reduction_indices = tf.constant(reduction_indices)
@@ -280,7 +300,7 @@ class ResNet50(tf.keras.Model):
         x = self.avg_pool(x)
 
         if self.include_top:
-            return self.fc1000(tf.layers.flatten(x))
+            return self.fc1000(tf.keras.layers.Flatten()(x))
         elif self.global_pooling:
             return self.global_pooling(x)
         else:
