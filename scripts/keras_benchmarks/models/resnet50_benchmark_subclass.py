@@ -65,10 +65,10 @@ class Resnet50SubclassBenchmark:
 
         device, data_format = device_and_data_format()
         with tf.device(device):
-            inputs = tf.keras.layers.Input(shape=shape)
-            resnet50_model = resnet50_layers.ResNet50(data_format)
-            outputs = resnet50_model(inputs, training=True)
-            model = tf.keras.models.Model(inputs, outputs)
+            #inputs = tf.keras.layers.Input(shape=shape)
+            model = resnet50_layers.ResNet50(data_format)
+            #outputs = resnet50_model(inputs, training=True)
+            #model = tf.keras.models.Model(inputs, outputs)
             model.compile(loss=crossentropy_from_logits,
                           optimizer=tf.train.RMSPropOptimizer(learning_rate=0.0001, decay=1e-6),
                           metrics=['accuracy'])

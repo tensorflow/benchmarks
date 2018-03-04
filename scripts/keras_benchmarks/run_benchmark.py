@@ -29,7 +29,7 @@ args = parser.parse_args()
 
 # Load the json config file for the requested mode.
 # TODO(anjalisridhar): Can we set the benchmarks home dir? Lets add that as an argument that is part of our setup script
-config_file = open("benchmarks/scripts/keras_benchmarks/benchmark_scripts/config.json", 'r')
+config_file = open("benchmarks/scripts/keras_benchmarks/config.json", 'r')
 config_contents = config_file.read()
 config = json.loads(config_contents)[args.mode]
 
