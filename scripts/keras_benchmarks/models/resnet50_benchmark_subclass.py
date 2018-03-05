@@ -29,7 +29,7 @@ class Resnet50SubclassBenchmark:
         self.test_name = "resnet50_subclass"
         self.sample_type = "images"
         self.total_time = 0
-        self.batch_size = 64
+        self.batch_size = 16
         self.epochs = 4
         self.num_samples = 1000
         self.test_type = 'tf.keras, subclass'
@@ -65,18 +65,16 @@ class Resnet50SubclassBenchmark:
 
         device, data_format = device_and_data_format()
         with tf.device(device):
-            #inputs = tf.keras.layers.Input(shape=shape)
+	    #inputs = tf.keras.layers.Input(shape=shape)
             model = resnet50_layers.ResNet50(data_format)
             #outputs = resnet50_model(inputs, training=True)
             #model = tf.keras.models.Model(inputs, outputs)
-            model.compile(loss=crossentropy_from_logits,
+	    model.compile(loss=crossentropy_from_logits,
                           optimizer=tf.train.RMSPropOptimizer(learning_rate=0.0001, decay=1e-6),
                           metrics=['accuracy'])
 
             time_callback = timehistory.TimeHistory()
-
-            model.fit(x_train, y_train, batch_size=self.batch_size, epochs=self.epochs,
-                      shuffle=True, callbacks=[time_callback])
+            model.fit(x_train, y_train, batch_size=self.batch_size, epochs=self.epochs, shuffle=True, callbacks=[time_callback])
 
             self.total_time = 0
             for i in range(1, self.epochs):

@@ -26,7 +26,6 @@ from __future__ import print_function
 
 import functools
 
-import google3
 import tensorflow as tf
 
 
