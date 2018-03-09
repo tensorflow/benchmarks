@@ -303,13 +303,90 @@ class VariableMgrLocalReplicated(VariableMgr):
         for arr in device_grads:
           aggregated_device_grads.append(
               [(g, v) for (_, v), (g, _) in zip(arr, agg_grads)])
-      else:
+      elif self.benchmark_cnn.params.gradient_repacking == 0:
         aggregated_device_grads, self.grad_has_inf_nan = (
             variable_mgr_util.aggregate_gradients_using_hierarchical_copy(
                 self.benchmark_cnn,
                 device_grads,
                 use_mean=False,
                 check_inf_nan=self.benchmark_cnn.enable_auto_loss_scale))
+      else:
+        device_grad_packs = []
+        all_tower_shapes = []
+        all_tower_sizes = []
+        for tower_grads_and_vars in device_grads:
+          with tf.colocate_with(tower_grads_and_vars[0][0]):
+            # Flatten all the grads.
+            flat_grads = [tf.reshape(g, [-1]) for g, _ in tower_grads_and_vars]
+            # Remember the original shape of all the grads.
+            tower_shapes = [tf.shape(g) for g, _ in tower_grads_and_vars]
+            # Remember the original sizes of all the grads.
+            tower_sizes = [tf.size(g) for g, _ in tower_grads_and_vars]
+            # Concat all the flat grads into a big flat tensor.
+            concat_grads = tf.concat(flat_grads, 0)
+
+            # Split the big tensor into num_splits packs. In cases where the
+            # total size is not divisible num_splits, the last pack gets
+            # more elements.
+            # TODO(zhengxq): it is possible to optimize away the additional
+            # data movement by copying along the original variable boundary.
+            # TODO(zhengxq): it is also possible to optimize away all the concat
+            # as well.
+            num_splits = self.benchmark_cnn.params.gradient_repacking
+            total_grad_size = tf.size(concat_grads)
+            split_size = total_grad_size // num_splits
+            split_size_last = total_grad_size - split_size * (num_splits - 1)
+            split_sizes = [split_size] * (num_splits - 1) + [split_size_last]
+            grad_packs = tf.split(concat_grads, split_sizes)
+
+            # Ready to aggregate the repacked gradients, with fake variables.
+            # TODO(zhengxq): It is hacky to have to use fake variables.
+            # We should remove the need for variables in
+            # aggregate_gradients_using*.
+            device_grad_packs.append(zip(grad_packs, [None] * num_splits))
+            all_tower_shapes.append(tower_shapes)
+            all_tower_sizes.append(tower_sizes)
+
+        # The actual aggregation of the repacked gradients. Note that they are
+        # sharded among different aggregation trees. So it is important to
+        # strike the balance on num_splits.
+        summed_device_grad_packs, self.grad_has_inf_nan = (
+            variable_mgr_util.aggregate_gradients_using_hierarchical_copy(
+                self.benchmark_cnn,
+                device_grad_packs,
+                use_mean=False,
+                check_inf_nan=self.benchmark_cnn.enable_auto_loss_scale))
+
+        aggregated_device_grads = []
+        # pylint: disable=line-too-long
+        for (summed_tower_grad_packs, tower_grads_and_vars, tower_shapes,
+             tower_sizes) in zip(summed_device_grad_packs, device_grads,
+                                 all_tower_shapes, all_tower_sizes):
+          # pylint: enable=line-too-long
+          # Reverse the packing operations in the previous steps. Form the
+          # summed gradients back into their original shapes.
+          with tf.colocate_with(summed_tower_grad_packs[0][0]):
+            # Form a list of the summed grad packs.
+            device_grad_packs = [g for g, _ in summed_tower_grad_packs]
+
+            # Concat them back into a big flat tensor.
+            device_grads_concat = tf.concat(device_grad_packs, 0)
+
+            # Split the tensors back into their original sizes.
+            grads_with_sizes = tf.split(device_grads_concat, tower_sizes)
+
+            # Reshape the tensors back into their original shapes.
+            grads_with_shapes = [
+                tf.reshape(grad, shape)
+                for shape, grad in zip(tower_shapes, grads_with_sizes)
+            ]
+
+            # Form the list with the original list of variables.
+            summed_tower_grads = [
+                (g, v)
+                for g, (_, v) in zip(grads_with_shapes, tower_grads_and_vars)
+            ]
+            aggregated_device_grads.append(summed_tower_grads)
 
     return self.benchmark_cnn.devices, aggregated_device_grads
 

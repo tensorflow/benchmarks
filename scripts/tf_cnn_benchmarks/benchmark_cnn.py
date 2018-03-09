@@ -128,6 +128,11 @@ flags.DEFINE_integer('per_gpu_thread_count', 0,
                      'The number of threads to use for GPU. Only valid when '
                      'gpu_thread_mode is not global.')
 flags.DEFINE_boolean('hierarchical_copy', False, 'Use hierarchical copies')
+flags.DEFINE_integer('gradient_repacking', 0, 'Use gradient repacking. It'
+                     'currently only works with replicated mode. At the end of'
+                     'of each step, it repacks the gradients for more efficient'
+                     'cross-device transportation. A non-zero value specifies'
+                     'the number of split packs that will be formed.')
 flags.DEFINE_boolean('cache_data', False,
                      'Enable use of a special datasets pipeline that reads a '
                      'single TFRecord into memory and repeats it infinitely '
