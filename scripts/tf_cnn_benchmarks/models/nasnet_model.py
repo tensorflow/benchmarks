@@ -296,9 +296,6 @@ def build_nasnet_cifar(images,
     tf.logging.info('A GPU is available on the machine, consider using NCHW '
                     'data format for increased speed on GPU.')
 
-  if hparams.data_format == 'NCHW':
-    images = tf.transpose(images, [0, 3, 1, 2])
-
   # Calculate the total number of cells in the network
   # Add 2 for the reduction cells
   total_num_cells = hparams.num_cells + 2
@@ -346,9 +343,6 @@ def build_nasnet_mobile(images,
   if tf.test.is_gpu_available() and hparams.data_format == 'NHWC':
     tf.logging.info('A GPU is available on the machine, consider using NCHW '
                     'data format for increased speed on GPU.')
-
-  if hparams.data_format == 'NCHW':
-    images = tf.transpose(images, [0, 3, 1, 2])
 
   # Calculate the total number of cells in the network
   # Add 2 for the reduction cells
@@ -400,9 +394,6 @@ def build_nasnet_large(images,
   if tf.test.is_gpu_available() and hparams.data_format == 'NHWC':
     tf.logging.info('A GPU is available on the machine, consider using NCHW '
                     'data format for increased speed on GPU.')
-
-  if hparams.data_format == 'NCHW':
-    images = tf.transpose(images, [0, 3, 1, 2])
 
   # Calculate the total number of cells in the network
   # Add 2 for the reduction cells
@@ -548,7 +539,11 @@ class NasnetModel(model.Model):
     super(NasnetModel, self).__init__('nasnet', 224, 32, 0.005)
 
   def add_inference(self, cnn):
-    cnn.top_layer, _ = build_nasnet_mobile(cnn.top_layer)
+    tf.logging.info('input_image_shape: {}'.format(cnn.top_layer.shape))
+    cnn.top_layer, _ = build_nasnet_mobile(
+        images=cnn.top_layer,
+        is_training=cnn.phase_train,
+        data_format=cnn.data_format)
     cnn.top_size = cnn.top_layer.shape[-1].value
 
 
@@ -559,7 +554,11 @@ class NasnetLargeModel(model.Model):
     super(NasnetLargeModel, self).__init__('nasnet', 331, 16, 0.005)
 
   def add_inference(self, cnn):
-    cnn.top_layer, _ = build_nasnet_large(cnn.top_layer)
+    tf.logging.info('input_image_shape: {}'.format(cnn.top_layer.shape))
+    cnn.top_layer, _ = build_nasnet_large(
+        images=cnn.top_layer,
+        is_training=cnn.phase_train,
+        data_format=cnn.data_format)
     cnn.top_size = cnn.top_layer.shape[-1].value
 
 
@@ -570,5 +569,9 @@ class NasnetCifarModel(model.Model):
     super(NasnetCifarModel, self).__init__('nasnet', 32, 32, 0.025)
 
   def add_inference(self, cnn):
-    cnn.top_layer, _ = build_nasnet_cifar(cnn.top_layer)
+    tf.logging.info('input_image_shape: {}'.format(cnn.top_layer.shape))
+    cnn.top_layer, _ = build_nasnet_cifar(
+        images=cnn.top_layer,
+        is_training=cnn.phase_train,
+        data_format=cnn.data_format)
     cnn.top_size = cnn.top_layer.shape[-1].value
