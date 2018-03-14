@@ -515,7 +515,8 @@ class RecordInputImagePreprocessor(object):
         counter = counter.repeat()
         ds = tf.data.Dataset.zip((ds, counter))
         ds = ds.prefetch(buffer_size=self.batch_size)
-        ds = ds.shuffle(buffer_size=10000)
+        if self.train:
+          ds = ds.shuffle(buffer_size=10000)
         ds = ds.repeat()
         ds = ds.apply(
             batching.map_and_batch(

@@ -44,7 +44,6 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.util import nest
 import benchmark_storage
 import cnn_util
-import convnet_builder
 import datasets
 import flags
 import variable_mgr
@@ -1839,34 +1838,11 @@ class BenchmarkCNN(object):
       images = tf.multiply(images, 1. / 127.5)
       # Rescale to [-1, 1]
       images = tf.subtract(images, 1.0)
-
-      if self.data_format == 'NCHW':
-        images = tf.transpose(images, [0, 3, 1, 2])
       if input_data_type != data_type:
         images = tf.cast(images, data_type)
-      var_type = tf.float32
-      if data_type == tf.float16 and self.params.fp16_vars:
-        var_type = tf.float16
-      network = convnet_builder.ConvNetBuilder(
-          images, self.dataset.depth, phase_train, self.params.use_tf_layers,
-          self.data_format, data_type, var_type)
-      with tf.variable_scope('cg', custom_getter=network.get_custom_getter()):
-        self.model.add_inference(network)
-        # Add the final fully-connected class layer
-        logits = (network.affine(nclass, activation='linear')
-                  if not self.model.skip_final_affine_layer()
-                  else network.top_layer)
-        aux_logits = None
-        if network.aux_top_layer is not None:
-          with network.switch_to_aux_top_layer():
-            aux_logits = network.affine(
-                nclass, activation='linear', stddev=0.001)
-      if data_type == tf.float16:
-        # TODO(reedwm): Determine if we should do this cast here.
-        logits = tf.cast(logits, tf.float32)
-        if aux_logits is not None:
-          aux_logits = tf.cast(aux_logits, tf.float32)
-
+      logits, aux_logits = self.model.build_network(
+          images, phase_train, nclass, self.dataset.depth, data_type,
+          self.data_format, self.params.use_tf_layers, self.params.fp16_vars)
       results = {}  # The return value
       if not phase_train or self.params.print_training_accuracy:
         top_1_op = tf.reduce_sum(

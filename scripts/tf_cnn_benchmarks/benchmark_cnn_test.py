@@ -818,7 +818,7 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
         150137: 0.01,
         300273: 0.01,
         300274: 0.001,
-        10000000: 0.001
+        10000000: 0.00001
     })
 
     params = params._replace(learning_rate=1.)
