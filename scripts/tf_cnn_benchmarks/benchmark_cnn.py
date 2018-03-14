@@ -232,6 +232,8 @@ flags.DEFINE_boolean('staged_vars', False,
                      'computation')
 flags.DEFINE_boolean('force_gpu_compatible', True,
                      'whether to enable force_gpu_compatible in GPU_Options')
+flags.DEFINE_boolean('allow_growth', None,
+                     'whether to enable allow_growth in GPU_Options')
 flags.DEFINE_boolean('xla', False, 'whether to enable XLA')
 flags.DEFINE_boolean('fuse_decode_and_crop', True,
                      'Fuse decode_and_crop for image preprocessing.')
@@ -494,6 +496,8 @@ def create_config_proto(params):
   config.intra_op_parallelism_threads = params.num_intra_threads
   config.inter_op_parallelism_threads = params.num_inter_threads
   config.gpu_options.force_gpu_compatible = params.force_gpu_compatible
+  if params.allow_growth is not None:
+    config.gpu_options.allow_growth = params.allow_growth
   if params.gpu_memory_frac_for_testing > 0:
     config.gpu_options.per_process_gpu_memory_fraction = (
         params.gpu_memory_frac_for_testing)
