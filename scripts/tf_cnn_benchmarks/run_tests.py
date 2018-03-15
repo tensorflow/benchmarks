@@ -29,6 +29,7 @@ import benchmark_cnn_distributed_test
 import benchmark_cnn_test
 import cnn_util_test
 import variable_mgr_util_test
+from models import nasnet_test
 
 
 # Ideally, we wouldn't need this option, and run both distributed tests and non-
@@ -61,6 +62,7 @@ def main(_):
         loader.loadTestsFromModule(cnn_util_test),
         loader.loadTestsFromModule(variable_mgr_util_test),
         loader.loadTestsFromModule(benchmark_cnn_test),
+        loader.loadTestsFromModule(nasnet_test),
     ])
     dist_suite = unittest.TestSuite([
         loader.loadTestsFromModule(benchmark_cnn_distributed_test),
