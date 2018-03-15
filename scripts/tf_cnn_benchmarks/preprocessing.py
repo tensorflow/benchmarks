@@ -174,13 +174,6 @@ def decode_jpeg(image_buffer, scope=None):  # , dtype=tf.float32):
     return image
 
 
-def normalized_image(images):
-  # Rescale from [0, 255] to [0, 2]
-  images = tf.multiply(images, 1. / 127.5)
-  # Rescale to [-1, 1]
-  return tf.subtract(images, 1.0)
-
-
 def eval_image(image,
                height,
                width,
@@ -504,7 +497,7 @@ class RecordInputImagePreprocessor(BaseImagePreprocess):
 
     # image = tf.cast(image, tf.uint8) # HACK TESTING
 
-    return normalized_image(image)
+    return image
 
   def parse_and_preprocess(self, value, batch_position):
     image_buffer, label_index, bbox, _ = parse_example_proto(value)
@@ -623,7 +616,7 @@ class Cifar10ImagePreprocessor(BaseImagePreprocess):
       image = self._distort_image(raw_image)
     else:
       image = self._eval_image(raw_image)
-    return normalized_image(image)
+    return image
 
   def minibatch(self, dataset, subset, use_datasets, cache_data,
                 shift_ratio=-1):
@@ -780,4 +773,4 @@ class TestImagePreprocessor(BaseImagePreprocess):
         images[split_index] = tf.parallel_stack(images[split_index])
         labels[split_index] = tf.parallel_stack(labels[split_index])
 
-      return normalized_image(images), labels
+      return images, labels

@@ -83,6 +83,8 @@ class Model(object):
                     data_type=tf.float32, data_format='NCHW',
                     use_tf_layers=True, fp16_vars=False):
     """Returns logits and aux_logits from images."""
+    images = tf.multiply(images, 1. / 127.5)
+    images = tf.subtract(images, 1.0)
     if data_format == 'NCHW':
       images = tf.transpose(images, [0, 3, 1, 2])
     var_type = tf.float32
