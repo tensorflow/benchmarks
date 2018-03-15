@@ -166,6 +166,10 @@ flags.DEFINE_boolean('use_chrome_trace_format', True,
 flags.DEFINE_string('graph_file', None,
                     'Write the model\'s graph definition to this file. '
                     'Defaults to binary format unless filename ends in "txt".')
+flags.DEFINE_string('partitioned_graph_file_prefix', None,
+                    'If specified, after the graph has been partitioned and '
+                    'optimized, write out each partitioned graph to a file '
+                    'with the given prefix.')
 flags.DEFINE_string('optimizer', 'sgd',
                     'Optimizer to use: momentum or sgd or rmsprop')
 flags.DEFINE_float('learning_rate', None,
@@ -551,12 +555,17 @@ def benchmark_one_step(sess,
                        batch_size,
                        step_train_times,
                        trace_filename,
+                       partitioned_graph_file_prefix,
                        image_producer,
                        params,
                        summary_op=None):
   """Advance one step of benchmarking."""
-  if trace_filename and step == -1:
-    run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+  if (trace_filename or partitioned_graph_file_prefix) and step == -1:
+    run_options = tf.RunOptions()
+    if trace_filename:
+      run_options.trace_level = tf.RunOptions.FULL_TRACE
+    if partitioned_graph_file_prefix:
+      run_options.output_partition_graphs = True
     run_metadata = tf.RunMetadata()
   else:
     run_options = None
@@ -585,17 +594,33 @@ def benchmark_one_step(sess,
           LOSS_AND_ACCURACY_DIGITS_TO_SHOW, results['top_1_accuracy'],
           LOSS_AND_ACCURACY_DIGITS_TO_SHOW, results['top_5_accuracy'])
     log_fn(log_str)
-  if trace_filename and step == -1:
-    log_fn('Dumping trace to %s' % trace_filename)
-    trace_dir = os.path.dirname(trace_filename)
-    if not gfile.Exists(trace_dir):
-      gfile.MakeDirs(trace_dir)
-    with gfile.Open(trace_filename, 'w') as trace_file:
-      if params.use_chrome_trace_format:
-        trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-        trace_file.write(trace.generate_chrome_trace_format(show_memory=True))
+  if (trace_filename or partitioned_graph_file_prefix) and step == -1:
+    if trace_filename:
+      log_fn('Dumping trace to %s' % trace_filename)
+      trace_dir = os.path.dirname(trace_filename)
+      if not gfile.Exists(trace_dir):
+        gfile.MakeDirs(trace_dir)
+      with gfile.Open(trace_filename, 'w') as trace_file:
+        if params.use_chrome_trace_format:
+          trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+          trace_file.write(trace.generate_chrome_trace_format(show_memory=True))
+        else:
+          trace_file.write(str(run_metadata.step_stats))
+    if partitioned_graph_file_prefix:
+      path, filename = os.path.split(partitioned_graph_file_prefix)
+      if '.' in filename:
+        base_filename, ext = filename.rsplit('.', 1)
+        ext = '.' + ext
       else:
-        trace_file.write(str(run_metadata.step_stats))
+        base_filename, ext = filename, ''
+      as_text = filename.endswith('txt')
+      for graph_def in run_metadata.partition_graphs:
+        device = graph_def.node[0].device.replace('/', '_').replace(':', '_')
+        graph_filename = '%s%s%s' % (base_filename, device, ext)
+        log_fn('Writing partitioned GraphDef as %s to %s' % (
+            'text' if as_text else 'binary',
+            os.path.join(path, graph_filename)))
+        tf.train.write_graph(graph_def, path, graph_filename, as_text)
   return summary_str
 
 
@@ -1449,7 +1474,8 @@ class BenchmarkCNN(object):
             sess, fetches, local_step,
             self.batch_size * (self.num_workers
                                if self.single_session else 1), step_train_times,
-            self.trace_filename, image_producer, self.params, fetch_summary)
+            self.trace_filename, self.params.partitioned_graph_file_prefix,
+            image_producer, self.params, fetch_summary)
         if summary_str is not None and is_chief:
           sv.summary_computed(sess, summary_str)
         local_step += 1
