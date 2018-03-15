@@ -58,8 +58,9 @@ _DEFAULT_NUM_BATCHES = 100
 # TODO(reedwm): add upper_bound and lower_bounds to appropriate integer and
 # float flags, and change certain string flags to enum flags.
 
-flags.DEFINE_string('model', 'trivial', 'name of the model to run')
-
+flags.DEFINE_string('model', 'trivial',
+                    'Name of the model to run, the list of supported models '
+                    'are defined in models/model.py')
 # The code will first check if it's running under benchmarking mode
 # or evaluation mode, depending on 'eval':
 # Under the evaluation mode, this script will read a saved model,
@@ -118,6 +119,9 @@ flags.DEFINE_boolean('distortions', True,
                      'These include bbox and color distortions.')
 flags.DEFINE_boolean('use_datasets', True,
                      'Enable use of datasets for input pipeline')
+flags.DEFINE_string('input_preprocessor', 'default',
+                    'Name of input preprocessor. The list of supported input '
+                    'preprocessors are defined in preprocessing.py.')
 flags.DEFINE_string('gpu_thread_mode', 'gpu_private',
                     'Methods to assign GPU host work to threads. '
                     'global: all GPUs and CPUs share the same global threads; '
@@ -1795,8 +1799,7 @@ class BenchmarkCNN(object):
                                      abs_device_num, image_producer_stage,
                                      gpu_compute_stage_ops, gpu_grad_stage_ops):
     """Add ops for forward-pass and gradient computations."""
-    nclass = self.dataset.num_classes + 1
-    input_data_type = get_data_type(self.params)
+    nclass = self.dataset.num_classes
     data_type = get_data_type(self.params)
     if not self.use_synthetic_gpu_images:
       with tf.device(self.cpu_device):
@@ -1824,7 +1827,7 @@ class BenchmarkCNN(object):
         # Synthetic image should be within [0, 255].
         images = tf.truncated_normal(
             image_shape,
-            dtype=input_data_type,
+            dtype=data_type,
             mean=127,
             stddev=60,
             name='synthetic_images')
@@ -1838,12 +1841,6 @@ class BenchmarkCNN(object):
             name='synthetic_labels')
 
     with tf.device(self.devices[rel_device_num]):
-      # Rescale from [0, 255] to [0, 2]
-      images = tf.multiply(images, 1. / 127.5)
-      # Rescale to [-1, 1]
-      images = tf.subtract(images, 1.0)
-      if input_data_type != data_type:
-        images = tf.cast(images, data_type)
       logits, aux_logits = self.model.build_network(
           images, phase_train, nclass, self.dataset.depth, data_type,
           self.data_format, self.params.use_tf_layers, self.params.fp16_vars)
@@ -1952,7 +1949,8 @@ class BenchmarkCNN(object):
       # during a step
       shift_ratio = float(self.task_index) / self.num_workers
 
-    processor_class = self.dataset.get_image_preprocessor()
+    processor_class = self.dataset.get_image_preprocessor(
+        self.params.input_preprocessor)
     assert processor_class
     return processor_class(
         image_size,

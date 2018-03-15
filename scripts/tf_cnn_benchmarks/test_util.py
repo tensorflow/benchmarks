@@ -475,7 +475,7 @@ class TestDataSet(datasets.Dataset):
     del subset
     return 1
 
-  def get_image_preprocessor(self):
+  def get_image_preprocessor(self, input_preprocessor='default'):
     return preprocessing.TestImagePreprocessor
 
   def use_synthetic_gpu_images(self):

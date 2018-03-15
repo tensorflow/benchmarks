@@ -174,6 +174,13 @@ def decode_jpeg(image_buffer, scope=None):  # , dtype=tf.float32):
     return image
 
 
+def normalized_image(images):
+  # Rescale from [0, 255] to [0, 2]
+  images = tf.multiply(images, 1. / 127.5)
+  # Rescale to [-1, 1]
+  return tf.subtract(images, 1.0)
+
+
 def eval_image(image,
                height,
                width,
@@ -431,8 +438,8 @@ def distort_color(image, batch_position=0, distort_color_in_yiq=False,
     return image
 
 
-class RecordInputImagePreprocessor(object):
-  """Preprocessor for images with RecordInput format."""
+class BaseImagePreprocess(object):
+  """Base class for all image preprocessors."""
 
   def __init__(self,
                height,
@@ -443,10 +450,11 @@ class RecordInputImagePreprocessor(object):
                train,
                distortions,
                resize_method,
-               shift_ratio,
-               summary_verbosity,
-               distort_color_in_yiq,
-               fuse_decode_and_crop):
+               shift_ratio=-1,
+               summary_verbosity=0,
+               distort_color_in_yiq=True,
+               fuse_decode_and_crop=True,
+               depth=3):
     self.height = height
     self.width = width
     self.batch_size = batch_size
@@ -465,6 +473,18 @@ class RecordInputImagePreprocessor(object):
           (self.batch_size, self.num_splits))
     self.batch_size_per_split = self.batch_size // self.num_splits
     self.summary_verbosity = summary_verbosity
+    self.depth = depth
+
+  def preprocess(self, image_buffer, bbox, batch_position):
+    raise NotImplementedError('Must be implemented by subclass.')
+
+  def minibatch(self, dataset, subset, use_datasets, cache_data,
+                shift_ratio):
+    raise NotImplementedError('Must be implemented by subclass.')
+
+
+class RecordInputImagePreprocessor(BaseImagePreprocess):
+  """Preprocessor for images with RecordInput format."""
 
   def preprocess(self, image_buffer, bbox, batch_position):
     """Preprocessing image_buffer as a function of its batch position."""
@@ -484,7 +504,7 @@ class RecordInputImagePreprocessor(object):
 
     # image = tf.cast(image, tf.uint8) # HACK TESTING
 
-    return image
+    return normalized_image(image)
 
   def parse_and_preprocess(self, value, batch_position):
     image_buffer, label_index, bbox, _ = parse_example_proto(value)
@@ -552,53 +572,17 @@ class RecordInputImagePreprocessor(object):
           images[split_index] = tf.parallel_stack(images[split_index])
           labels[split_index] = tf.concat(labels[split_index], 0)
         images[split_index] = tf.cast(images[split_index], self.dtype)
-        depth = 3
         images[split_index] = tf.reshape(
             images[split_index],
-            shape=[self.batch_size_per_split, self.height, self.width, depth])
+            shape=[self.batch_size_per_split, self.height, self.width,
+                   self.depth])
         labels[split_index] = tf.reshape(labels[split_index],
                                          [self.batch_size_per_split])
       return images, labels
 
 
-class Cifar10ImagePreprocessor(object):
+class Cifar10ImagePreprocessor(BaseImagePreprocess):
   """Preprocessor for Cifar10 input images."""
-
-  def __init__(self,
-               height,
-               width,
-               batch_size,
-               num_splits,
-               dtype,
-               train,
-               distortions,
-               resize_method,
-               shift_ratio,
-               summary_verbosity=0,
-               distort_color_in_yiq=False,
-               fuse_decode_and_crop=False):
-    # Process images of this size. Depending on the model configuration, the
-    # size of the input layer might differ from the original size of 32 x 32.
-    self.height = height or 32
-    self.width = width or 32
-    self.depth = 3
-    self.batch_size = batch_size
-    self.num_splits = num_splits
-    self.dtype = dtype
-    self.train = train
-    self.distortions = distortions
-    self.shift_ratio = shift_ratio
-    del distort_color_in_yiq
-    del fuse_decode_and_crop
-    del resize_method
-    del shift_ratio  # unused, because a RecordInput is not used
-    if self.batch_size % self.num_splits != 0:
-      raise ValueError(
-          ('batch_size must be a multiple of num_splits: '
-           'batch_size %d, num_splits: %d') %
-          (self.batch_size, self.num_splits))
-    self.batch_size_per_split = self.batch_size // self.num_splits
-    self.summary_verbosity = summary_verbosity
 
   def _distort_image(self, image):
     """Distort one image for training a network.
@@ -639,7 +623,7 @@ class Cifar10ImagePreprocessor(object):
       image = self._distort_image(raw_image)
     else:
       image = self._eval_image(raw_image)
-    return image
+    return normalized_image(image)
 
   def minibatch(self, dataset, subset, use_datasets, cache_data,
                 shift_ratio=-1):
@@ -688,23 +672,8 @@ class Cifar10ImagePreprocessor(object):
       return images, labels
 
 
-class SyntheticImagePreprocessor(object):
+class SyntheticImagePreprocessor(BaseImagePreprocess):
   """Preprocessor used for images and labels."""
-
-  def __init__(self, height, width, batch_size, num_splits,
-               dtype, train, distortions, resize_method, shift_ratio,
-               summary_verbosity, distort_color_in_yiq=False,
-               fuse_decode_and_crop=False):
-    del train, distortions, resize_method, summary_verbosity
-    del distort_color_in_yiq
-    del fuse_decode_and_crop
-    self.batch_size = batch_size
-    self.height = height
-    self.width = width
-    self.depth = 3
-    self.dtype = dtype
-    self.num_splits = num_splits
-    self.shift_ratio = shift_ratio
 
   def minibatch(self, dataset, subset, use_datasets, cache_data,
                 shift_ratio=-1):
@@ -736,7 +705,7 @@ class SyntheticImagePreprocessor(object):
     return images_splits, labels_splits
 
 
-class TestImagePreprocessor(object):
+class TestImagePreprocessor(BaseImagePreprocess):
   """Preprocessor used for testing.
 
   set_fake_data() sets which images and labels will be output by minibatch(),
@@ -759,13 +728,12 @@ class TestImagePreprocessor(object):
                summary_verbosity=0,
                distort_color_in_yiq=False,
                fuse_decode_and_crop=False):
-    del height, width, train, distortions, resize_method
-    del summary_verbosity, fuse_decode_and_crop, distort_color_in_yiq
-    self.batch_size = batch_size
-    self.num_splits = num_splits
-    self.dtype = dtype
+    super(TestImagePreprocessor, self).__init__(
+        height, width, batch_size, num_splits, dtype, train, distortions,
+        resize_method, shift_ratio, summary_verbosity=summary_verbosity,
+        distort_color_in_yiq=distort_color_in_yiq,
+        fuse_decode_and_crop=fuse_decode_and_crop)
     self.expected_subset = None
-    self.shift_ratio = shift_ratio
 
   def set_fake_data(self, fake_images, fake_labels):
     assert len(fake_images.shape) == 4
@@ -812,4 +780,4 @@ class TestImagePreprocessor(object):
         images[split_index] = tf.parallel_stack(images[split_index])
         labels[split_index] = tf.parallel_stack(labels[split_index])
 
-      return images, labels
+      return normalized_image(images), labels

@@ -27,43 +27,15 @@ import tensorflow as tf
 from tensorflow.python.platform import gfile
 import preprocessing
 
-
 IMAGENET_NUM_TRAIN_IMAGES = 1281167
 IMAGENET_NUM_VAL_IMAGES = 50000
-
-
-def create_dataset(data_dir, data_name):
-  """Create a Dataset instance based on data_dir and data_name."""
-  supported_datasets = {
-      'imagenet': ImagenetData,
-      'cifar10': Cifar10Data,
-  }
-  if not data_dir and not data_name:
-    # When using synthetic data, use synthetic imagenet images by default.
-    data_name = 'imagenet'
-
-  if data_name is None:
-    for supported_name in supported_datasets:
-      if supported_name in data_dir:
-        data_name = supported_name
-        break
-
-  if data_name is None:
-    raise ValueError('Could not identify name of dataset. '
-                     'Please specify with --data_name option.')
-
-  if data_name not in supported_datasets:
-    raise ValueError('Unknown dataset. Must be one of %s', ', '.join(
-        [key for key in sorted(supported_datasets.keys())]))
-
-  return supported_datasets[data_name](data_dir)
 
 
 class Dataset(object):
   """Abstract class for cnn benchmarks dataset."""
 
   def __init__(self, name, height=None, width=None, depth=None, data_dir=None,
-               queue_runner_required=False, num_classes=1000):
+               queue_runner_required=False, num_classes=1001):
     self.name = name
     self.height = height
     self.width = width
@@ -94,8 +66,10 @@ class Dataset(object):
   def __str__(self):
     return self.name
 
-  def get_image_preprocessor(self):
-    return None
+  def get_image_preprocessor(self, input_preprocessor='default'):
+    if self.use_synthetic_gpu_images():
+      return preprocessing.SyntheticImagePreprocessor
+    return _SUPPORTED_INPUT_PREPROCESSORS[self.name][input_preprocessor]
 
   def queue_runner_required(self):
     return self._queue_runner_required
@@ -118,12 +92,6 @@ class ImagenetData(Dataset):
     else:
       raise ValueError('Invalid data subset "%s"' % subset)
 
-  def get_image_preprocessor(self):
-    if self.use_synthetic_gpu_images():
-      return preprocessing.SyntheticImagePreprocessor
-    else:
-      return preprocessing.RecordInputImagePreprocessor
-
 
 class Cifar10Data(Dataset):
   """Configuration for cifar 10 dataset.
@@ -134,7 +102,7 @@ class Cifar10Data(Dataset):
   def __init__(self, data_dir=None):
     super(Cifar10Data, self).__init__('cifar10', 32, 32, data_dir=data_dir,
                                       queue_runner_required=True,
-                                      num_classes=10)
+                                      num_classes=11)
 
   def read_data_files(self, subset='train'):
     """Reads from data file and returns images and labels in a numpy array."""
@@ -168,8 +136,48 @@ class Cifar10Data(Dataset):
     else:
       raise ValueError('Invalid data subset "%s"' % subset)
 
-  def get_image_preprocessor(self):
-    if self.use_synthetic_gpu_images():
-      return preprocessing.SyntheticImagePreprocessor
-    else:
-      return preprocessing.Cifar10ImagePreprocessor
+
+_SUPPORTED_DATASETS = {
+    'imagenet': ImagenetData,
+    'cifar10': Cifar10Data,
+}
+
+_SUPPORTED_INPUT_PREPROCESSORS = {
+    'imagenet': {
+        'default': preprocessing.RecordInputImagePreprocessor
+    },
+    'cifar10': {
+        'default': preprocessing.Cifar10ImagePreprocessor
+    }
+}
+
+
+def register_input_preprocessor(dataset_name, preprocessor_name, preprocessor):
+  if dataset_name not in _SUPPORTED_INPUT_PREPROCESSORS:
+    raise ValueError('Invalid dataset name: %s' % dataset_name)
+  if preprocessor_name in _SUPPORTED_INPUT_PREPROCESSORS[dataset_name]:
+    raise ValueError('Preprocessor {} is already registered for {}'.format(
+        preprocessor_name, dataset_name))
+  _SUPPORTED_INPUT_PREPROCESSORS[dataset_name][preprocessor_name] = preprocessor
+
+
+def create_dataset(data_dir, data_name):
+  """Create a Dataset instance based on data_dir and data_name."""
+  if not data_dir and not data_name:
+    # When using synthetic data, use synthetic imagenet images by default.
+    data_name = 'imagenet'
+
+  # Infere dataset name from data_dir if data_name is not provided.
+  if data_name is None:
+    for supported_name in _SUPPORTED_DATASETS:
+      if supported_name in data_dir:
+        data_name = supported_name
+        break
+    else:  # Failed to identify dataset name from data dir.
+      raise ValueError('Could not identify name of dataset. '
+                       'Please specify with --data_name option.')
+  if data_name not in _SUPPORTED_DATASETS:
+    raise ValueError('Unknown dataset. Must be one of %s', ', '.join(
+        [key for key in sorted(_SUPPORTED_DATASETS.keys())]))
+
+  return _SUPPORTED_DATASETS[data_name](data_dir)
