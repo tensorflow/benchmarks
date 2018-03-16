@@ -459,7 +459,7 @@ def aggregate_gradients_using_hierarchical_copy(benchmark_cnn, tower_grads,
   num_devices = len(avail_devices)
   # In the special case of DGX-1 machine topology, the two groups have equal
   # size.
-  group_size = num_devices / 2
+  group_size = num_devices // 2
   for i, single_grads in enumerate(zip(*tower_grads)):
     group_0_main_device = i % num_devices
     group_1_main_device = (group_0_main_device + group_size) % num_devices
@@ -508,7 +508,7 @@ def aggregate_gradients_using_hierarchical_copy(benchmark_cnn, tower_grads,
     agg_grads.append(
         [(g, v) for g, (_, v) in zip(agg_grads_bcast, single_grads)])
 
-  agg_grads = zip(*agg_grads)
+  agg_grads = list(zip(*agg_grads))
 
   if check_inf_nan:
     return agg_grads, tf.reduce_any(has_nan_or_inf_list)
