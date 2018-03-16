@@ -194,7 +194,7 @@ def train_and_eval(testcase,
                    params,
                    check_output_values,
                    max_final_loss=10.,
-                   skip_eval=False):
+                   skip=None):
   """Trains a model then evaluates it.
 
   This function should be used to verify training and evaluating
@@ -220,8 +220,12 @@ def train_and_eval(testcase,
       Fails an assert on `testcase` if a check fails.
     max_final_loss: The loss of the final training output is asserted to be at
       most this value for both training runs.
-    skip_eval: If true, evaluation is not done.
+    skip: If 'eval', evaluation is not done. if
+      'eval_and_train_from_checkpoint', evaluation and training from a
+      checkpoint are both not done.
   """
+
+  assert not skip or skip in {'eval', 'eval_and_train_from_checkpoint'}
 
   # Part 1: Train from scratch.
   tf.logging.info('Training model from scratch')
@@ -238,6 +242,9 @@ def train_and_eval(testcase,
                                             max_final_loss=max_final_loss)
   train_dir_entries = set(os.listdir(params.train_dir))
   testcase.assertGreater(len(train_dir_entries), 0)
+
+  if skip == 'eval_and_train_from_checkpoint':
+    return
 
   # Part 2: Train from the loaded checkpoint.
   tf.logging.info('Training model from loaded checkpoint')
@@ -258,7 +265,7 @@ def train_and_eval(testcase,
   # Ensure a new checkpoint was written out.
   testcase.assertNotEqual(train_dir_entries, set(os.listdir(params.train_dir)))
 
-  if skip_eval:
+  if skip == 'eval':
     return
 
   # Part 3: Evaluate from the loaded checkpoint.

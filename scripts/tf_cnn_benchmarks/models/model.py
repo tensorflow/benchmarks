@@ -70,10 +70,9 @@ class Model(object):
   def skip_final_affine_layer(self):
     """Returns if the caller of this class should skip the final affine layer.
 
-    Normally, the caller of this class (BenchmarkCNN) adds a final affine layer
-    to the model after calling Model.add_inference, to generate the logits. If a
-    subclass override this method to return True, the caller should not add the
-    final affine layer.
+    Normally, this class adds a final affine layer to the model after calling
+    self.add_inference(), to generate the logits. If a subclass override this
+    method to return True, the caller should not add the final affine layer.
 
     This is useful for tests.
     """

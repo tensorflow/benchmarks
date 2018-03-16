@@ -25,6 +25,7 @@ import numpy as np
 import tensorflow as tf
 from google.protobuf import text_format
 from tensorflow.core.framework import step_stats_pb2
+from tensorflow.core.profiler import tfprof_log_pb2
 from tensorflow.python.platform import test
 import benchmark_cnn
 import flags
@@ -481,7 +482,7 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
                             params,
                             check_output_values=False,
                             max_final_loss=10.,
-                            skip_eval=False,
+                            skip=None,
                             use_test_preprocessor=True):
     # TODO(reedwm): check_output_values should default to True and be enabled
     # on every test. Currently, if check_output_values=True and the calls to
@@ -503,7 +504,7 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     return test_util.train_and_eval(self, run_fn, params,
                                     check_output_values=check_output_values,
                                     max_final_loss=max_final_loss,
-                                    skip_eval=skip_eval)
+                                    skip=skip)
 
   def testAlexnet(self):
     params = test_util.get_params('testAlexnet')._replace(
@@ -554,8 +555,8 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
 
   def testForwardOnly(self):
     params = test_util.get_params('testForwardOnly')._replace(forward_only=True)
-    # Evaluation is not supported with --forward_only, so we set skip_eval=True.
-    self._train_and_eval_local(params, skip_eval=True)
+    # Evaluation is not supported with --forward_only, so we set skip='eval'.
+    self._train_and_eval_local(params, skip='eval')
 
   def testNoDistortions(self):
     params = test_util.get_params('testNoDistortions')._replace(
@@ -640,6 +641,17 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
       # The following statement should not raise an exception.
       contents = f.read()
       text_format.Merge(contents, step_stats)
+
+  def testTfprofFile(self):
+    tfprof_file = os.path.join(self.get_temp_dir(), 'testTfprofFile_tfproffile')
+    params = test_util.get_params('testTfprofFile')._replace(
+        tfprof_file=tfprof_file)
+    self._train_and_eval_local(params, skip='eval_and_train_from_checkpoint')
+    self.assertGreater(os.stat(tfprof_file).st_size, 0)
+    with open(tfprof_file, 'rb') as f:
+      profile_proto = tfprof_log_pb2.ProfileProto()
+      # The following statement should not raise an exception.
+      profile_proto.ParseFromString(f.read())
 
   def testMoveTrainDir(self):
     params = test_util.get_params('testMoveTrainDir')

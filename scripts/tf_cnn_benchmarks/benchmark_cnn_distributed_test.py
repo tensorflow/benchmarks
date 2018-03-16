@@ -272,7 +272,7 @@ class TfCnnBenchmarksDistributedTest(tf.test.TestCase):
                         params,
                         num_controllers=0,
                         check_output_values=False,
-                        skip_eval=False):
+                        skip=None):
     # TODO(reedwm): check_output_values should default to True and be enabled
     # on every test. See the TODO in benchmark_cnn_test.py.
     def run_fn(run_type, inner_params):
@@ -293,7 +293,7 @@ class TfCnnBenchmarksDistributedTest(tf.test.TestCase):
 
     return test_util.train_and_eval(self, run_fn, params,
                                     check_output_values=check_output_values,
-                                    skip_eval=skip_eval)
+                                    skip=skip)
 
   def testParameterServer(self):
     test_name = 'testParameterServer'
@@ -328,8 +328,8 @@ class TfCnnBenchmarksDistributedTest(tf.test.TestCase):
   def testForwardOnly(self):
     test_name = 'testForwardOnly'
     params = test_util.get_params(test_name)._replace(forward_only=True)
-    # Evaluation is not supported with --forward_only, so we set skip_eval=True.
-    self._test_distributed(test_name, 2, 2, params, skip_eval=True)
+    # Evaluation is not supported with --forward_only, so we set skip='eval'.
+    self._test_distributed(test_name, 2, 2, params, skip='eval')
 
   def testSingleWorkerAndPs(self):
     test_name = 'testSingleWorkerAndPs'

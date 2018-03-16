@@ -163,6 +163,20 @@ flags.DEFINE_boolean('use_chrome_trace_format', True,
                      'If True, the trace_file, if specified, will be in a '
                      'Chrome trace format. If False, then it will be a '
                      'StepStats raw proto.')
+_NUM_STEPS_TO_PROFILE = 10
+_NUM_OPS_TO_PRINT = 20
+flags.DEFINE_string('tfprof_file', None,
+                    'If specified, write a tfprof ProfileProto to this file. '
+                    'The performance and other aspects of the model can then '
+                    'be analyzed with tfprof. See '
+                    'https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/profiler/g3doc/command_line.md '  # pylint: disable=line-too-long
+                    'for more info on how to do this. The first %d steps '
+                    'are profiled. Additionally, the top %d most time '
+                    'consuming ops will be printed.\n'
+                    'Note: profiling with tfprof is very slow, but most of the '
+                    'overhead is spent between steps. So, profiling results '
+                    'are more accurate than the slowdown would suggest.' %
+                    (_NUM_STEPS_TO_PROFILE, _NUM_OPS_TO_PRINT))
 flags.DEFINE_string('graph_file', None,
                     'Write the model\'s graph definition to this file. '
                     'Defaults to binary format unless filename ends in "txt".')
@@ -556,15 +570,21 @@ def benchmark_one_step(sess,
                        step_train_times,
                        trace_filename,
                        partitioned_graph_file_prefix,
+                       profiler,
                        image_producer,
                        params,
                        summary_op=None):
   """Advance one step of benchmarking."""
-  if (trace_filename or partitioned_graph_file_prefix) and step == -1:
+  should_profile = profiler and 0 <= step < _NUM_STEPS_TO_PROFILE
+  need_options_and_metadata = (
+      should_profile or
+      ((trace_filename or partitioned_graph_file_prefix) and step == -1)
+  )
+  if need_options_and_metadata:
     run_options = tf.RunOptions()
-    if trace_filename:
+    if (trace_filename and step == -1) or should_profile:
       run_options.trace_level = tf.RunOptions.FULL_TRACE
-    if partitioned_graph_file_prefix:
+    if partitioned_graph_file_prefix and step == -1:
       run_options.output_partition_graphs = True
     run_metadata = tf.RunMetadata()
   else:
@@ -594,8 +614,10 @@ def benchmark_one_step(sess,
           LOSS_AND_ACCURACY_DIGITS_TO_SHOW, results['top_1_accuracy'],
           LOSS_AND_ACCURACY_DIGITS_TO_SHOW, results['top_5_accuracy'])
     log_fn(log_str)
-  if (trace_filename or partitioned_graph_file_prefix) and step == -1:
-    if trace_filename:
+  if need_options_and_metadata:
+    if should_profile:
+      profiler.add_step(step, run_metadata)
+    if trace_filename and step == -1:
       log_fn('Dumping trace to %s' % trace_filename)
       trace_dir = os.path.dirname(trace_filename)
       if not gfile.Exists(trace_dir):
@@ -606,7 +628,7 @@ def benchmark_one_step(sess,
           trace_file.write(trace.generate_chrome_trace_format(show_memory=True))
         else:
           trace_file.write(str(run_metadata.step_stats))
-    if partitioned_graph_file_prefix:
+    if partitioned_graph_file_prefix and step == -1:
       path, filename = os.path.split(partitioned_graph_file_prefix)
       if '.' in filename:
         base_filename, ext = filename.rsplit('.', 1)
@@ -869,6 +891,29 @@ def get_optimizer(params, learning_rate):
     raise ValueError('Optimizer "%s" was not recognized',
                      params.optimizer)
   return opt
+
+
+def generate_tfprof_profile(profiler, tfprof_file):
+  """Generates a tfprof profile, writing it to a file and printing top ops.
+
+  Args:
+    profiler: A tf.profiler.Profiler. `profiler.add_step` must have already been
+      called.
+    tfprof_file: The filename to write the ProfileProto to.
+  """
+  profile_proto = profiler.serialize_to_string()
+  log_fn('Dumping ProfileProto to %s' % tfprof_file)
+  with gfile.Open(tfprof_file, 'wb') as f:
+    f.write(profile_proto)
+
+  # Print out the execution times of the top operations. Note this
+  # information can also be obtained with the dumped ProfileProto, but
+  # printing it means tfprof doesn't have to be used if all the user wants
+  # is the top ops.
+  options = tf.profiler.ProfileOptionBuilder.time_and_memory()
+  options['max_depth'] = _NUM_OPS_TO_PRINT
+  options['order_by'] = 'accelerator_micros'
+  profiler.profile_operations(options)
 
 
 class BenchmarkCNN(object):
@@ -1426,7 +1471,8 @@ class BenchmarkCNN(object):
         as_text = filename.endswith('txt')
         log_fn('Writing GraphDef as %s to %s' % (  # pyformat break
             'text' if as_text else 'binary', self.graph_file))
-        tf.train.write_graph(sess.graph_def, path, filename, as_text)
+        tf.train.write_graph(sess.graph.as_graph_def(add_shapes=True), path,
+                             filename, as_text)
 
       log_fn('Running warm up')
       local_step = -1 * self.num_warmup_batches
@@ -1447,6 +1493,7 @@ class BenchmarkCNN(object):
           log_fn('The TensorBoard debugger plugin will be used.')
           sess = tf_debug.TensorBoardDebugWrapperSession(sess,
                                                          self.params.debugger)
+      profiler = tf.profiler.Profiler() if self.params.tfprof_file else None
       loop_start_time = time.time()
       while not done_fn():
         if local_step == 0:
@@ -1475,7 +1522,7 @@ class BenchmarkCNN(object):
             self.batch_size * (self.num_workers
                                if self.single_session else 1), step_train_times,
             self.trace_filename, self.params.partitioned_graph_file_prefix,
-            image_producer, self.params, fetch_summary)
+            profiler, image_producer, self.params, fetch_summary)
         if summary_str is not None and is_chief:
           sv.summary_computed(sess, summary_str)
         local_step += 1
@@ -1517,6 +1564,8 @@ class BenchmarkCNN(object):
         # go away underneath them.
         sess.run([execution_barrier])
     sv.stop()
+    if profiler:
+      generate_tfprof_profile(profiler, self.params.tfprof_file)
     return {
         'num_workers': self.num_workers,
         'num_steps': num_steps,
