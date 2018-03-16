@@ -144,21 +144,13 @@ _SUPPORTED_DATASETS = {
 
 _SUPPORTED_INPUT_PREPROCESSORS = {
     'imagenet': {
-        'default': preprocessing.RecordInputImagePreprocessor
+        'default': preprocessing.RecordInputImagePreprocessor,
+        'official_models_imagenet': preprocessing.ImagenetPreprocessor,
     },
     'cifar10': {
         'default': preprocessing.Cifar10ImagePreprocessor
     }
 }
-
-
-def register_input_preprocessor(dataset_name, preprocessor_name, preprocessor):
-  if dataset_name not in _SUPPORTED_INPUT_PREPROCESSORS:
-    raise ValueError('Invalid dataset name: %s' % dataset_name)
-  if preprocessor_name in _SUPPORTED_INPUT_PREPROCESSORS[dataset_name]:
-    raise ValueError('Preprocessor {} is already registered for {}'.format(
-        preprocessor_name, dataset_name))
-  _SUPPORTED_INPUT_PREPROCESSORS[dataset_name][preprocessor_name] = preprocessor
 
 
 def create_dataset(data_dir, data_name):

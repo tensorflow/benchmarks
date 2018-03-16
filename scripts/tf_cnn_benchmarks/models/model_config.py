@@ -22,6 +22,7 @@ from models import googlenet_model
 from models import inception_model
 from models import lenet_model
 from models import nasnet_model
+from models import official_resnet_model
 from models import overfeat_model
 from models import resnet_model
 from models import trivial_model
@@ -39,6 +40,30 @@ _model_name_to_imagenet_model = {
     'trivial': trivial_model.TrivialModel,
     'inception3': inception_model.Inceptionv3Model,
     'inception4': inception_model.Inceptionv4Model,
+    'official_resnet18_v2':
+    lambda: official_resnet_model.ImagenetResnetModel(18),
+    'official_resnet34_v2':
+    lambda: official_resnet_model.ImagenetResnetModel(34),
+    'official_resnet50_v2':
+    lambda: official_resnet_model.ImagenetResnetModel(50),
+    'official_resnet101_v2':
+    lambda: official_resnet_model.ImagenetResnetModel(101),
+    'official_resnet152_v2':
+    lambda: official_resnet_model.ImagenetResnetModel(152),
+    'official_resnet200_v2':
+    lambda: official_resnet_model.ImagenetResnetModel(200),
+    'official_resnet18':
+    lambda: official_resnet_model.ImagenetResnetModel(18, version=1),
+    'official_resnet34':
+    lambda: official_resnet_model.ImagenetResnetModel(34, version=1),
+    'official_resnet50':
+    lambda: official_resnet_model.ImagenetResnetModel(50, version=1),
+    'official_resnet101':
+    lambda: official_resnet_model.ImagenetResnetModel(101, version=1),
+    'official_resnet152':
+    lambda: official_resnet_model.ImagenetResnetModel(152, version=1),
+    'official_resnet200':
+    lambda: official_resnet_model.ImagenetResnetModel(200, version=1),
     'resnet50': resnet_model.create_resnet50_model,
     'resnet50_v2': resnet_model.create_resnet50_v2_model,
     'resnet101': resnet_model.create_resnet101_model,

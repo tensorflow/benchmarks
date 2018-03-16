@@ -581,6 +581,26 @@ class RecordInputImagePreprocessor(BaseImagePreprocess):
       return images, labels
 
 
+class ImagenetPreprocessor(RecordInputImagePreprocessor):
+
+  def preprocess(self, image_buffer, bbox, batch_position):
+    # pylint: disable=g-import-not-at-top
+    try:
+      from official.resnet.imagenet_preprocessing import preprocess_image
+    except ImportError:
+      tf.logging.fatal('Please include tensorflow/models to the PYTHONPATH.')
+      raise
+    if self.train:
+      image = preprocess_image(
+          image_buffer, bbox, self.height, self.width, self.depth,
+          is_training=True)
+    else:
+      image = preprocess_image(
+          image_buffer, bbox, self.height, self.width, self.depth,
+          is_training=False)
+    return image
+
+
 class Cifar10ImagePreprocessor(BaseImagePreprocess):
   """Preprocessor for Cifar10 input images."""
 
