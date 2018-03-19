@@ -314,6 +314,8 @@ class VariableMgrLocalReplicated(VariableMgr):
         device_grad_packs = []
         all_tower_shapes = []
         all_tower_sizes = []
+        compact_gradient = self.benchmark_cnn.params.compact_gradient_transfer
+        use_fp16 = self.benchmark_cnn.params.use_fp16
         for tower_grads_and_vars in device_grads:
           with tf.colocate_with(tower_grads_and_vars[0][0]):
             # Flatten all the grads.
@@ -324,6 +326,9 @@ class VariableMgrLocalReplicated(VariableMgr):
             tower_sizes = [tf.size(g) for g, _ in tower_grads_and_vars]
             # Concat all the flat grads into a big flat tensor.
             concat_grads = tf.concat(flat_grads, 0)
+            grads_dtype = concat_grads.dtype
+            if use_fp16 and compact_gradient:
+              concat_grads = tf.cast(concat_grads, tf.float16)
 
             # Split the big tensor into num_splits packs. In cases where the
             # total size is not divisible num_splits, the last pack gets
@@ -371,6 +376,7 @@ class VariableMgrLocalReplicated(VariableMgr):
 
             # Concat them back into a big flat tensor.
             device_grads_concat = tf.concat(device_grad_packs, 0)
+            device_grads_concat = tf.cast(device_grads_concat, grads_dtype)
 
             # Split the tensors back into their original sizes.
             grads_with_sizes = tf.split(device_grads_concat, tower_sizes)

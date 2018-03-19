@@ -504,7 +504,8 @@ class RecordInputImagePreprocessor(BaseImagePreprocess):
 
     # image = tf.cast(image, tf.uint8) # HACK TESTING
 
-    return normalized_image(image)
+    normalized = normalized_image(image)
+    return tf.cast(normalized, self.dtype)
 
   def parse_and_preprocess(self, value, batch_position):
     image_buffer, label_index, bbox, _ = parse_example_proto(value)
@@ -571,7 +572,6 @@ class RecordInputImagePreprocessor(BaseImagePreprocess):
         if not use_datasets:
           images[split_index] = tf.parallel_stack(images[split_index])
           labels[split_index] = tf.concat(labels[split_index], 0)
-        images[split_index] = tf.cast(images[split_index], self.dtype)
         images[split_index] = tf.reshape(
             images[split_index],
             shape=[self.batch_size_per_split, self.height, self.width,
@@ -643,7 +643,8 @@ class Cifar10ImagePreprocessor(BaseImagePreprocess):
       image = self._distort_image(raw_image)
     else:
       image = self._eval_image(raw_image)
-    return normalized_image(image)
+    normalized = normalized_image(image)
+    return tf.cast(normalized, self.dtype)
 
   def minibatch(self, dataset, subset, use_datasets, cache_data,
                 shift_ratio=-1):
@@ -800,4 +801,5 @@ class TestImagePreprocessor(BaseImagePreprocess):
         images[split_index] = tf.parallel_stack(images[split_index])
         labels[split_index] = tf.parallel_stack(labels[split_index])
 
-      return normalized_image(images), labels
+      normalized = normalized_image(images)
+      return tf.cast(normalized, self.dtype), labels

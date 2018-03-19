@@ -136,6 +136,8 @@ flags.DEFINE_integer('gradient_repacking', 0, 'Use gradient repacking. It'
                      'of each step, it repacks the gradients for more efficient'
                      'cross-device transportation. A non-zero value specifies'
                      'the number of split packs that will be formed.')
+flags.DEFINE_boolean('compact_gradient_transfer', True, 'Compact gradient'
+                     'as much as possible for cross-device transfer')
 flags.DEFINE_boolean('cache_data', False,
                      'Enable use of a special datasets pipeline that reads a '
                      'single TFRecord into memory and repeats it infinitely '
@@ -252,7 +254,7 @@ flags.DEFINE_boolean('sync_on_finish', False,
 flags.DEFINE_boolean('staged_vars', False,
                      'whether the variables are staged from the main '
                      'computation')
-flags.DEFINE_boolean('force_gpu_compatible', True,
+flags.DEFINE_boolean('force_gpu_compatible', False,
                      'whether to enable force_gpu_compatible in GPU_Options')
 flags.DEFINE_boolean('allow_growth', None,
                      'whether to enable allow_growth in GPU_Options')
