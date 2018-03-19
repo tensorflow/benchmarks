@@ -369,7 +369,7 @@ class ConvNetBuilder(object):
     self.counts['spatial_mean'] += 1
     axes = [1, 2] if self.data_format == 'NHWC' else [2, 3]
     self.top_layer = tf.reduce_mean(
-        self.top_layer, axes, keep_dims=keep_dims, name=name)
+        self.top_layer, axes, keepdims=keep_dims, name=name)
     return self.top_layer
 
   def dropout(self, keep_prob=0.5, input_layer=None):
