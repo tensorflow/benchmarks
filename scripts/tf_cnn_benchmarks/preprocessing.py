@@ -196,9 +196,6 @@ def eval_image(image,
   height and width are both at least 1.15 times `height` and `width`
   respectively. Then, we do a central crop to size (`height`, `width`).
 
-  TODO(b/64579165): Determine if we should use different evaluation
-  prepossessing steps.
-
   Args:
     image: 3-D float Tensor representing the image.
     height: The height of the image that will be returned.
