@@ -344,18 +344,10 @@ def train_image(image_buffer,
     # This resizing operation may distort the images because the aspect
     # ratio is not respected.
     image_resize_method = get_image_resize_method(resize_method, batch_position)
-    if cnn_util.tensorflow_version() >= 11:
-      distorted_image = tf.image.resize_images(
-          distorted_image, [height, width],
-          image_resize_method,
-          align_corners=False)
-    else:
-      distorted_image = tf.image.resize_images(
-          distorted_image,
-          height,
-          width,
-          image_resize_method,
-          align_corners=False)
+    distorted_image = tf.image.resize_images(
+        distorted_image, [height, width],
+        image_resize_method,
+        align_corners=False)
     # Restore the shape since the dynamic slice based upon the bbox_size loses
     # the third dimension.
     distorted_image.set_shape([height, width, 3])
