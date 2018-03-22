@@ -1607,8 +1607,14 @@ class BenchmarkCNN(object):
 
   def _build_model(self):
     """Build the TensorFlow graph."""
-    tf.set_random_seed(self.params.tf_random_seed)
-    np.random.seed(4321)
+    # Adjust seed so different workers start read different input files.
+    if self.params.variable_update == 'horovod':
+      import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
+      seed_adjustment = hvd.rank()
+    else:
+      seed_adjustment = 0
+    tf.set_random_seed(self.params.tf_random_seed + seed_adjustment)
+    np.random.seed(4321 + seed_adjustment)
     phase_train = not (self.params.eval or self.params.forward_only)
 
     log_fn('Generating model')
