@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import tensorflow as tf
 
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 import allreduce
 import variable_mgr_util
 
@@ -272,6 +274,7 @@ class VariableMgrLocalReplicated(VariableMgr):
       self._all_reduce_spec = None
     self._agg_small_grads_max_bytes = agg_small_grads_max_bytes
     self._agg_small_grads_max_group = agg_small_grads_max_group
+    self._warmup_ops = []
 
   def each_tower_has_variables(self):
     return True
@@ -316,6 +319,9 @@ class VariableMgrLocalReplicated(VariableMgr):
         all_tower_sizes = []
         compact_gradient = self.benchmark_cnn.params.compact_gradient_transfer
         use_fp16 = self.benchmark_cnn.params.use_fp16
+        variable_consistency = self.benchmark_cnn.params.variable_consistency
+        deferred_gradient = (variable_consistency == 'relaxed')
+        gradient_put_ops = []
         for tower_grads_and_vars in device_grads:
           with tf.colocate_with(tower_grads_and_vars[0][0]):
             # Flatten all the grads.
@@ -329,6 +335,27 @@ class VariableMgrLocalReplicated(VariableMgr):
             grads_dtype = concat_grads.dtype
             if use_fp16 and compact_gradient:
               concat_grads = tf.cast(concat_grads, tf.float16)
+
+            # With deferred-gradients, place the gradients in a staging area.
+            if deferred_gradient:
+              total_var_size = sum(
+                  [v.shape.num_elements() for _, v in tower_grads_and_vars])
+              gradient_stage = data_flow_ops.StagingArea([concat_grads.dtype])
+
+              # Push the concat-gradients into the staging area.
+              gradient_put_op = gradient_stage.put([concat_grads])
+              gradient_put_ops.append(gradient_put_op)
+
+              # Push an empty set of gradients into the staging area.
+              warmup_op = gradient_stage.put(
+                  [tf.zeros([total_var_size], dtype=concat_grads.dtype)])
+              self._warmup_ops.append(warmup_op)
+
+              # Fetch the next set of gradients to ues.
+              concat_grads = gradient_stage.get()
+              concat_grads = tf.reshape(concat_grads, [-1])
+            else:
+              gradient_put_ops.append(None)
 
             # Split the big tensor into num_splits packs. In cases where the
             # total size is not divisible num_splits, the last pack gets
@@ -364,9 +391,10 @@ class VariableMgrLocalReplicated(VariableMgr):
 
         aggregated_device_grads = []
         # pylint: disable=line-too-long
-        for (summed_tower_grad_packs, tower_grads_and_vars, tower_shapes,
-             tower_sizes) in zip(summed_device_grad_packs, device_grads,
-                                 all_tower_shapes, all_tower_sizes):
+        for (summed_tower_grad_packs, tower_grads_and_vars,
+             tower_shapes, tower_sizes, gradient_put_op) in zip(
+                 summed_device_grad_packs, device_grads, all_tower_shapes,
+                 all_tower_sizes, gradient_put_ops):
           # pylint: enable=line-too-long
           # Reverse the packing operations in the previous steps. Form the
           # summed gradients back into their original shapes.
@@ -387,6 +415,16 @@ class VariableMgrLocalReplicated(VariableMgr):
                 for shape, grad in zip(tower_shapes, grads_with_sizes)
             ]
 
+            # With deferred gradient, add a dependency on the put_op so we
+            # don't have a race condition with the update operation that
+            # follows. Also it triggers the gradient_put_op. Otherwise, the
+            # caller has to explicitly pump it.
+            if deferred_gradient:
+              assert gradient_put_op
+              grads_with_shapes = [
+                  control_flow_ops.with_dependencies([gradient_put_op], g)
+                  for g in grads_with_shapes
+              ]
             # Form the list with the original list of variables.
             summed_tower_grads = [
                 (g, v)
@@ -413,6 +451,7 @@ class VariableMgrLocalReplicated(VariableMgr):
       split_name[0] = 'v0'
       copy_from = var_by_name['/'.join(split_name)]
       post_init_ops.append(v.assign(copy_from.read_value()))
+    post_init_ops += self._warmup_ops
     return post_init_ops
 
   def savable_variables(self):

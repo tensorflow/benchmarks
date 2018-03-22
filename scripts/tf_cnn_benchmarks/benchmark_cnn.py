@@ -138,6 +138,16 @@ flags.DEFINE_integer('gradient_repacking', 0, 'Use gradient repacking. It'
                      'the number of split packs that will be formed.')
 flags.DEFINE_boolean('compact_gradient_transfer', True, 'Compact gradient'
                      'as much as possible for cross-device transfer')
+# TODO(zhengxq): for now "--variable_consistency==relaxed" only take effect if
+# --variable_update=replicated --hierarchical_copy and --gradient_repacking
+# are all specified. Later refactoring will make it more orthogonal to
+# other features.
+flags.DEFINE_enum('variable_consistency', 'strong', ('strong', 'relaxed'),
+                  'The data consistency for trainable variables. With strong '
+                  'consistency, the variable always have the updates from '
+                  'previous step. With relaxed consistency, all the updates '
+                  'will eventually show up in the variables. Likely one step '
+                  'behind.')
 flags.DEFINE_boolean('cache_data', False,
                      'Enable use of a special datasets pipeline that reads a '
                      'single TFRecord into memory and repeats it infinitely '
