@@ -44,6 +44,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.util import nest
 import benchmark_storage
 import cnn_util
+import data_utils
 import datasets
 import flags
 import variable_mgr
@@ -250,6 +251,21 @@ flags.DEFINE_string('debugger', None,
                     'the experimental TensorBoard debugger will be used')
 flags.DEFINE_boolean('use_python32_barrier', False,
                      'When on, use threading.Barrier at Python 3.2.')
+
+flags.DEFINE_boolean('datasets_use_prefetch', False,
+                     'Enable use of prefetched datasets for input pipeline. '
+                     'This option is meaningless if use_datasets=False.')
+flags.DEFINE_integer('datasets_prefetch_buffer_size', 1,
+                     'Prefetching op buffer size per compute device.')
+flags.DEFINE_integer('datasets_prefetch_threadpool_size', 1,
+                     'Number of threads in the threadpool used for prefetching'
+                     ' op. Setting this to zero would delegate computation to '
+                     'the default tf-Compute threadpool')
+flags.DEFINE_integer('datasets_num_private_threads', 50,
+                     'Number of threads in the datasets private threadpool. '
+                     'If non-zero then we add a ThreadPoolDataset op in the '
+                     'data pipeline that switches all dataset computation to '
+                     'its own threadpool.')
 
 # Performance tuning parameters.
 flags.DEFINE_boolean('winograd_nonfused', True,
@@ -614,7 +630,8 @@ def benchmark_one_step(sess,
     lossval = results['average_loss']
   else:
     lossval = 0.
-  image_producer.notify_image_consumption()
+  if image_producer is not None:
+    image_producer.notify_image_consumption()
   train_time = time.time() - start_time
   step_train_times.append(train_time)
   if step >= 0 and (step == 0 or (step + 1) % params.display_every == 0):
@@ -1259,13 +1276,20 @@ class BenchmarkCNN(object):
       Dictionary containing eval statistics. Currently returns an empty
       dictionary.
     """
-    (image_producer_ops, enqueue_ops, fetches) = self._build_model()
+    if self.params.datasets_use_prefetch:
+      (image_producer_ops, enqueue_ops, fetches) = (
+          self._build_model_with_dataset_prefetching())
+    else:
+      (image_producer_ops, enqueue_ops, fetches) = self._build_model()
     saver = tf.train.Saver(self.variable_mgr.savable_variables())
     summary_writer = tf.summary.FileWriter(self.params.eval_dir,
                                            tf.get_default_graph())
     target = ''
     local_var_init_op = tf.local_variables_initializer()
+    table_init_ops = tf.tables_initializer()
     variable_mgr_init_ops = [local_var_init_op]
+    if table_init_ops:
+      variable_mgr_init_ops.extend([table_init_ops])
     with tf.control_dependencies([local_var_init_op]):
       variable_mgr_init_ops.extend(self.variable_mgr.get_post_init_ops())
     local_var_init_op_group = tf.group(*variable_mgr_init_ops)
@@ -1294,13 +1318,15 @@ class BenchmarkCNN(object):
       sess.run(local_var_init_op_group)
       if self.dataset.queue_runner_required():
         tf.train.start_queue_runners(sess=sess)
-      image_producer = cnn_util.ImageProducer(sess, image_producer_ops,
-                                              self.batch_group_size,
-                                              self.params.use_python32_barrier)
-      image_producer.start()
-      for i in xrange(len(enqueue_ops)):
-        sess.run(enqueue_ops[:(i + 1)])
-        image_producer.notify_image_consumption()
+      image_producer = None
+      if image_producer_ops is not None:
+        image_producer = cnn_util.ImageProducer(
+            sess, image_producer_ops, self.batch_group_size,
+            self.params.use_python32_barrier)
+        image_producer.start()
+        for i in xrange(len(enqueue_ops)):
+          sess.run(enqueue_ops[:(i + 1)])
+          image_producer.notify_image_consumption()
       loop_start_time = start_time = time.time()
       top_1_accuracy_sum = 0.0
       top_5_accuracy_sum = 0.0
@@ -1320,9 +1346,11 @@ class BenchmarkCNN(object):
               self.batch_size * self.params.display_every / duration)
           log_fn('%i\t%.1f examples/sec' % (step + 1, examples_per_sec))
           start_time = time.time()
-        image_producer.notify_image_consumption()
+        if image_producer is not None:
+          image_producer.notify_image_consumption()
       loop_end_time = time.time()
-      image_producer.done()
+      if image_producer is not None:
+        image_producer.done()
       accuracy_at_1 = top_1_accuracy_sum / self.num_batches
       accuracy_at_5 = top_5_accuracy_sum / self.num_batches
       summary = tf.Summary()
@@ -1348,11 +1376,19 @@ class BenchmarkCNN(object):
     """
     if self.params.variable_update == 'distributed_all_reduce':
       self.single_session = True
-      (image_producer_ops, enqueue_ops, fetches) = (
-          self._build_model_single_session())
+      if self.params.datasets_use_prefetch:
+        (image_producer_ops, enqueue_ops, fetches) = (
+            self._build_model_single_session_with_dataset_prefetching())
+      else:
+        (image_producer_ops, enqueue_ops, fetches) = (
+            self._build_model_single_session())
     else:
       self.single_session = False
-      (image_producer_ops, enqueue_ops, fetches) = self._build_model()
+      if self.params.datasets_use_prefetch:
+        (image_producer_ops, enqueue_ops, fetches) = (
+            self._build_model_with_dataset_prefetching())
+      else:
+        (image_producer_ops, enqueue_ops, fetches) = self._build_model()
     fetches_list = nest.flatten(list(fetches.values()))
     main_fetch_group = tf.group(*fetches_list)
     execution_barrier = None
@@ -1373,7 +1409,10 @@ class BenchmarkCNN(object):
           'sync_queues_step_end_', [main_fetch_group])
 
     local_var_init_op = tf.local_variables_initializer()
+    table_init_ops = tf.tables_initializer()
     variable_mgr_init_ops = [local_var_init_op]
+    if table_init_ops:
+      variable_mgr_init_ops.extend([table_init_ops])
     with tf.control_dependencies([local_var_init_op]):
       variable_mgr_init_ops.extend(self.variable_mgr.get_post_init_ops())
     if (not self.single_session and self.job_name and
@@ -1460,13 +1499,16 @@ class BenchmarkCNN(object):
         start_standard_services=start_standard_services) as sess:
       if bcast_global_variables_op:
         sess.run(bcast_global_variables_op)
-      image_producer = cnn_util.ImageProducer(sess, image_producer_ops,
-                                              self.batch_group_size,
-                                              self.params.use_python32_barrier)
-      image_producer.start()
-      for i in xrange(len(enqueue_ops)):
-        sess.run(enqueue_ops[:(i + 1)])
-        image_producer.notify_image_consumption()
+
+      image_producer = None
+      if image_producer_ops is not None:
+        image_producer = cnn_util.ImageProducer(
+            sess, image_producer_ops, self.batch_group_size,
+            self.params.use_python32_barrier)
+        image_producer.start()
+        for i in xrange(len(enqueue_ops)):
+          sess.run(enqueue_ops[:(i + 1)])
+          image_producer.notify_image_consumption()
       self.init_global_step, = sess.run([global_step])
       if not self.single_session and self.params.variable_update != 'horovod':
         global_step_watcher = GlobalStepWatcher(
@@ -1561,7 +1603,8 @@ class BenchmarkCNN(object):
       log_fn('-' * 64)
       log_fn('total images/sec: %.2f' % images_per_sec)
       log_fn('-' * 64)
-      image_producer.done()
+      if image_producer is not None:
+        image_producer.done()
       if is_chief:
         store_benchmarks({'total_images_per_sec': images_per_sec}, self.params)
       # Save the model checkpoint.
@@ -1706,11 +1749,91 @@ class BenchmarkCNN(object):
                                   all_top_5_ops, phase_train)
     return (image_producer_ops, enqueue_ops, fetches)
 
+  # TODO(rohanj): Refactor this function and share with other code path.
+  def _build_model_with_dataset_prefetching(self):
+    """Build the TensorFlow graph using datasets prefetching."""
+    assert not self.params.staged_vars
+    assert not self.variable_mgr.supports_staged_vars()
+
+    tf.set_random_seed(self.params.tf_random_seed)
+    np.random.seed(4321)
+    phase_train = not (self.params.eval or self.params.forward_only)
+
+    log_fn('Generating model')
+    losses = []
+    device_grads = []
+    all_logits = []
+    all_top_1_ops = []
+    all_top_5_ops = []
+
+    with tf.device(self.global_step_device):
+      global_step = tf.train.get_or_create_global_step()
+      if self.params.use_fp16:
+        init_loss_scale_val = float(self.params.fp16_loss_scale or
+                                    self.model.get_fp16_loss_scale())
+        if self.enable_auto_loss_scale or init_loss_scale_val != 1:
+          self.loss_scale = tf.get_variable(
+              name='loss_scale',
+              initializer=init_loss_scale_val,
+              dtype=tf.float32,
+              trainable=False)
+          self.loss_scale_normal_steps = tf.get_variable(
+              name='loss_scale_normal_steps', initializer=0, trainable=False)
+        else:
+          self.loss_scale = None
+          self.loss_scale_normal_steps = None
+
+    # Build the processing and model for the worker.
+    function_buffering_resources = data_utils.build_prefetch_image_processing(
+        self.model.get_image_size(), self.model.get_image_size(),
+        self.batch_size, len(
+            self.devices), self.image_preprocessor.parse_and_preprocess,
+        self.cpu_device, self.params, self.devices, self.dataset)
+
+    update_ops = None
+
+    for device_num in range(len(self.devices)):
+      with self.variable_mgr.create_outer_variable_scope(
+          device_num), tf.name_scope('tower_%i' % device_num) as name_scope:
+        function_buffering_resource = function_buffering_resources[device_num]
+        results = self.add_forward_pass_and_gradients(
+            phase_train, device_num, device_num, None, None, None,
+            function_buffering_resource)
+        if phase_train:
+          losses.append(results['loss'])
+          device_grads.append(results['gradvars'])
+        else:
+          all_logits.append(results['logits'])
+        if not phase_train or self.params.print_training_accuracy:
+          all_top_1_ops.append(results['top_1_op'])
+          all_top_5_ops.append(results['top_5_op'])
+
+        if device_num == 0:
+          # Retain the Batch Normalization updates operations only from the
+          # first tower. These operations update the moving mean and moving
+          # variance variables, which are updated (but not used) during
+          # training, and used during evaluation. The moving mean and variance
+          # approximate the true mean and variance across all images in the
+          # dataset. Therefore, in replicated mode, these moving averages would
+          # be almost identical for each tower, and so we only update and save
+          # the moving averages for one tower. In parameter server mode, all
+          # towers share a copy of the variables so we also only need to update
+          # and save the moving averages once.
+          update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, name_scope)
+          assert not self.variable_mgr.staging_delta_ops
+
+    fetches = self._build_fetches(global_step, all_logits, losses, device_grads,
+                                  None, update_ops, all_top_1_ops,
+                                  all_top_5_ops, phase_train)
+    return (None, [], fetches)
+
   def _build_fetches(self, global_step, all_logits, losses, device_grads,
                      enqueue_ops, update_ops, all_top_1_ops, all_top_5_ops,
                      phase_train):
     """Complete construction of model graph, populating the fetches map."""
-    fetches = {'enqueue_ops': enqueue_ops}
+    fetches = {}
+    if enqueue_ops:
+      fetches['enqueue_ops'] = enqueue_ops
     if all_top_1_ops:
       fetches['top_1_accuracy'] = tf.reduce_sum(all_top_1_ops) / self.batch_size
       if self.task_index == 0 and self.params.summary_verbosity >= 1:
@@ -1888,50 +2011,161 @@ class BenchmarkCNN(object):
     global_image_producer_ops = tf.group(*global_image_producer_ops)
     return (global_image_producer_ops, enqueue_ops, fetches)
 
-  def add_forward_pass_and_gradients(self, phase_train, rel_device_num,
-                                     abs_device_num, image_producer_stage,
-                                     gpu_compute_stage_ops, gpu_grad_stage_ops):
+  # TODO(rohanj): Refactor this function and share with other code path.
+  def _build_model_single_session_with_dataset_prefetching(self):
+    """Build the TensorFlow graph for multiple replicas in a single_session.
+
+    Returns:
+      image_producer_ops:
+      enqueue_ops:
+      fetches:
+
+    Raises:
+       ValueError: optimizer not recognized.
+
+    Single session runs multiple model replicas as part of one large
+    distributed graph, whose global execution is always step-synchronized.
+    """
+    # verify assumptions
+    assert self.params.task_index == 0
+    assert not self.params.eval
+    assert not self.params.forward_only
+    assert not self.params.staged_vars
+
+    tf.set_random_seed(self.params.tf_random_seed)
+    np.random.seed(4321)
+    phase_train = True
+
+    log_fn('Generating model')
+    losses = []
+    device_grads = []
+    all_logits = []
+    all_top_1_ops = []
+    all_top_5_ops = []
+
+    with tf.device(self.global_step_device):
+      global_step = tf.train.get_or_create_global_step()
+
+    update_ops = []
+
+    is_local = not self.job_name
+    if is_local:
+      assert self.num_workers == 1
+    for task_num in range(self.num_workers):
+      # Reset the devices that self.variable_mgr knows about to those
+      # belonging to the next worker (task).
+      self.reset_devices_for_task(task_num, is_local)
+      # Build the per-worker image processing
+      function_buffering_resources = data_utils.build_prefetch_image_processing(
+          self.model.get_image_size(), self.model.get_image_size(),
+          self.batch_size // len(self.devices), self.cpu_device, self.params,
+          self.devices, self.dataset)
+
+      # Build the per-worker model replica.
+      for rel_device_num in range(len(self.devices)):
+        abs_device_num = task_num * len(self.devices) + rel_device_num
+        with self.variable_mgr.create_outer_variable_scope(
+            abs_device_num), tf.name_scope(
+                'task_%i_tower_%i' % (task_num, rel_device_num)) as name_scope:
+          function_buffering_resource = (
+              function_buffering_resources[rel_device_num])
+          task_results = self.add_forward_pass_and_gradients(
+              phase_train, rel_device_num, abs_device_num, None, None, None,
+              function_buffering_resource)
+          if phase_train:
+            losses.append(task_results['loss'])
+            device_grads.append(task_results['gradvars'])
+          else:
+            all_logits.append(task_results['logits'])
+          if not phase_train or self.params.print_training_accuracy:
+            all_top_1_ops.append(task_results['top_1_op'])
+            all_top_5_ops.append(task_results['top_5_op'])
+
+          if rel_device_num == 0:
+            # Retain the Batch Normalization updates operations only
+            # from the first tower. These operations update the moving
+            # mean and moving variance variables, which are updated
+            # (but not used) during training, and used during
+            # evaluation. The moving mean and variance approximate the
+            # true mean and variance across all images in the
+            # dataset. Therefore, in replicated mode, these moving
+            # averages would be almost identical for each tower, and
+            # so we only update and save the moving averages for one
+            # tower. In parameter server mode, all towers share a copy
+            # of the variables so we also only need to update and save
+            # the moving averages once.
+            update_ops.extend(
+                tf.get_collection(tf.GraphKeys.UPDATE_OPS, name_scope))
+            assert not self.variable_mgr.staging_delta_ops
+
+    assert not self.variable_mgr.supports_staged_vars()
+
+    fetches = self._build_fetches(global_step, all_logits, losses, device_grads,
+                                  None, update_ops, all_top_1_ops,
+                                  all_top_5_ops, phase_train)
+    return (None, [], fetches)
+
+  def add_forward_pass_and_gradients(self,
+                                     phase_train,
+                                     rel_device_num,
+                                     abs_device_num,
+                                     image_producer_stage,
+                                     gpu_compute_stage_ops,
+                                     gpu_grad_stage_ops,
+                                     function_buffering_resource=None):
     """Add ops for forward-pass and gradient computations."""
     nclass = self.dataset.num_classes
     data_type = get_data_type(self.params)
-    if not self.use_synthetic_gpu_images:
-      with tf.device(self.cpu_device):
-        host_images, host_labels = image_producer_stage.get()
-        images_shape = host_images.get_shape()
-        labels_shape = host_labels.get_shape()
-    with tf.device(self.raw_devices[rel_device_num]):
+    image_size = self.model.get_image_size()
+    if self.params.datasets_use_prefetch:
+      with tf.device(self.raw_devices[rel_device_num]):
+        images, labels = data_utils.get_images_and_labels(
+            function_buffering_resource, data_type)
+        images = tf.reshape(
+            images,
+            shape=[
+                self.params.batch_size, image_size, image_size,
+                self.dataset.depth
+            ])
+    else:
       if not self.use_synthetic_gpu_images:
-        gpu_compute_stage = data_flow_ops.StagingArea(
-            [host_images.dtype, host_labels.dtype],
-            shapes=[images_shape, labels_shape])
-        # The CPU-to-GPU copy is triggered here.
-        gpu_compute_stage_op = gpu_compute_stage.put([host_images, host_labels])
-        images, labels = gpu_compute_stage.get()
-        images = tf.reshape(images, shape=images_shape)
-        gpu_compute_stage_ops.append(gpu_compute_stage_op)
-      else:
-        # Minor hack to avoid H2D copy when using synthetic data
-        image_size = self.model.get_image_size()
-        image_shape = [
-            self.batch_size // self.num_gpus, image_size, image_size,
-            self.dataset.depth
-        ]
-        labels_shape = [self.batch_size // self.num_gpus]
-        # Synthetic image should be within [0, 255].
-        images = tf.truncated_normal(
-            image_shape,
-            dtype=data_type,
-            mean=127,
-            stddev=60,
-            name='synthetic_images')
-        images = tf.contrib.framework.local_variable(
-            images, name='gpu_cached_images')
-        labels = tf.random_uniform(
-            labels_shape,
-            minval=0,
-            maxval=nclass - 1,
-            dtype=tf.int32,
-            name='synthetic_labels')
+        with tf.device(self.cpu_device):
+          host_images, host_labels = image_producer_stage.get()
+          images_shape = host_images.get_shape()
+          labels_shape = host_labels.get_shape()
+      with tf.device(self.raw_devices[rel_device_num]):
+        if not self.use_synthetic_gpu_images:
+          gpu_compute_stage = data_flow_ops.StagingArea(
+              [host_images.dtype, host_labels.dtype],
+              shapes=[images_shape, labels_shape])
+          # The CPU-to-GPU copy is triggered here.
+          gpu_compute_stage_op = gpu_compute_stage.put(
+              [host_images, host_labels])
+          images, labels = gpu_compute_stage.get()
+          images = tf.reshape(images, shape=images_shape)
+          gpu_compute_stage_ops.append(gpu_compute_stage_op)
+        else:
+          # Minor hack to avoid H2D copy when using synthetic data
+          image_shape = [
+              self.batch_size // self.num_gpus, image_size, image_size,
+              self.dataset.depth
+          ]
+          labels_shape = [self.batch_size // self.num_gpus]
+          # Synthetic image should be within [0, 255].
+          images = tf.truncated_normal(
+              image_shape,
+              dtype=data_type,
+              mean=127,
+              stddev=60,
+              name='synthetic_images')
+          images = tf.contrib.framework.local_variable(
+              images, name='gpu_cached_images')
+          labels = tf.random_uniform(
+              labels_shape,
+              minval=0,
+              maxval=nclass - 1,
+              dtype=tf.int32,
+              name='synthetic_labels')
 
     with tf.device(self.devices[rel_device_num]):
       logits, aux_logits = self.model.build_network(

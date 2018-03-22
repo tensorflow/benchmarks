@@ -19,13 +19,11 @@ import math
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.contrib.data.python.ops import batching
-from tensorflow.contrib.data.python.ops import interleave_ops
 from tensorflow.contrib.image.python.ops import distort_image_ops
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.platform import gfile
 import cnn_util
+import data_utils
 
 
 def parse_example_proto(example_serialized):
@@ -510,31 +508,9 @@ class RecordInputImagePreprocessor(BaseImagePreprocess):
       images = [[] for _ in range(self.num_splits)]
       labels = [[] for _ in range(self.num_splits)]
       if use_datasets:
-        glob_pattern = dataset.tf_record_pattern(subset)
-        file_names = gfile.Glob(glob_pattern)
-        if not file_names:
-          raise ValueError('Found no files in --data_dir matching: {}'
-                           .format(glob_pattern))
-        ds = tf.data.TFRecordDataset.list_files(file_names)
-        ds = ds.apply(
-            interleave_ops.parallel_interleave(
-                tf.data.TFRecordDataset, cycle_length=10))
-        if cache_data:
-          ds = ds.take(1).cache().repeat()
-        counter = tf.data.Dataset.range(self.batch_size)
-        counter = counter.repeat()
-        ds = tf.data.Dataset.zip((ds, counter))
-        ds = ds.prefetch(buffer_size=self.batch_size)
-        if self.train:
-          ds = ds.shuffle(buffer_size=10000)
-        ds = ds.repeat()
-        ds = ds.apply(
-            batching.map_and_batch(
-                map_func=self.parse_and_preprocess,
-                batch_size=self.batch_size_per_split,
-                num_parallel_batches=self.num_splits))
-        ds = ds.prefetch(buffer_size=self.num_splits)
-        ds_iterator = ds.make_one_shot_iterator()
+        ds_iterator = data_utils.create_iterator(
+            self.batch_size, self.num_splits, self.batch_size_per_split,
+            self.parse_and_preprocess, dataset, subset, self.train, cache_data)
         for d in xrange(self.num_splits):
           labels[d], images[d] = ds_iterator.get_next()
 
