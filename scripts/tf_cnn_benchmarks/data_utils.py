@@ -55,7 +55,6 @@ def build_prefetch_image_processing(height, width, batch_size, num_splits,
             target_device=cpu_device,
             string_arg=args[0],
             buffer_size=params.datasets_prefetch_buffer_size,
-            thread_pool_size=params.datasets_prefetch_threadpool_size,
             shared_name=None)
         function_buffering_resources.append(buffer_resource_handle)
     return function_buffering_resources

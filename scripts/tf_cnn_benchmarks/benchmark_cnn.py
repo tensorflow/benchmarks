@@ -257,10 +257,6 @@ flags.DEFINE_boolean('datasets_use_prefetch', False,
                      'This option is meaningless if use_datasets=False.')
 flags.DEFINE_integer('datasets_prefetch_buffer_size', 1,
                      'Prefetching op buffer size per compute device.')
-flags.DEFINE_integer('datasets_prefetch_threadpool_size', 1,
-                     'Number of threads in the threadpool used for prefetching'
-                     ' op. Setting this to zero would delegate computation to '
-                     'the default tf-Compute threadpool')
 flags.DEFINE_integer('datasets_num_private_threads', 50,
                      'Number of threads in the datasets private threadpool. '
                      'If non-zero then we add a ThreadPoolDataset op in the '
