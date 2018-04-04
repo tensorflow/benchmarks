@@ -252,16 +252,16 @@ flags.DEFINE_string('debugger', None,
 flags.DEFINE_boolean('use_python32_barrier', False,
                      'When on, use threading.Barrier at Python 3.2.')
 
-flags.DEFINE_boolean('datasets_use_prefetch', False,
+flags.DEFINE_boolean('datasets_use_prefetch', True,
                      'Enable use of prefetched datasets for input pipeline. '
                      'This option is meaningless if use_datasets=False.')
 flags.DEFINE_integer('datasets_prefetch_buffer_size', 1,
                      'Prefetching op buffer size per compute device.')
-flags.DEFINE_integer('datasets_num_private_threads', 50,
-                     'Number of threads in the datasets private threadpool. '
-                     'If non-zero then we add a ThreadPoolDataset op in the '
-                     'data pipeline that switches all dataset computation to '
-                     'its own threadpool.')
+flags.DEFINE_integer('datasets_num_private_threads', None,
+                     'Number of threads for a private threadpool created for '
+                     'all datasets computation. By default, we pick an '
+                     'appropriate number. If set to 0, we use the default '
+                     'tf-Compute threads for dataset operations.')
 
 # Performance tuning parameters.
 flags.DEFINE_boolean('winograd_nonfused', True,
@@ -1168,6 +1168,9 @@ class BenchmarkCNN(object):
       self.global_step_device = self.cpu_device
 
     self.image_preprocessor = self.get_image_preprocessor()
+    self.datasets_use_prefetch = (
+        self.params.datasets_use_prefetch and
+        self.image_preprocessor.supports_datasets())
     self.init_global_step = 0
 
   def reset_devices_for_task(self, task_num, is_local=False):
@@ -1272,7 +1275,7 @@ class BenchmarkCNN(object):
       Dictionary containing eval statistics. Currently returns an empty
       dictionary.
     """
-    if self.params.datasets_use_prefetch:
+    if self.datasets_use_prefetch:
       (image_producer_ops, enqueue_ops, fetches) = (
           self._build_model_with_dataset_prefetching())
     else:
@@ -1372,7 +1375,7 @@ class BenchmarkCNN(object):
     """
     if self.params.variable_update == 'distributed_all_reduce':
       self.single_session = True
-      if self.params.datasets_use_prefetch:
+      if self.datasets_use_prefetch:
         (image_producer_ops, enqueue_ops, fetches) = (
             self._build_model_single_session_with_dataset_prefetching())
       else:
@@ -1380,7 +1383,7 @@ class BenchmarkCNN(object):
             self._build_model_single_session())
     else:
       self.single_session = False
-      if self.params.datasets_use_prefetch:
+      if self.datasets_use_prefetch:
         (image_producer_ops, enqueue_ops, fetches) = (
             self._build_model_with_dataset_prefetching())
       else:
@@ -2113,7 +2116,7 @@ class BenchmarkCNN(object):
     nclass = self.dataset.num_classes
     data_type = get_data_type(self.params)
     image_size = self.model.get_image_size()
-    if self.params.datasets_use_prefetch:
+    if self.datasets_use_prefetch and function_buffering_resource is not None:
       with tf.device(self.raw_devices[rel_device_num]):
         images, labels = data_utils.get_images_and_labels(
             function_buffering_resource, data_type)
@@ -2382,12 +2385,22 @@ def setup(params):
   elif params.gpu_thread_mode == 'gpu_shared':
     os.environ['TF_GPU_THREAD_COUNT'] = str(total_gpu_thread_count)
 
+  cpu_count = multiprocessing.cpu_count()
   if not params.num_inter_threads and params.gpu_thread_mode in [
       'gpu_private', 'gpu_shared'
   ]:
-    cpu_count = multiprocessing.cpu_count()
     main_thread_count = max(cpu_count - total_gpu_thread_count, 1)
     params = params._replace(num_inter_threads=main_thread_count)
+
+  if (params.datasets_use_prefetch and
+      params.datasets_num_private_threads is None):
+    # From the total cpu thread count, subtract the total_gpu_thread_count,
+    # and then 2 threads per GPU device for event monitoring and sending /
+    # receiving tensors
+    num_monitoring_threads = 2 * params.num_gpus
+    num_private_threads = max(
+        cpu_count - total_gpu_thread_count - num_monitoring_threads, 1)
+    params = params._replace(datasets_num_private_threads=num_private_threads)
 
   if params.variable_update == 'horovod':
     import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top

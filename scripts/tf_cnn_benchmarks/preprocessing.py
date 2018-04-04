@@ -469,6 +469,9 @@ class BaseImagePreprocess(object):
                 shift_ratio):
     raise NotImplementedError('Must be implemented by subclass.')
 
+  def supports_datasets(self):
+    return False
+
 
 class RecordInputImagePreprocessor(BaseImagePreprocess):
   """Preprocessor for images with RecordInput format."""
@@ -544,6 +547,9 @@ class RecordInputImagePreprocessor(BaseImagePreprocess):
         labels[split_index] = tf.reshape(labels[split_index],
                                          [self.batch_size_per_split])
       return images, labels
+
+  def supports_datasets(self):
+    return True
 
 
 class ImagenetPreprocessor(RecordInputImagePreprocessor):
