@@ -197,7 +197,7 @@ class ResnetModel(model_lib.Model):
         'resnet152_v2': 32,
     }
     batch_size = default_batch_sizes.get(model, 32)
-    super(ResnetModel, self).__init__(model, 224, batch_size, 0.025,
+    super(ResnetModel, self).__init__(model, 224, batch_size, 0.004,
                                       layer_counts)
     self.pre_activation = 'v2' in model
 
@@ -205,7 +205,7 @@ class ResnetModel(model_lib.Model):
     if self.layer_counts is None:
       raise ValueError('Layer counts not specified for %s' % self.get_model())
     cnn.use_batch_norm = True
-    cnn.batch_norm_config = {'decay': 0.997, 'epsilon': 1e-5, 'scale': True}
+    cnn.batch_norm_config = {'decay': 0.9, 'epsilon': 1e-5, 'scale': True}
     cnn.conv(64, 7, 7, 2, 2, mode='SAME_RESNET', use_batch_norm=True)
     cnn.mpool(3, 3, 2, 2, mode='SAME')
     for _ in xrange(self.layer_counts[0]):
@@ -231,7 +231,12 @@ class ResnetModel(model_lib.Model):
     rescaled_lr = self.learning_rate / self.default_batch_size * batch_size
     values = [1, 0.1, 0.01, 0.001, 0.0001]
     values = [rescaled_lr * v for v in values]
-    return tf.train.piecewise_constant(global_step, boundaries, values)
+    lr = tf.train.piecewise_constant(global_step, boundaries, values)
+    warmup_steps = int(num_batches_per_epoch * 5)
+    warmup_lr = (
+        rescaled_lr * tf.cast(global_step, tf.float32) / tf.cast(
+            warmup_steps, tf.float32))
+    return tf.cond(global_step < warmup_steps, lambda: warmup_lr, lambda: lr)
 
 
 def create_resnet50_model():

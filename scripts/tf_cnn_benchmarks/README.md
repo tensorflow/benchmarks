@@ -43,6 +43,18 @@ Some important flags are
 
 To see the full list of flags, run `python tf_cnn_benchmarks.py --help`.
 
+To run ResNet50 with real data with 8 GPUs, run:
+
+```
+python tf_cnn_benchmarks.py --data_format=NCHW --batch_size=256 \
+--model=resnet50 --optimizer=momentum --variable_update=replicated \
+--nodistortions --gradient_repacking=8 --num_gpus=8 \
+--num_epochs=90 --weight_decay=1e-4 --data_dir=${DATA_DIR} --use_fp16 \
+--train_dir=${CKPT_DIR}
+```
+This will train a ResNet-50 model on ImageNet with 2048 batch size on 8
+GPUs. The model should train to around 76% accuracy.
+
 ## Running the tests
 
 To run the tests, run

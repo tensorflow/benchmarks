@@ -199,7 +199,7 @@ flags.DEFINE_string('partitioned_graph_file_prefix', None,
                     'with the given prefix.')
 flags.DEFINE_string('optimizer', 'sgd',
                     'Optimizer to use: momentum or sgd or rmsprop')
-flags.DEFINE_float('learning_rate', None,
+flags.DEFINE_float('init_learning_rate', None,
                    'Initial learning rate for training.')
 flags.DEFINE_string('piecewise_learning_rate_schedule', None,
                     'Specifies a piecewise learning rate schedule based on the '
@@ -217,6 +217,9 @@ flags.DEFINE_float('learning_rate_decay_factor', 0,
                    'Learning rate decay factor. Decay by this factor every '
                    '`num_epochs_per_decay` epochs. If 0, learning rate does '
                    'not decay.')
+flags.DEFINE_float('num_learning_rate_warmup_epochs', 0,
+                   'Slowly increase to the initial learning rate in the first '
+                   'num_learning_rate_warmup_epochs linearly.')
 flags.DEFINE_float('minimum_learning_rate', 0,
                    'The minimum learning rate. The learning rate will '
                    'never decay past this value. Requires `learning_rate`, '
@@ -872,30 +875,43 @@ def get_learning_rate(params, global_step, num_examples_per_epoch, model,
   num_batches_per_epoch = (float(num_examples_per_epoch) / batch_size)
 
   if params.piecewise_learning_rate_schedule:
-    if (params.learning_rate or params.learning_rate_decay_factor or
+    if (params.init_learning_rate or params.learning_rate_decay_factor or
         params.minimum_learning_rate or params.num_epochs_per_decay):
       raise ValueError('No other learning rate-related flags can be specified '
                        'if --piecewise_learning_rate_schedule is specified')
-    return get_piecewise_learning_rate(params.piecewise_learning_rate_schedule,
-                                       global_step, num_batches_per_epoch)
+    learning_rate = get_piecewise_learning_rate(
+        params.piecewise_learning_rate_schedule,
+        global_step, num_batches_per_epoch)
+  elif params.init_learning_rate:
+    learning_rate = params.init_learning_rate
+    if (params.num_epochs_per_decay > 0 and
+        params.learning_rate_decay_factor > 0):
+      decay_steps = int(num_batches_per_epoch * params.num_epochs_per_decay)
 
-  learning_rate = (
-      params.learning_rate or model.get_learning_rate(global_step, batch_size))
-  if (params.learning_rate and params.num_epochs_per_decay > 0 and
-      params.learning_rate_decay_factor > 0):
-    decay_steps = int(num_batches_per_epoch * params.num_epochs_per_decay)
+      # Decay the learning rate exponentially based on the number of steps.
+      learning_rate = tf.train.exponential_decay(
+          params.init_learning_rate,
+          global_step,
+          decay_steps,
+          params.learning_rate_decay_factor,
+          staircase=True)
 
-    # Decay the learning rate exponentially based on the number of steps.
-    learning_rate = tf.train.exponential_decay(
-        params.learning_rate,
-        global_step,
-        decay_steps,
-        params.learning_rate_decay_factor,
-        staircase=True)
+      if params.minimum_learning_rate != 0.:
+        learning_rate = tf.maximum(learning_rate,
+                                   params.minimum_learning_rate)
+  else:
+    learning_rate = model.get_learning_rate(global_step, batch_size)
+  if params.num_learning_rate_warmup_epochs > 0 and (
+      params.init_learning_rate or params.piecewise_learning_rate_schedule):
+    warmup_steps = int(num_batches_per_epoch *
+                       params.num_learning_rate_warmup_epochs)
+    init_lr = (params.init_learning_rate or
+               float(params.piecewise_learning_rate_schedule.split(';')[0]))
+    warmup_lr = init_lr * tf.cast(global_step, tf.float32) / tf.cast(
+        warmup_steps, tf.float32)
+    learning_rate = tf.cond(global_step < warmup_steps,
+                            lambda: warmup_lr, lambda: learning_rate)
 
-    if params.minimum_learning_rate != 0.:
-      learning_rate = tf.maximum(learning_rate,
-                                 params.minimum_learning_rate)
   return learning_rate
 
 
@@ -988,14 +1004,14 @@ class BenchmarkCNN(object):
 
     if ((self.params.num_epochs_per_decay or
          self.params.learning_rate_decay_factor) and
-        not (self.params.learning_rate and self.params.num_epochs_per_decay and
-             self.params.learning_rate_decay_factor)):
+        not (self.params.init_learning_rate and self.params.num_epochs_per_decay
+             and self.params.learning_rate_decay_factor)):
       raise ValueError('If one of num_epochs_per_decay or '
                        'learning_rate_decay_factor is set, both must be set'
                        'and learning_rate must be set')
     if (self.params.minimum_learning_rate and
-        not (self.params.learning_rate and self.params.num_epochs_per_decay and
-             self.params.learning_rate_decay_factor)):
+        not (self.params.init_learning_rate and self.params.num_epochs_per_decay
+             and self.params.learning_rate_decay_factor)):
       raise ValueError('minimum_learning_rate requires learning_rate,'
                        'num_epochs_per_decay, and '
                        'learning_rate_decay_factor to be set')

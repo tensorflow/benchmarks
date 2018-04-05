@@ -262,7 +262,7 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
           elif v.name.startswith('v_1/'):
             self.assertEquals(v.name, 'v_1/tower_1/gpu_cached_images:0')
             self.assertEquals(v.device, '/device:GPU:1')
-          elif v.name in ('images:0', 'labels:0', 'learning_rate:0',
+          elif v.name in ('images:0', 'labels:0', 'init_learning_rate:0',
                           'global_step:0', 'loss_scale:0',
                           'loss_scale_normal_steps:0'):
             self.assertEquals(v.device, '/device:CPU:0')
@@ -286,7 +286,7 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
             v1_count += 1
             self.assertEquals(v.device, '/device:GPU:1')
             self._assert_correct_var_type(v, params)
-          elif v.name in ('images:0', 'labels:0', 'learning_rate:0',
+          elif v.name in ('images:0', 'labels:0', 'init_learning_rate:0',
                           'global_step:0', 'loss_scale:0',
                           'loss_scale_normal_steps:0'):
             self.assertEquals(v.device, '/device:CPU:0')
@@ -508,7 +508,7 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
 
   def testAlexnet(self):
     params = test_util.get_params('testAlexnet')._replace(
-        num_batches=30, learning_rate=0.01, model='alexnet')
+        num_batches=30, init_learning_rate=0.01, model='alexnet')
     self._train_and_eval_local(params)
 
   def testNoPrintAccuracy(self):
@@ -589,7 +589,7 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
         rmsprop_decay=0.8,
         rmsprop_momentum=0.6,
         rmsprop_epsilon=0.7,
-        learning_rate=0.01)
+        init_learning_rate=0.01)
     self._train_and_eval_local(params)
 
   def testBatchGroupSize(self):
@@ -825,21 +825,31 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
   def testLearningRate(self):
     params = benchmark_cnn.make_params(model='resnet50', batch_size=256)
     self._test_learning_rate(params, {
-        0: 0.1,
-        150136: 0.1,
-        150137: 0.01,
-        300273: 0.01,
-        300274: 0.001,
-        10000000: 0.00001
+        0: 0,
+        150136: 0.016,
+        150137: 0.0016,
+        300273: 0.0016,
+        300274: 0.00016,
+        10000000: 0.0000016
     })
 
-    params = params._replace(learning_rate=1.)
+    params = params._replace(init_learning_rate=1.)
     self._test_learning_rate(params, {
         0: 1.,
         10000000: 1.
     })
 
+    params = params._replace(init_learning_rate=1.,
+                             num_learning_rate_warmup_epochs=5)
+    self._test_learning_rate(params, {
+        0: 0.,
+        12511: 0.5,
+        25022: 1.,
+        10000000: 1.
+    })
+
     params = params._replace(
+        num_learning_rate_warmup_epochs=0,
         learning_rate_decay_factor=0.5,
         num_epochs_per_decay=2,
         minimum_learning_rate=0.3750,

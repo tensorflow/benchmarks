@@ -291,7 +291,7 @@ def get_params(train_dir_name):
   return benchmark_cnn.make_params(
       batch_size=2,
       display_every=1,
-      learning_rate=0.005,
+      init_learning_rate=0.005,
       model='trivial',
       num_batches=20,
       num_gpus=2,
@@ -313,7 +313,7 @@ def get_var_update_params():
       num_warmup_batches=0,
       num_batches=4,
       weight_decay=2 ** -4,
-      learning_rate=2 ** -4,
+      init_learning_rate=2 ** -4,
       optimizer='sgd')
 
 
@@ -378,7 +378,7 @@ def manually_compute_losses(numpy_inputs, inputs_placeholder, loss, num_workers,
     # TODO(b/62722498): Make all variable updates consistent.
     gradient_multiplier = params.num_gpus
 
-  opt = benchmark_cnn.get_optimizer(params, params.learning_rate)
+  opt = benchmark_cnn.get_optimizer(params, params.init_learning_rate)
   grad_vars = opt.compute_gradients(
       total_loss, grad_loss=tf.constant(gradient_multiplier, dtype=tf.float32))
   grads = [g for g, _ in grad_vars]
