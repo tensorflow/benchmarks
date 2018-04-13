@@ -1525,7 +1525,7 @@ class BenchmarkCNN(object):
           sess.run(enqueue_ops[:(i + 1)])
           image_producer.notify_image_consumption()
       self.init_global_step, = sess.run([global_step])
-      if not self.single_session and self.params.variable_update != 'horovod':
+      if self.job_name and not self.params.cross_replica_sync:
         global_step_watcher = GlobalStepWatcher(
             sess, global_step,
             self.num_workers * self.num_warmup_batches +
@@ -1546,9 +1546,7 @@ class BenchmarkCNN(object):
       log_fn('Running warm up')
       local_step = -1 * self.num_warmup_batches
 
-      if (self.single_session or (self.params.cross_replica_sync and
-                                  self.params.job_name) or
-          self.params.variable_update == 'horovod'):
+      if not global_step_watcher:
         # In cross-replica sync mode, all workers must run the same number of
         # local steps, or else the workers running the extra step will block.
         done_fn = lambda: local_step == self.num_batches
@@ -1600,7 +1598,7 @@ class BenchmarkCNN(object):
       if global_step_watcher:
         while not global_step_watcher.done():
           time.sleep(.25)
-      if self.single_session or self.params.variable_update == 'horovod':
+      if not global_step_watcher:
         elapsed_time = loop_end_time - loop_start_time
         average_wall_time = elapsed_time / local_step if local_step > 0 else 0
         images_per_sec = (self.num_workers * local_step * self.batch_size /
