@@ -275,6 +275,7 @@ class VariableMgrLocalReplicated(VariableMgr):
     self._agg_small_grads_max_bytes = agg_small_grads_max_bytes
     self._agg_small_grads_max_group = agg_small_grads_max_group
     self._warmup_ops = []
+    self._gradient_put_ops = None
 
   def each_tower_has_variables(self):
     return True
@@ -282,8 +283,22 @@ class VariableMgrLocalReplicated(VariableMgr):
   def create_outer_variable_scope(self, device_num):
     return tf.variable_scope('v%s' % device_num)
 
-  def preprocess_device_grads(self, device_grads):
+  def _aggregate_grads(self, device_grads):
+    """Aggregate gradients across GPUs.
+
+    Args:
+      device_grads: List of lists of (gradient, variable) tuples.
+        device_grads[t][g] = (gradient, variable), where t is the index of the
+        tower and g is the index of the gradient-variable pair.
+
+    Returns:
+      List of lists of (gradient, variable) tuples, in the same form
+      as `device_grads`. Each gradient has been summed over the towers.
+    """
     if self._all_reduce_spec:
+      # TODO(reedwm): Merge allreduce.sum_gradients_all_reduce with the other
+      # gradient aggregation code, since gradient aggregation is doing an all
+      # reduce. Currently, we do gradient repacking in two different places.
       aggregated_device_grads = allreduce.sum_gradients_all_reduce(
           ['/job:localhost'],
           device_grads,
@@ -293,146 +308,310 @@ class VariableMgrLocalReplicated(VariableMgr):
           self.benchmark_cnn.gpu_indices,
           agg_small_grads_max_bytes=self._agg_small_grads_max_bytes,
           agg_small_grads_max_group=self._agg_small_grads_max_group)
+    elif self.benchmark_cnn.params.hierarchical_copy:
+      aggregated_device_grads, self.grad_has_inf_nan = (
+          variable_mgr_util.aggregate_gradients_using_hierarchical_copy(
+              self.benchmark_cnn,
+              device_grads,
+              use_mean=False,
+              check_inf_nan=self.benchmark_cnn.enable_auto_loss_scale))
     else:
-      if not self.benchmark_cnn.params.hierarchical_copy:
-        agg_grads, self.grad_has_inf_nan = (
-            variable_mgr_util.
-            aggregate_gradients_using_copy_with_device_selection(
-                self.benchmark_cnn,
-                device_grads,
-                use_mean=False,
-                check_inf_nan=self.benchmark_cnn.enable_auto_loss_scale))
-        aggregated_device_grads = []
-        for arr in device_grads:
-          aggregated_device_grads.append(
-              [(g, v) for (_, v), (g, _) in zip(arr, agg_grads)])
-      elif self.benchmark_cnn.params.gradient_repacking == 0:
-        aggregated_device_grads, self.grad_has_inf_nan = (
-            variable_mgr_util.aggregate_gradients_using_hierarchical_copy(
-                self.benchmark_cnn,
-                device_grads,
-                use_mean=False,
-                check_inf_nan=self.benchmark_cnn.enable_auto_loss_scale))
+      agg_grads, self.grad_has_inf_nan = (
+          variable_mgr_util.
+          aggregate_gradients_using_copy_with_device_selection(
+              self.benchmark_cnn,
+              device_grads,
+              use_mean=False,
+              check_inf_nan=self.benchmark_cnn.enable_auto_loss_scale))
+      aggregated_device_grads = []
+      for arr in device_grads:
+        aggregated_device_grads.append(
+            [(g, v) for (_, v), (g, _) in zip(arr, agg_grads)])
+    return aggregated_device_grads
+
+  def preprocess_device_grads(self, device_grads):
+    pack_grads = (self.benchmark_cnn.params.gradient_repacking != 0)
+    compact_grads = (self.benchmark_cnn.params.use_fp16 and
+                     self.benchmark_cnn.params.compact_gradient_transfer)
+    defer_grads = (self.benchmark_cnn.params.variable_consistency == 'relaxed')
+
+    # Before aggregating gradients, we do several preprocessing functions that
+    # can speed up the aggregation. We undo these functions after aggregating
+    # the gradients.
+    # TODO(reedwm): Encapsulate the preprocessing functions and undo functions
+    # into their own classes.
+    if pack_grads:
+      device_grads_before_concat = device_grads
+      device_grads, grad_states = self._concat_grads(device_grads)
+    # If enabled, we compact and defer gradients in between concatenating them
+    # and splitting them, because it is faster to do operations on a single
+    # concatenated tensor than on multiple smaller tensors.
+    if compact_grads:
+      device_grads_before_compact = device_grads
+      device_grads = self._compact_grads(device_grads)
+    if defer_grads:
+      device_grads = self._defer_grads(device_grads)
+    if pack_grads:
+      device_grads_before_split = device_grads
+      device_grads = self._split_grads(device_grads)
+
+    device_grads = self._aggregate_grads(device_grads)
+
+    # Undo the preprocessing operations in opposite order as we applied them.
+    if pack_grads:
+      device_grads = self._undo_split_grads(device_grads,
+                                            device_grads_before_split)
+    if compact_grads:
+      device_grads = self._undo_compact_grads(device_grads,
+                                              device_grads_before_compact)
+    # Note: There is no undo operation for defer_grads. But we do need to call
+    # self._add_put_op_control_deps at the end if we deferred the gradients.
+    if pack_grads:
+      device_grads = self._undo_concat_grads(device_grads,
+                                             device_grads_before_concat,
+                                             grad_states)
+
+    if defer_grads:
+      device_grads = self._add_put_op_control_deps(device_grads)
+    return self.benchmark_cnn.devices, device_grads
+
+  def _defer_gradient(self, grad, tower_num):
+    """Defers the retrieval of a gradient.
+
+    The gradient is put into a StagingArea, and the return value is the
+    retrieval of the gradient from the StagingArea. The effect is that the
+    gradient returned from this function is the gradient computed from the
+    previous step.
+
+    The put op is put in self._gradient_put_ops[tower_num], which must be run
+    every step. self._gradient_put_ops must be set to a list of lists before
+    this function is run. A warmup op to fill the StagingArea with a zero
+    gradient is added to self._warmup_ops, which must be run before the first
+    step.
+
+    Args:
+      grad: The gradient tensor to defer for one step.
+      tower_num: The tower that computed the gradient.
+
+    Returns:
+      The gradient, deferred for one step.
+    """
+    gradient_stage = data_flow_ops.StagingArea([grad.dtype], [grad.shape])
+
+    # Push the gradient into the staging area.
+    gradient_put_op = gradient_stage.put([grad])
+    self._gradient_put_ops[tower_num].append(gradient_put_op)
+
+    # Push an empty gradient into the staging area.
+    warmup_op = gradient_stage.put([tf.zeros(grad.shape, dtype=grad.dtype)])
+    self._warmup_ops.append(warmup_op)
+
+    # Fetch the next gradient to ues.
+    (grad,) = gradient_stage.get()
+    return grad
+
+  def _defer_grads(self, device_grads):
+    """Defers each gradient in `device_grads`. See `self._defer_gradient`.
+
+    Args:
+      device_grads: List of lists of (gradient, variable) tuples.
+        device_grads[t][g] = (gradient, variable), where t is the index of the
+        tower and g is the index of the gradient-variable pair.
+    Returns:
+      `device_grads`, except each gradient has been deferred with
+      `self._defer_gradient`.
+    """
+    self._gradient_put_ops = [[] for _ in device_grads]
+    deferred_device_grads = []
+    for i, tower_grad_vars in enumerate(device_grads):
+      deferred_tower_grad_vars = []
+      for g, v in tower_grad_vars:
+        with tf.colocate_with(g):
+          deferred_tower_grad_vars.append((self._defer_gradient(g, i), v))
+      deferred_device_grads.append(deferred_tower_grad_vars)
+    return deferred_device_grads
+
+  def _add_put_op_control_deps(self, device_grads):
+    """Add control dependencies from self._gradient_put_ops to device_grads.
+
+    This should only be called when deferred gradients are being used.
+    Otherwise, there are no put ops.
+
+    The control dependencies are added so that we don't have a race condition
+    with the update operation that follows. Also, it causes the put ops to run
+    when the gradients are run. Otherwise, the caller has to explicitly run the
+    put ops.
+
+    Args:
+      device_grads: List of lists of (gradient, variable) tuples.
+        device_grads[t][g] = (gradient, variable), where t is the index of the
+        tower and g is the index of the gradient-variable pair.
+    Returns:
+      `device_grads`, except the gradients are new ops producing the same values
+      as before, but have control dependencies on the put ops.
+
+    """
+    device_grads_with_deps = []
+    for tower_grad_vars, tower_grad_put_ops in zip(device_grads,
+                                                   self._gradient_put_ops):
+      if self.benchmark_cnn.params.gradient_repacking == 0:
+        assert len(tower_grad_put_ops) == len(tower_grad_vars)
+        tower_grad_vars = [
+            (control_flow_ops.with_dependencies([tower_grad_put_ops[i]], g), v)
+            for i, (g, v) in enumerate(tower_grad_vars)
+        ]
       else:
-        device_grad_packs = []
-        all_tower_shapes = []
-        all_tower_sizes = []
-        compact_gradient = self.benchmark_cnn.params.compact_gradient_transfer
-        use_fp16 = self.benchmark_cnn.params.use_fp16
-        variable_consistency = self.benchmark_cnn.params.variable_consistency
-        deferred_gradient = (variable_consistency == 'relaxed')
-        gradient_put_ops = []
-        for tower_grads_and_vars in device_grads:
-          with tf.colocate_with(tower_grads_and_vars[0][0]):
-            # Flatten all the grads.
-            flat_grads = [tf.reshape(g, [-1]) for g, _ in tower_grads_and_vars]
-            # Remember the original shape of all the grads.
-            tower_shapes = [tf.shape(g) for g, _ in tower_grads_and_vars]
-            # Remember the original sizes of all the grads.
-            tower_sizes = [tf.size(g) for g, _ in tower_grads_and_vars]
-            # Concat all the flat grads into a big flat tensor.
-            concat_grads = tf.concat(flat_grads, 0)
-            grads_dtype = concat_grads.dtype
-            if use_fp16 and compact_gradient:
-              concat_grads = tf.cast(concat_grads, tf.float16)
+        assert len(tower_grad_put_ops) == 1
+        tower_grad_vars = [
+            (control_flow_ops.with_dependencies(tower_grad_put_ops, g), v)
+            for g, v in tower_grad_vars
+        ]
+      device_grads_with_deps.append(tower_grad_vars)
+    return device_grads_with_deps
 
-            # With deferred-gradients, place the gradients in a staging area.
-            if deferred_gradient:
-              total_var_size = sum(
-                  [v.shape.num_elements() for _, v in tower_grads_and_vars])
-              gradient_stage = data_flow_ops.StagingArea([concat_grads.dtype])
+  def _compact_grads(self, device_grads):
+    """Compacts gradients in `device_grads` by casting them to fp16.
 
-              # Push the concat-gradients into the staging area.
-              gradient_put_op = gradient_stage.put([concat_grads])
-              gradient_put_ops.append(gradient_put_op)
+    Args:
+      device_grads: List of lists of (gradient, variable) tuples.
+        device_grads[t][g] = (gradient, variable), where t is the index of the
+        tower and g is the index of the gradient-variable pair.
+    Returns:
+      `device_grads`, except the gradients have been casted to fp16.
+    """
+    casted_device_grads = []
+    for tower_grad_vars in device_grads:
+      casted_tower_grad_vars = []
+      for g, v in tower_grad_vars:
+        with tf.colocate_with(g):
+          casted_tower_grad_vars.append((tf.cast(g, tf.float16), v))
+      casted_device_grads.append(casted_tower_grad_vars)
+    return casted_device_grads
 
-              # Push an empty set of gradients into the staging area.
-              warmup_op = gradient_stage.put(
-                  [tf.zeros([total_var_size], dtype=concat_grads.dtype)])
-              self._warmup_ops.append(warmup_op)
+  def _undo_compact_grads(self, device_grads, orig_device_grads):
+    """Undoes the effects of `self._compact_grads`.
 
-              # Fetch the next set of gradients to ues.
-              concat_grads = gradient_stage.get()
-              concat_grads = tf.reshape(concat_grads, [-1])
-            else:
-              gradient_put_ops.append(None)
+    Args:
+      device_grads: List of lists of (gradient, variable) tuples, in the same
+        form as the return value of `self._compact_grads`.
+      orig_device_grads: The original `device_grads` passed to
+        `self._compact_grads`.
+    Returns:
+      `device_grads`, except the gradients have been casted to their original
+        dtype.
+    """
+    new_device_grads = []
+    for tower_grad_vars, orig_tower_grad_vars in zip(device_grads,
+                                                     orig_device_grads):
+      new_tower_grad_vars = []
+      for (g, v), (og, _) in zip(tower_grad_vars, orig_tower_grad_vars):
+        with tf.colocate_with(og):
+          new_tower_grad_vars.append((tf.cast(g, og.dtype), v))
+      new_device_grads.append(new_tower_grad_vars)
+    return new_device_grads
 
-            # Split the big tensor into num_splits packs. In cases where the
-            # total size is not divisible num_splits, the last pack gets
-            # more elements.
-            # TODO(zhengxq): it is possible to optimize away the additional
-            # data movement by copying along the original variable boundary.
-            # TODO(zhengxq): it is also possible to optimize away all the concat
-            # as well.
-            num_splits = self.benchmark_cnn.params.gradient_repacking
-            total_grad_size = tf.size(concat_grads)
-            split_size = total_grad_size // num_splits
-            split_size_last = total_grad_size - split_size * (num_splits - 1)
-            split_sizes = [split_size] * (num_splits - 1) + [split_size_last]
-            grad_packs = tf.split(concat_grads, split_sizes)
+  def _concat_grads(self, device_grads):
+    """Concatenates the gradients in device_grads.
 
-            # Ready to aggregate the repacked gradients, with fake variables.
-            # TODO(zhengxq): It is hacky to have to use fake variables.
-            # We should remove the need for variables in
-            # aggregate_gradients_using*.
-            device_grad_packs.append(zip(grad_packs, [None] * num_splits))
-            all_tower_shapes.append(tower_shapes)
-            all_tower_sizes.append(tower_sizes)
+    Args:
+      device_grads: List of lists of (gradient, variable) tuples.
+        device_grads[t][g] = (gradient, variable), where t is the index of the
+        tower and g is the index of the gradient-variable pair.
 
-        # The actual aggregation of the repacked gradients. Note that they are
-        # sharded among different aggregation trees. So it is important to
-        # strike the balance on num_splits.
-        summed_device_grad_packs, self.grad_has_inf_nan = (
-            variable_mgr_util.aggregate_gradients_using_hierarchical_copy(
-                self.benchmark_cnn,
-                device_grad_packs,
-                use_mean=False,
-                check_inf_nan=self.benchmark_cnn.enable_auto_loss_scale))
+    Returns:
+      concatenated_device_grads: List of lists of (gradient, variable) tuples.
+        return_value[t] is a list with a single element,
+        (concatenated_gradient, None). The return value can be passed to other
+        functions taking `device_grads` as an argument.
+      grad_states: A list of ConcatGradientStates to be passed to
+        `self._undo_concat_grads`
+    """
+    concatenated_device_grads = []
+    grad_states = []
+    for tower_grads_and_vars in device_grads:
+      grads = [g for g, _ in tower_grads_and_vars]
+      with tf.colocate_with(grads[0]):
+        concat_grad, grad_state = variable_mgr_util.concat_grads(grads)
 
-        aggregated_device_grads = []
-        # pylint: disable=line-too-long
-        for (summed_tower_grad_packs, tower_grads_and_vars,
-             tower_shapes, tower_sizes, gradient_put_op) in zip(
-                 summed_device_grad_packs, device_grads, all_tower_shapes,
-                 all_tower_sizes, gradient_put_ops):
-          # pylint: enable=line-too-long
-          # Reverse the packing operations in the previous steps. Form the
-          # summed gradients back into their original shapes.
-          with tf.colocate_with(summed_tower_grad_packs[0][0]):
-            # Form a list of the summed grad packs.
-            device_grad_packs = [g for g, _ in summed_tower_grad_packs]
+      # TODO(zhengxq): It is hacky to have to use fake variables.
+      # We should remove the need for variables in
+      # aggregate_gradients_using*.
+      concatenated_device_grads.append([(concat_grad, None)])
+      grad_states.append(grad_state)
+    return concatenated_device_grads, grad_states
 
-            # Concat them back into a big flat tensor.
-            device_grads_concat = tf.concat(device_grad_packs, 0)
-            device_grads_concat = tf.cast(device_grads_concat, grads_dtype)
+  def _split_grads(self, concatenated_device_grads):
+    """Splits the concatenated device grads.
 
-            # Split the tensors back into their original sizes.
-            grads_with_sizes = tf.split(device_grads_concat, tower_sizes)
+    Args:
+      concatenated_device_grads: Concatenated device grads, in the same form as
+        returned by `self._concat_grads`.
 
-            # Reshape the tensors back into their original shapes.
-            grads_with_shapes = [
-                tf.reshape(grad, shape)
-                for shape, grad in zip(tower_shapes, grads_with_sizes)
-            ]
+    Returns:
+      List of lists of (gradient, variable) tuples.
+      return_value[t][g] = (gradient, variable), where t is the index of the
+      tower and g is the index of the split tensor. The return value can be
+      passed to other functions taking `device_grads` as an argument.
+    """
+    device_grad_packs = []
+    for [(concat_grad, _)] in concatenated_device_grads:
+      with tf.colocate_with(concat_grad):
+        grad_packs = variable_mgr_util.split_grads(
+            concat_grad, self.benchmark_cnn.params.gradient_repacking)
+        device_grad_packs.append(list(
+            zip(grad_packs, [None] * len(grad_packs))))
+    return device_grad_packs
 
-            # With deferred gradient, add a dependency on the put_op so we
-            # don't have a race condition with the update operation that
-            # follows. Also it triggers the gradient_put_op. Otherwise, the
-            # caller has to explicitly pump it.
-            if deferred_gradient:
-              assert gradient_put_op
-              grads_with_shapes = [
-                  control_flow_ops.with_dependencies([gradient_put_op], g)
-                  for g in grads_with_shapes
-              ]
-            # Form the list with the original list of variables.
-            summed_tower_grads = [
-                (g, v)
-                for g, (_, v) in zip(grads_with_shapes, tower_grads_and_vars)
-            ]
-            aggregated_device_grads.append(summed_tower_grads)
+  def _undo_split_grads(self, device_grad_packs,
+                        orig_concatenated_device_grads):
+    """Undoes the effects of `self._split_grads`.
 
-    return self.benchmark_cnn.devices, aggregated_device_grads
+    Arguments:
+      device_grad_packs: Aggregated gradients, in the same form as returned by
+        `split_grads`.
+      orig_concatenated_device_grads: The original `concatenated_device_grads`
+        passed to `self._split_grads`.
+    Returns:
+      Concatenated gradients in the same form as the parameter to
+      `self._split_grads`.
+    """
+    concatenated_device_grads = []
+    for tower_grads_and_vars, [(orig_concat_grad, _)] in zip(
+        device_grad_packs, orig_concatenated_device_grads):
+      grads = [g for g, _ in tower_grads_and_vars]
+      with tf.colocate_with(orig_concat_grad):
+        concat_grad = variable_mgr_util.undo_split_grads(grads)
+
+      concatenated_device_grads.append([(concat_grad, None)])
+    return concatenated_device_grads
+
+  def _undo_concat_grads(self, concatenated_device_grads, orig_device_grads,
+                         grad_states):
+    """Undoes the effects of `self._concat_grads`.
+
+    Args:
+      concatenated_device_grads: Concatenated device grads in the same form as
+        returned by `self._undo_split_grads`.
+      orig_device_grads: The original `device_grads` passed to
+        `self._concat_grads`.
+      grad_states:
+        The gradient states returned by `self._concat_grads`.
+    Returns:
+      Unconcatenated gradients, in the same form as the parameter to
+      `self._concat_grads`.
+    """
+    device_grads = []
+    for [(concat_grad, _)], orig_tower_grads, grad_state in zip(
+        concatenated_device_grads, orig_device_grads, grad_states):
+      with tf.colocate_with(concat_grad):
+        grads_with_shapes = variable_mgr_util.undo_concat_grads(concat_grad,
+                                                                grad_state)
+        # Form the list with the original list of variables.
+        tower_grad_vars = [
+            (g, v) for g, (_, v) in zip(grads_with_shapes, orig_tower_grads)
+        ]
+        device_grads.append(tower_grad_vars)
+    return device_grads
 
   def get_gradients_to_apply(self, device_num, gradient_state):
     device_grads = gradient_state

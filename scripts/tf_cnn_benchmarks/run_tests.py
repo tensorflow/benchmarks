@@ -75,6 +75,8 @@ def main(_):
         loader.loadTestsFromTestCase(benchmark_cnn_test.TestAlexnetModel),
         loader.loadTestsFromTestCase(benchmark_cnn_test.TfCnnBenchmarksTest),
         loader.loadTestsFromTestCase(benchmark_cnn_test.VariableUpdateTest),
+        loader.loadTestsFromTestCase(
+            benchmark_cnn_test.VariableMgrLocalReplicatedTest),
     ])
     dist_suite = unittest.TestSuite([
         loader.loadTestsFromNames([

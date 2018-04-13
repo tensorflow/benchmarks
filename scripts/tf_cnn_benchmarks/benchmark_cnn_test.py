@@ -234,6 +234,7 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
         staged_vars=staged_vars,
         optimizer=optimizer,
         all_reduce_spec=all_reduce_spec,
+        compact_gradient_transfer=False if all_reduce_spec == 'nccl' else True,
         use_fp16=use_fp16,
         fp16_loss_scale=2.,
         fp16_vars=fp16_vars,
@@ -620,6 +621,14 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     params = test_util.get_params('testFp16WithFp16Vars')._replace(
         use_fp16=True, fp16_vars=True)
     self._train_and_eval_local(params)
+
+  def testGradientRepacking(self):
+    params = test_util.get_params('testGradientRepacking1')._replace(
+        gradient_repacking=2)
+    self._train_and_eval_local(params, skip='eval_and_train_from_checkpoint')
+    params = test_util.get_params('testGradientRepacking2')._replace(
+        gradient_repacking=2, use_fp16=True)
+    self._train_and_eval_local(params, skip='eval_and_train_from_checkpoint')
 
   def testTraceFileChromeTraceFormat(self):
     trace_file = os.path.join(self.get_temp_dir(),
@@ -1068,7 +1077,8 @@ class VariableUpdateTest(tf.test.TestCase):
     self._test_variable_updates(params, var_updates=('replicated',))
     params = params._replace(all_reduce_spec='psgpu')
     self._test_variable_updates(params, var_updates=('replicated',))
-    params = params._replace(all_reduce_spec='nccl')
+    params = params._replace(all_reduce_spec='nccl',
+                             compact_gradient_transfer=False)
     self._test_variable_updates(params, var_updates=('replicated',))
 
   def testPrintBaseLoss(self):
@@ -1080,6 +1090,103 @@ class VariableUpdateTest(tf.test.TestCase):
     params = test_util.get_var_update_params()._replace(
         single_l2_loss_op=True)
     self._test_variable_updates(params)
+
+
+class VariableMgrLocalReplicatedTest(tf.test.TestCase):
+
+  def _test_grad_aggregation_with_var_mgr(self, variable_mgr, num_towers,
+                                          num_vars, deferred_grads):
+    tower_devices = ['/gpu:%d' % i for i in range(num_towers)]
+    tower_grads = []
+    expected_sums = [0.] * num_vars
+    for i, tower_device in enumerate(tower_devices):
+      with tf.device(tower_device):
+        grad_vars = []
+        for j in range(num_vars):
+          n = num_towers * i + j
+          grad_vars.append((tf.constant(n, dtype=tf.float32),
+                            tf.Variable(n, dtype=tf.float32)))
+          expected_sums[j] += n
+      tower_grads.append(grad_vars)
+
+    _, agg_device_grads = variable_mgr.preprocess_device_grads(
+        tower_grads)
+    expected_device_grads = []
+    for i in range(num_towers):
+      expected_grad_vars = []
+      for j in range(num_vars):
+        expected_grad_and_var = [expected_sums[j], num_towers * i + j]
+        if isinstance(agg_device_grads[i][j], tuple):
+          # agg_device_grads[i][j] can be a list or tuple.
+          expected_grad_and_var = tuple(expected_grad_and_var)
+        expected_grad_vars.append(expected_grad_and_var)
+      if isinstance(agg_device_grads[i], tuple):
+        # agg_device_grads[i] can be a list or tuple.
+        expected_grad_vars = tuple(expected_grad_vars)
+      expected_device_grads.append(expected_grad_vars)
+    config = tf.ConfigProto(allow_soft_placement=True)
+    with tf.Session(config=config) as sess:
+      sess.run(tf.initialize_all_variables())
+      sess.run(variable_mgr._warmup_ops)
+      if deferred_grads:
+        # With deferred grads, the result of a session run is always the summed
+        # gradients from the previous session run.
+        sess.run(agg_device_grads)
+        feed_dict = {g: 0 for grad_vars in tower_grads for g, _ in grad_vars}
+        agg_device_grads_ = sess.run(agg_device_grads, feed_dict)
+      else:
+        agg_device_grads_ = sess.run(agg_device_grads)
+    self.assertEqual(agg_device_grads_, expected_device_grads)
+
+  def _test_grad_aggregation(self, params, num_vars):
+    bench = benchmark_cnn.BenchmarkCNN(params)
+    deferred_grads = (params.variable_consistency == 'relaxed')
+    self._test_grad_aggregation_with_var_mgr(bench.variable_mgr, bench.num_gpus,
+                                             num_vars, deferred_grads)
+
+  def test_grad_aggregation(self):
+    base_params = benchmark_cnn.make_params(num_gpus=10,
+                                            variable_update='replicated',
+                                            use_fp16=True)
+    params = base_params
+    self._test_grad_aggregation(params, 10)
+    params = base_params._replace(gradient_repacking=3)
+    self._test_grad_aggregation(params, 10)
+    params = base_params._replace(variable_consistency='relaxed')
+    self._test_grad_aggregation(params, 10)
+    params = base_params._replace(gradient_repacking=3,
+                                  variable_consistency='relaxed')
+    self._test_grad_aggregation(params, 10)
+    params = base_params._replace(num_gpus=8, hierarchical_copy=True)
+    self._test_grad_aggregation(params, 10)
+    params = base_params._replace(all_reduce_spec='nccl',
+                                  compact_gradient_transfer=False,
+                                  # For some reason, this test freezes when
+                                  # num_gpus=10
+                                  num_gpus=8)
+    self._test_grad_aggregation(params, 10)
+    params = base_params._replace(all_reduce_spec='pscpu')
+    self._test_grad_aggregation(params, 10)
+
+    params = base_params._replace(num_gpus=8,
+                                  gradient_repacking=3,
+                                  variable_consistency='relaxed',
+                                  hierarchical_copy=True)
+    self._test_grad_aggregation(params, 10)
+    params = base_params._replace(num_gpus=8,
+                                  gradient_repacking=3,
+                                  variable_consistency='relaxed',
+                                  all_reduce_spec='nccl',
+                                  compact_gradient_transfer=False)
+    self._test_grad_aggregation(params, 10)
+    params = base_params._replace(gradient_repacking=3,
+                                  variable_consistency='relaxed',
+                                  all_reduce_spec='pscpu')
+    self._test_grad_aggregation(params, 10)
+    params = base_params._replace(gradient_repacking=3,
+                                  variable_consistency='relaxed',
+                                  all_reduce_spec='xring')
+    self._test_grad_aggregation(params, 10)
 
 
 if __name__ == '__main__':

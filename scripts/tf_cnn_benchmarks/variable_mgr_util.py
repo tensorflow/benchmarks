@@ -17,12 +17,120 @@
 from __future__ import print_function
 
 import collections as pycoll
+from collections import namedtuple
 import operator
 
 import tensorflow as tf
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
+
+
+# Used by concat_grads and undo_concat_grads.
+ConcatGradientState = namedtuple('ConcatGradientState',
+                                 ['orig_shapes', 'orig_sizes'])
+
+
+def concat_grads(grad_list):
+  """Concatenate gradients into a single tensor.
+
+  `split_grads` is intended to be called after this function, which splits the
+  concatenated gradient into several pieces. This is useful for aggregating
+  gradients, as aggregating a few large gradients is often faster then
+  aggregating many small gradients. The reason this function and `split_grads()`
+  are two different functions is that it can be faster to do some operations on
+  a single concatenated tensor instead of several split tensors, such as casting
+  to a lower-precision dtype.
+
+  After the gradients have been aggregated, `undo_split_grads` and
+  `undo_concat_grads` should be called to undo the effects of `split_grads` and
+  this function, respectively
+
+  Args:
+    grad_list: A list of tensors to be concatenated.
+
+  Returns:
+    concat_grad: A tensor that is the concatenation of all the tensors in
+      `grad_list`.
+    concat_grad_state: A ConcatGradientState that must later be passed to
+      `undo_concat_grads` to restore the gradients to their original shapes.
+  """
+  # Flatten all the grads.
+  flat_grads = [tf.reshape(g, [-1]) for g in grad_list]
+  # Remember the original shape of all the grads.
+  orig_shapes = [g.shape for g in grad_list]
+  # Remember the original sizes of all the grads.
+  orig_sizes = [s.num_elements() for s in orig_shapes]
+  # All shapes must be fully defined.
+  assert None not in orig_sizes
+  # Concat all the flat grads into a big flat tensor.
+  concatenated_grad = tf.concat(flat_grads, 0)
+  return concatenated_grad, ConcatGradientState(orig_shapes, orig_sizes)
+
+
+def split_grads(concatenated_grad, num_splits):
+  """Splits concatenated gradients into `num_splits` pieces.
+
+  In the case where the total size of `concatenated_grad` is not divisible by
+  `num_splits`, the last pack gets more elements.
+
+  After aggregation, the split tensors can be re-concatenated with
+  `undo_split_grads()`.
+
+  Args:
+    concatenated_grad: A concatenated gradient, as returned by `concat_grads`.
+    num_splits: Number of tensors to split the concatenated gradient into.
+  Returns:
+    A list of `num_splits` tensors.
+  """
+  # TODO(zhengxq): it is possible to optimize away the additional
+  # data movement by copying along the original variable boundary.
+  # TODO(zhengxq): it is also possible to optimize away all the concat
+  # as well.
+  total_grad_size = concatenated_grad.shape.num_elements()
+  split_size = total_grad_size // num_splits
+  split_size_last = total_grad_size - split_size * (num_splits - 1)
+  split_sizes = [split_size] * (num_splits - 1) + [split_size_last]
+  grad_packs = tf.split(concatenated_grad, split_sizes)
+  return grad_packs
+
+
+def undo_split_grads(grad_packs):
+  """Undoes split_grads().
+
+  Args:
+    grad_packs: A list of split gradients, with the same shapes and sizes as
+      those returned from `split_grads`.
+  Returns:
+    A concatenated tensor with the same shape as the tensor passed to
+      `split_grads`.
+  """
+  return tf.concat(grad_packs, 0)
+
+
+def undo_concat_grads(concatenated_grad, concat_grad_state):
+  """Undoes concat_grads().
+
+  Args:
+    concatenated_grad: A concatenated gradient, as returned by
+      `undo_split_grads`.
+    concat_grad_state: The ConcatGradientState returned from `concat_grads`.
+
+  Returns:
+    A list of tensors, with the same number, shapes, and sizes as the gradients
+    originally passed to `concat_grads`.
+  """
+
+  # Split the tensors back into their original sizes.
+  grads_with_sizes = tf.split(concatenated_grad, concat_grad_state.orig_sizes)
+
+  # Reshape the tensors back into their original shapes.
+  grads_with_shapes = [
+      tf.reshape(grad, shape)
+      for grad, shape in zip(grads_with_sizes, concat_grad_state.orig_shapes)
+  ]
+  return grads_with_shapes
+
 
 PS_SHADOW_VAR_PREFIX = 'ps_var'
 
