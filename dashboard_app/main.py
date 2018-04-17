@@ -60,7 +60,12 @@ def index(pattern=None):
   """Renders index.html page with a list of benchmarks."""
   filter_regex = None
   if pattern:
-    filter_regex = re.compile(urllib.parse.unquote(pattern))
+    try:
+      filter_regex = re.compile(urllib.parse.unquote(pattern))
+    except re.error:
+      logging.error('Invalid regex.')
+      return render_template('index.html', tests=[])
+
   min_time_to_lookup = datetime.now() - timedelta(days=_MAX_DAYS_WITHOUT_RUN)
 
   client = datastore.Client()
@@ -107,7 +112,7 @@ def test(test_id):
   try:
     test_info = json.loads(test_results[0]['info'])
   except ValueError as e:
-    logging.exception('Failed to parse "info" in test_results.', e)
+    logging.exception('Failed to parse "info" in test_results.')
     test_info = None
   arguments = []
   if (test_info and 'runConfiguration' in test_info and
@@ -151,7 +156,7 @@ def benchmark_data():
 
 @app.errorhandler(500)
 def server_error(e):
-  logging.exception('An error occurred during a request.', e)
+  logging.exception('An error occurred during a request.')
   return 'An internal error occurred.', 500
 
 
