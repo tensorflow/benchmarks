@@ -131,7 +131,11 @@ flags.DEFINE_string('gpu_thread_mode', 'gpu_private',
 flags.DEFINE_integer('per_gpu_thread_count', 0,
                      'The number of threads to use for GPU. Only valid when '
                      'gpu_thread_mode is not global.')
-flags.DEFINE_boolean('hierarchical_copy', False, 'Use hierarchical copies')
+flags.DEFINE_boolean('hierarchical_copy', False,
+                     'Use hierarchical copies. Currently only optimized for '
+                     'use on a DGX-1 with 8 GPUs and may perform poorly on '
+                     'other hardware. Requires --num_gpus > 1, and only '
+                     'recommended when --num_gpus=8')
 flags.DEFINE_integer('gradient_repacking', 0, 'Use gradient repacking. It'
                      'currently only works with replicated mode. At the end of'
                      'of each step, it repacks the gradients for more efficient'
@@ -1040,6 +1044,10 @@ class BenchmarkCNN(object):
         ':' not in self.params.debugger):
       raise ValueError('--debugger must be "cli" or in the form '
                        'host:port')
+
+    if self.params.hierarchical_copy and self.params.num_gpus <= 1:
+      raise ValueError('--hierarchical_copy requires --num_gpus to be greater '
+                       'than 1')
 
     # Use the batch size from the command line if specified, otherwise use the
     # model's default batch size.  Scale the benchmark's batch size by the
