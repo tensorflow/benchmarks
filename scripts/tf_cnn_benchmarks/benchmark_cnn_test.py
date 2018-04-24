@@ -1154,8 +1154,20 @@ class VariableMgrLocalReplicatedTest(tf.test.TestCase):
     self._test_grad_aggregation(params, 10)
     params = base_params._replace(variable_consistency='relaxed')
     self._test_grad_aggregation(params, 10)
+    params = base_params._replace(compact_gradient_transfer=False)
+    self._test_grad_aggregation(params, 10)
     params = base_params._replace(gradient_repacking=3,
                                   variable_consistency='relaxed')
+    self._test_grad_aggregation(params, 10)
+    params = base_params._replace(gradient_repacking=3,
+                                  compact_gradient_transfer=False)
+    self._test_grad_aggregation(params, 10)
+    params = base_params._replace(variable_consistency='relaxed',
+                                  compact_gradient_transfer=False)
+    self._test_grad_aggregation(params, 10)
+    params = base_params._replace(gradient_repacking=3,
+                                  variable_consistency='relaxed',
+                                  compact_gradient_transfer=False)
     self._test_grad_aggregation(params, 10)
     params = base_params._replace(num_gpus=8, hierarchical_copy=True)
     self._test_grad_aggregation(params, 10)
