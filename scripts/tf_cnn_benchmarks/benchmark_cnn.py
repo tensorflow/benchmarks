@@ -602,7 +602,8 @@ def benchmark_one_step(sess,
                        profiler,
                        image_producer,
                        params,
-                       summary_op=None):
+                       summary_op=None,
+                       show_images_per_sec=True):
   """Advance one step of benchmarking."""
   should_profile = profiler and 0 <= step < _NUM_STEPS_TO_PROFILE
   need_options_and_metadata = (
@@ -635,7 +636,8 @@ def benchmark_one_step(sess,
     image_producer.notify_image_consumption()
   train_time = time.time() - start_time
   step_train_times.append(train_time)
-  if step >= 0 and (step == 0 or (step + 1) % params.display_every == 0):
+  if (show_images_per_sec and step >= 0 and
+      (step == 0 or (step + 1) % params.display_every == 0)):
     log_str = '%i\t%s\t%.*f' % (
         step + 1, get_perf_timing_str(batch_size, step_train_times),
         LOSS_AND_ACCURACY_DIGITS_TO_SHOW, lossval)

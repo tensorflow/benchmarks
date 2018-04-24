@@ -24,6 +24,7 @@ import unittest
 from absl import app
 from absl import flags as absl_flags
 
+import all_reduce_benchmark_test
 import allreduce_test
 import benchmark_cnn_distributed_test
 import benchmark_cnn_test
@@ -62,6 +63,7 @@ def main(_):
         loader.loadTestsFromModule(cnn_util_test),
         loader.loadTestsFromModule(variable_mgr_util_test),
         loader.loadTestsFromModule(benchmark_cnn_test),
+        loader.loadTestsFromModule(all_reduce_benchmark_test),
         loader.loadTestsFromModule(nasnet_test),
     ])
     dist_suite = unittest.TestSuite([
@@ -71,6 +73,7 @@ def main(_):
     suite = unittest.TestSuite([
         loader.loadTestsFromModule(allreduce_test),
         loader.loadTestsFromModule(cnn_util_test),
+        loader.loadTestsFromModule(all_reduce_benchmark_test),
         loader.loadTestsFromModule(variable_mgr_util_test),
         loader.loadTestsFromTestCase(benchmark_cnn_test.TestAlexnetModel),
         loader.loadTestsFromTestCase(benchmark_cnn_test.TfCnnBenchmarksTest),

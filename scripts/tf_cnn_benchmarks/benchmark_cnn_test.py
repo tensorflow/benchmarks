@@ -422,14 +422,6 @@ class TestResnet152V2Model(TfCnnBenchmarksModelTest):
     return 'resnet152_v2'
 
 
-def _print_and_add_to_list(print_list):
-  """Returns a function which prints the input, then adds it to print_list."""
-  def f(string):
-    print(string)
-    print_list.append(string)
-  return f
-
-
 class TfCnnBenchmarksTest(tf.test.TestCase):
   """Tests that benchmark_cnn runs correctly."""
 
@@ -440,13 +432,13 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
 
   def _run_benchmark_cnn(self, params):
     logs = []
-    benchmark_cnn.log_fn = _print_and_add_to_list(logs)
+    benchmark_cnn.log_fn = test_util.print_and_add_to_list(logs)
     benchmark_cnn.BenchmarkCNN(params).run()
     return logs
 
   def _run_benchmark_cnn_with_fake_images(self, params, images, labels):
     logs = []
-    benchmark_cnn.log_fn = _print_and_add_to_list(logs)
+    benchmark_cnn.log_fn = test_util.print_and_add_to_list(logs)
     bench = benchmark_cnn.BenchmarkCNN(params)
     bench.image_preprocessor = preprocessing.TestImagePreprocessor(
         227, 227, params.batch_size * params.num_gpus, params.num_gpus,
@@ -995,7 +987,7 @@ class VariableUpdateTest(tf.test.TestCase):
     logs = []
     model = test_util.TestModel()
     with test_util.monkey_patch(benchmark_cnn,
-                                log_fn=_print_and_add_to_list(logs),
+                                log_fn=test_util.print_and_add_to_list(logs),
                                 LOSS_AND_ACCURACY_DIGITS_TO_SHOW=15):
       bench = benchmark_cnn.BenchmarkCNN(
           params, dataset=test_util.TestDataSet(), model=model)

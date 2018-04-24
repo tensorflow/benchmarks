@@ -17,6 +17,7 @@
 
 from __future__ import absolute_import
 from __future__ import division
+from __future__ import print_function
 from collections import namedtuple
 from contextlib import contextmanager
 import os
@@ -78,6 +79,14 @@ def monkey_patch_base_cluster_manager():
     del config_proto
     return cnn_util.BaseClusterManager(params)
   platforms_util.get_cluster_manager = get_test_cluster_manager
+
+
+def print_and_add_to_list(print_list):
+  """Returns a function which prints the input, then adds it to print_list."""
+  def f(string):
+    print(string)
+    print_list.append(string)
+  return f
 
 
 TrainingOutput = namedtuple('TrainingOutput',
