@@ -21,6 +21,7 @@ from models import densenet_model
 from models import googlenet_model
 from models import inception_model
 from models import lenet_model
+from models import mobilenet_v2
 from models import nasnet_model
 from models import official_resnet_model
 from models import overfeat_model
@@ -72,6 +73,8 @@ _model_name_to_imagenet_model = {
     'resnet152_v2': resnet_model.create_resnet152_v2_model,
     'nasnet': nasnet_model.NasnetModel,
     'nasnetlarge': nasnet_model.NasnetLargeModel,
+    'mobilenet': mobilenet_v2.MobilenetModel,
+
 }
 
 
