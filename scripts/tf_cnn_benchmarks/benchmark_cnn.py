@@ -457,7 +457,7 @@ platforms_util.define_platform_params()
 
 
 class GlobalStepWatcher(threading.Thread):
-  """A helper class for global_step.
+  """A helper class for globe_step.
 
   Polls for changes in the global_step of the model, and finishes when the
   number of steps for the global run are done.
