@@ -297,8 +297,8 @@ class VariableMgrLocalReplicated(VariableMgr):
       is_finite_list = []
       for tower_grads in reduced_grads:
         with tf.colocate_with(tower_grads[0]):
-          # TODO(tanmingxing): Created fused op that takes in a list of tensors
-          # as input and return scalar boolean True if there are any infs/nans.
+          # TODO(tanmingxing): Create fused op that takes in a list of tensors
+          # as input and returns scalar boolean True if there are any infs/nans.
           is_finite_list.append(tf.reduce_all(
               [tf.reduce_all(tf.is_finite(g)) for g in tower_grads]))
       self.grad_has_inf_nan = tf.logical_not(tf.reduce_all(is_finite_list))
