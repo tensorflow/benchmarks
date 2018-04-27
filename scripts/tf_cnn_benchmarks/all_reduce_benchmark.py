@@ -64,7 +64,7 @@ def get_var_shapes(model):
     image_size = model.get_image_size()
     # The batch size of 2 is arbitrary, as the variable shapes do not depend on
     # the batch size.
-    images = tf.placeholder(tf.float32, (2, 3, image_size, image_size))
+    images = tf.placeholder(tf.float32, (2, image_size, image_size, 3))
     model.build_network(images)
     return [[int(d) for d in v.shape.dims] for v in tf.trainable_variables()]
 
