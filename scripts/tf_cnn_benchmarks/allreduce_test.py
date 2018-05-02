@@ -152,7 +152,7 @@ class AllReduceTest(tf.test.TestCase):
     self.assertEqual(tower_grads, new_tower_grads)
     self.assertTrue(packing is None)
 
-    # 2) Set the size limit so only first two tensors get concatenated
+    # 2) Set the size limit so only the first two tensors get concatenated
     new_tower_grads, packing = allreduce.pack_small_tensors(
         tower_grads, max_bytes=16,  # 16 bytes == 4 elements
         max_group=10)
