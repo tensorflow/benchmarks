@@ -56,7 +56,7 @@ from platforms import util as platforms_util
 
 _DEFAULT_NUM_BATCHES = 100
 
-# TODO(reedwm): add upper_bound and lower_bounds to appropriate integer and
+# TODO(reedwm): add upper_bound and lower_bound to appropriate integer and
 # float flags, and change certain string flags to enum flags.
 
 flags.DEFINE_string('model', 'trivial',
