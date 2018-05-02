@@ -471,6 +471,10 @@ class DistributedVariableUpdateTest(tf.test.TestCase):
     params = test_util.get_var_update_params()._replace(use_fp16=True)
     self._test_variable_updates('testVarUpdateFp16', params)
 
+  def testVarUpdateResourceVars(self):
+    params = test_util.get_var_update_params()._replace(use_resource_vars=True)
+    self._test_variable_updates('testVarUpdateResourceVars', params)
+
 
 if __name__ == '__main__':
   tf.test.main()

@@ -307,6 +307,10 @@ flags.DEFINE_boolean('single_l2_loss_op', False,
                      'If True, instead of using an L2 loss op per variable, '
                      'concatenate the variables into a single tensor and do a '
                      'single L2 loss on the concatenated tensor.')
+flags.DEFINE_boolean('use_resource_vars', False,
+                     'Use resource variables instead of normal variables. '
+                     'Resource variables are slower, but this option is useful '
+                     'for debugging their performance.')
 # Performance tuning specific to MKL.
 flags.DEFINE_boolean('mkl', False, 'If true, set MKL environment variables.')
 flags.DEFINE_integer('kmp_blocktime', 30,

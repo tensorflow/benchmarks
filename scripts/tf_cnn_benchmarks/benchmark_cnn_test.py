@@ -1083,6 +1083,11 @@ class VariableUpdateTest(tf.test.TestCase):
         single_l2_loss_op=True)
     self._test_variable_updates(params)
 
+  def testResourceVars(self):
+    params = test_util.get_var_update_params()._replace(
+        use_resource_vars=True)
+    self._test_variable_updates(params)
+
 
 class VariableMgrLocalReplicatedTest(tf.test.TestCase):
 
