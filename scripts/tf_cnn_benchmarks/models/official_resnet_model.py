@@ -59,9 +59,7 @@ class ImagenetResnetModel(model_lib.Model):
   def build_network(self, images, phase_train=True, nclass=1001, image_depth=3,
                     data_type=tf.float32, data_format='NCHW',
                     use_tf_layers=True, fp16_vars=False):
-    # TODO(huangyp): add fp16 support.
     del image_depth
-    del data_type
     del data_format
     del use_tf_layers
     # pylint: disable=g-import-not-at-top
@@ -70,7 +68,13 @@ class ImagenetResnetModel(model_lib.Model):
     except ImportError:
       tf.logging.fatal('Please include tensorflow/models to the PYTHONPATH.')
       raise
+    images = tf.cast(images, data_type)
     model_class = ImagenetModel(resnet_size=self.resnet_size,
-                                version=self.version)
+                                version=self.version,
+                                # The official model dtype seems to be ignored,
+                                # as the dtype it uses is the dtype of the input
+                                # images. Doesn't hurt to set it though.
+                                dtype=data_type)
     logits = model_class(images, phase_train)
+    logits = tf.cast(logits, tf.float32)
     return logits, None
