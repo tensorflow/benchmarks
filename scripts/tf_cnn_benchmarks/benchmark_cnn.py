@@ -1538,6 +1538,7 @@ class BenchmarkCNN(object):
           image_producer.notify_image_consumption()
       self.init_global_step, = sess.run([global_step])
       if self.job_name and not self.params.cross_replica_sync:
+        # TODO(zhengxq): Do we need to use a global step watcher at all?
         global_step_watcher = GlobalStepWatcher(
             sess, global_step,
             self.num_workers * self.num_warmup_batches +
@@ -1579,7 +1580,6 @@ class BenchmarkCNN(object):
           log_fn('Done warm up')
           if execution_barrier:
             log_fn('Waiting for other replicas to finish warm up')
-            assert global_step_watcher.start_time == 0
             sess.run([execution_barrier])
 
           header_str = ('Step\tImg/sec\t' +
