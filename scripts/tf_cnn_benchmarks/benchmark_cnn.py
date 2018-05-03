@@ -330,7 +330,7 @@ flags.DEFINE_boolean('use_fp16', False,
                      'floats. This is currently experimental.')
 # TODO(reedwm): The default loss scale of 128 causes most models to diverge
 # on the second step with synthetic data. Changing the tf.set_random_seed
-# call to tf.set_random_seed(1235) or most other seed values cause the
+# call to tf.set_random_seed(1235) or most other seed values causes the
 # issue not to occur.
 flags.DEFINE_float('fp16_loss_scale', None,
                    'If fp16 is enabled, the loss is multiplied by this amount '
