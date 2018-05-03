@@ -686,6 +686,17 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
             summary_verbosity=2)
     self._train_and_eval_local(params, use_test_preprocessor=False)
 
+  def testOfficialImagenetPreprocessorFp16(self):
+    imagenet_dir = os.path.join(platforms_util.get_test_data_dir(),
+                                'fake_tf_record_data')
+    params = test_util.get_params(
+        'testOfficialImagenetPreprocessorFp16')._replace(
+            data_dir=imagenet_dir,
+            data_name='imagenet',
+            input_preprocessor='official_models_imagenet',
+            use_fp16=True)
+    self._train_and_eval_local(params, use_test_preprocessor=False)
+
   def testCifar10SyntheticData(self):
     params = test_util.get_params('testCifar10SyntheticData')._replace(
         data_name='cifar10')

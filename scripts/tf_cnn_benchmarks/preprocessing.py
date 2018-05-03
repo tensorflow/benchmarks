@@ -569,7 +569,7 @@ class ImagenetPreprocessor(RecordInputImagePreprocessor):
       image = preprocess_image(
           image_buffer, bbox, self.height, self.width, self.depth,
           is_training=False)
-    return image
+    return tf.cast(image, self.dtype)
 
 
 class Cifar10ImagePreprocessor(BaseImagePreprocess):
