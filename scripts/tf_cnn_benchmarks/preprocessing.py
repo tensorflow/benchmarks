@@ -586,7 +586,7 @@ class Cifar10ImagePreprocessor(BaseImagePreprocess):
     Args:
       image: input image.
     Returns:
-      distored image.
+      distorted image.
     """
     image = tf.image.resize_image_with_crop_or_pad(
         image, self.height + 8, self.width + 8)
