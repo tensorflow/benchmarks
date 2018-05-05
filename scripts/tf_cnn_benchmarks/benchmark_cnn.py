@@ -44,6 +44,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.util import nest
 import benchmark_storage
 import cnn_util
+import constants
 import data_utils
 import datasets
 import flags
@@ -136,6 +137,14 @@ flags.DEFINE_boolean('hierarchical_copy', False,
                      'use on a DGX-1 with 8 GPUs and may perform poorly on '
                      'other hardware. Requires --num_gpus > 1, and only '
                      'recommended when --num_gpus=8')
+# TODO(hinsu): Support auto-detection of the network topology while still
+# retaining the ability to specify a particular topology for debugging.
+flags.DEFINE_enum(
+    'network_topology', constants.NetworkTopology.DGX1,
+    (constants.NetworkTopology.DGX1, constants.NetworkTopology.GCP_V100),
+    'Network topology specifies the topology used to connect multiple devices. '
+    'Network topology is used to decide the hierarchy to use for the '
+    'hierarchical_copy.')
 flags.DEFINE_integer('gradient_repacking', 0, 'Use gradient repacking. It'
                      'currently only works with replicated mode. At the end of'
                      'of each step, it repacks the gradients for more efficient'
