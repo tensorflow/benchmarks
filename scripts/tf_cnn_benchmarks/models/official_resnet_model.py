@@ -70,7 +70,7 @@ class ImagenetResnetModel(model_lib.Model):
       raise
     images = tf.cast(images, data_type)
     model_class = ImagenetModel(resnet_size=self.resnet_size,
-                                version=self.version,
+                                resnet_version=self.version,
                                 # The official model dtype seems to be ignored,
                                 # as the dtype it uses is the dtype of the input
                                 # images. Doesn't hurt to set it though.
