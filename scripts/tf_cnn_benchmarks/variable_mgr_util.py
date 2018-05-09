@@ -96,7 +96,7 @@ def append_gradients_with_loss_scale(training_ops, get_apply_gradients_ops_func,
     get_apply_gradients_ops_func: a function that returns a list of ops for
       applying gradients. Here, we must pass a function instead of the actual
       list of ops; otherwise, those ops would be executed unconditionally due to
-      the sementics of tf.cond.
+      the semantics of tf.cond.
     loss_scale_params: An AutoLossScaleParams tuple.
     grad_has_inf_nan: Boolean tensor indicating whether the gradients have infs
       or nans.
