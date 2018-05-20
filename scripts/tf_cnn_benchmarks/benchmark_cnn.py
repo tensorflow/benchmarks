@@ -166,13 +166,13 @@ flags.DEFINE_boolean('cache_data', False,
                      'many times. The purpose of this flag is to make it '
                      'possible to write regression tests that are not '
                      'bottlenecked by CNS throughput.')
-flags.DEFINE_string('local_parameter_device', 'gpu',
+flags.DEFINE_enum('local_parameter_device', 'gpu', ('cpu', 'gpu'),
                     'Device to use as parameter server: cpu or gpu. For '
                     'distributed training, it can affect where caching of '
                     'variables happens.')
-flags.DEFINE_string('device', 'gpu',
+flags.DEFINE_enum('device', 'gpu', ('cpu', 'gpu'),
                     'Device to use for computation: cpu or gpu')
-flags.DEFINE_string('data_format', 'NCHW',
+flags.DEFINE_enum('data_format', 'NCHW', ('NHWC', 'NCHW'),
                     'Data layout to use: NHWC (TF native) or NCHW (cuDNN '
                     'native, requires GPU).')
 flags.DEFINE_integer('num_intra_threads', 1,
@@ -208,7 +208,7 @@ flags.DEFINE_string('partitioned_graph_file_prefix', None,
                     'If specified, after the graph has been partitioned and '
                     'optimized, write out each partitioned graph to a file '
                     'with the given prefix.')
-flags.DEFINE_string('optimizer', 'sgd',
+flags.DEFINE_enum('optimizer', 'sgd', ('momentum', 'sgd', 'rmsprop'),
                     'Optimizer to use: momentum or sgd or rmsprop')
 flags.DEFINE_float('init_learning_rate', None,
                    'Initial learning rate for training.')
