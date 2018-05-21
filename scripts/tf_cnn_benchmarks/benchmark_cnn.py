@@ -166,11 +166,11 @@ flags.DEFINE_boolean('cache_data', False,
                      'many times. The purpose of this flag is to make it '
                      'possible to write regression tests that are not '
                      'bottlenecked by CNS throughput.')
-flags.DEFINE_enum('local_parameter_device', 'gpu', ('cpu', 'gpu'),
+flags.DEFINE_enum('local_parameter_device', 'gpu',('cpu', 'gpu', 'CPU', 'GPU')
                     'Device to use as parameter server: cpu or gpu. For '
                     'distributed training, it can affect where caching of '
                     'variables happens.')
-flags.DEFINE_enum('device', 'gpu', ('CPU', 'GPU'),
+flags.DEFINE_enum('device', 'gpu', ('cpu', 'gpu', 'CPU', 'GPU'),
                     'Device to use for computation: cpu or gpu')
 flags.DEFINE_enum('data_format', 'NCHW', ('NHWC', 'NCHW'),
                     'Data layout to use: NHWC (TF native) or NCHW (cuDNN '
