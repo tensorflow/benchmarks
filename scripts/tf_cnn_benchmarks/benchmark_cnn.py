@@ -465,6 +465,12 @@ flags.DEFINE_string('result_storage', None,
                     'in cbuild datastore (note: this option requires special '
                     'permissions and meant to be used from cbuilds).')
 
+# Benchmark logging for model garden metric
+flags.DEFINE_string('benchmark_log_dir', None,
+                    'The directory to place the log files containing the '
+                    'results of benchmark. The logs are created by '
+                    'BenchmarkFileLogger. Requires the root of the Tensorflow '
+                    ' models repository to be in $PYTHTONPATH.')
 
 platforms_util.define_platform_params()
 
@@ -616,7 +622,8 @@ def benchmark_one_step(sess,
                        image_producer,
                        params,
                        summary_op=None,
-                       show_images_per_sec=True):
+                       show_images_per_sec=True,
+                       benchmark_logger=None):
   """Advance one step of benchmarking."""
   should_profile = profiler and 0 <= step < _NUM_STEPS_TO_PROFILE
   need_options_and_metadata = (
@@ -659,6 +666,10 @@ def benchmark_one_step(sess,
           LOSS_AND_ACCURACY_DIGITS_TO_SHOW, results['top_1_accuracy'],
           LOSS_AND_ACCURACY_DIGITS_TO_SHOW, results['top_5_accuracy'])
     log_fn(log_str)
+    if benchmark_logger:
+      # TODO(scottzhu): This might impact the benchmark speed since it writes
+      # the benchmark log to local directory.
+      benchmark_logger.log_evaluation_result(results)
   if need_options_and_metadata:
     if should_profile:
       profiler.add_step(step, run_metadata)
@@ -1210,6 +1221,24 @@ class BenchmarkCNN(object):
         self.image_preprocessor.supports_datasets())
     self.init_global_step = 0
 
+    self._config_benchmark_logger()
+
+  def _config_benchmark_logger(self):
+    """Config the model garden benchmark logger."""
+    model_benchmark_logger = None
+    if self.params.benchmark_log_dir is not None:
+      try:
+        from official.utils.logs import logger as models_logger  # pylint: disable=g-import-not-at-top
+      except ImportError:
+        tf.logging.fatal('Please include tensorflow/models to the PYTHONPATH '
+                         'in order to use BenchmarkLogger. Configured '
+                         'benchmark_log_dir: %s'
+                         % self.params.benchmark_log_dir)
+        raise
+      model_benchmark_logger = models_logger.BenchmarkFileLogger(
+          self.params.benchmark_log_dir)
+    self.benchmark_logger = model_benchmark_logger
+
   def reset_devices_for_task(self, task_num, is_local=False):
     """Used to imitate another task when building a distributed graph."""
     worker_prefix = ('job:localhost'
@@ -1235,21 +1264,11 @@ class BenchmarkCNN(object):
 
   def print_info(self):
     """Print basic information."""
+    benchmark_info = self._get_params_info()
     log_fn('Model:       %s' % self.model.get_model())
-    dataset_name = self.dataset.name
-    if self.dataset.use_synthetic_gpu_images():
-      dataset_name += ' (synthetic)'
-    log_fn('Dataset:     %s' % dataset_name)
+    log_fn('Dataset:     %s' % benchmark_info['dataset_name'])
     log_fn('Mode:        %s' % get_mode_from_params(self.params))
-    single_session = self.params.variable_update == 'distributed_all_reduce'
-    log_fn('SingleSess:  %s' % single_session)
-    if single_session:
-      device_list = self.raw_devices_across_tasks()
-    elif self.params.variable_update == 'horovod':
-      device_list = ['horovod/%s:%d' % (self.params.device, idx)
-                     for idx in range(self.num_workers)]
-    else:
-      device_list = self.raw_devices
+    log_fn('SingleSess:  %s' % benchmark_info['single_session'])
     log_fn('Batch size:  %s global' % (self.batch_size * self.num_workers))
     log_fn('             %s per device' % (self.batch_size /
                                            len(self.raw_devices)))
@@ -1258,7 +1277,7 @@ class BenchmarkCNN(object):
              self.batch_group_size)
     log_fn('Num batches: %d' % self.num_batches)
     log_fn('Num epochs:  %.2f' % self.num_epochs)
-    log_fn('Devices:     %s' % device_list)
+    log_fn('Devices:     %s' % benchmark_info['device_list'])
     log_fn('Data format: %s' % self.data_format)
     log_fn('Layout optimizer: %s' % self.enable_layout_optimizer)
     if self.rewriter_config:
@@ -1275,6 +1294,59 @@ class BenchmarkCNN(object):
     if self.params.variable_update == 'horovod' and self.params.horovod_device:
       log_fn('Horovod on:  %s' % self.params.horovod_device)
     log_fn('==========')
+
+  def _get_params_info(self):
+    """Get the common parameters info for the benchmark run.
+
+    Returns:
+      A dict of processed parameters.
+    """
+    dataset_name = self.dataset.name
+    if self.dataset.use_synthetic_gpu_images():
+      dataset_name += ' (synthetic)'
+    single_session = self.params.variable_update == 'distributed_all_reduce'
+    if single_session:
+      device_list = self.raw_devices_across_tasks()
+    elif self.params.variable_update == 'horovod':
+      device_list = ['horovod/%s:%d' % (self.params.device, idx)
+                     for idx in range(self.num_workers)]
+    else:
+      device_list = self.raw_devices
+    return {
+        'dataset_name': dataset_name,
+        'single_session': single_session,
+        'device_list': device_list,}
+
+  def _log_benchmark_run(self):
+    """Log the benchmark info to the logger.
+
+    The info logged here should be similar to print_info(), but in a structured
+    JSON format.
+    """
+    if self.benchmark_logger:
+      benchmark_info = self._get_params_info()
+
+      run_param = {
+          'model': self.model.get_model(),
+          'dataset': benchmark_info['dataset_name'],
+          'mode': get_mode_from_params(self.params),
+          'single_sess': benchmark_info['single_session'],
+          'devices': benchmark_info['device_list'],
+          'batch_size': self.batch_size,
+          'batch_size_per_device': self.batch_size / len(self.raw_devices),
+          'num_batches': self.num_batches,
+          'num_epochs': self.num_epochs,
+          'data_format': self.data_format,
+          'layout_optimizer': self.enable_layout_optimizer,
+          'rewrite_config': self.rewriter_config,
+          'optimizer': self.params.optimizer,
+      }
+      # TODO(scottzhu): tf_cnn_benchmark might execute several times with
+      # different param setting on the same box. This will cause the run file to
+      # only contain the latest info. The benchmark_log_dir should be updated
+      # for every new run.
+      self.benchmark_logger.log_run_info(
+          self.model.get_model(), benchmark_info['dataset_name'], run_param)
 
   def run(self):
     """Run the benchmark task assigned to this process.
@@ -1300,6 +1372,7 @@ class BenchmarkCNN(object):
         raise ValueError('unrecognized job name: %s' % self.params.job_name)
 
     with tf.Graph().as_default():
+      self._log_benchmark_run()
       if self.params.eval:
         return self._eval_cnn()
       else:
@@ -1402,6 +1475,14 @@ class BenchmarkCNN(object):
       log_fn('-' * 64)
       log_fn('total images/sec: %.2f' % images_per_sec)
       log_fn('-' * 64)
+      if self.benchmark_logger:
+        eval_result = {
+            'eval_top_1_accuracy', accuracy_at_1,
+            'eval_top_5_accuracy', accuracy_at_5,
+            'eval_average_examples_per_sec', images_per_sec,
+            tf.GraphKeys.GLOBAL_STEP, global_step,
+        }
+        self.benchmark_logger.log_evaluation_result(eval_result)
 
   def _benchmark_cnn(self):
     """Run cnn in benchmark mode. Skip the backward pass if forward_only is on.
@@ -1610,7 +1691,8 @@ class BenchmarkCNN(object):
             self.batch_size * (self.num_workers
                                if self.single_session else 1), step_train_times,
             self.trace_filename, self.params.partitioned_graph_file_prefix,
-            profiler, image_producer, self.params, fetch_summary)
+            profiler, image_producer, self.params, fetch_summary,
+            benchmark_logger=self.benchmark_logger)
         if summary_str is not None and is_chief:
           sv.summary_computed(sess, summary_str)
         local_step += 1
@@ -1641,6 +1723,10 @@ class BenchmarkCNN(object):
         image_producer.done()
       if is_chief:
         store_benchmarks({'total_images_per_sec': images_per_sec}, self.params)
+        if self.benchmark_logger:
+          self.benchmark_logger.log_metric(
+              'average_examples_per_sec', images_per_sec, global_step=num_steps)
+
       # Save the model checkpoint.
       if self.params.train_dir is not None and is_chief:
         checkpoint_path = os.path.join(self.params.train_dir, 'model.ckpt')
