@@ -386,7 +386,9 @@ flags.DEFINE_integer('fp16_inc_loss_scale_every_n', 1000,
 #       an MPI framework (e.g. Open MPI). Each worker runs training on
 #       single GPU, and averages gradients using NCCL or MPI all-reduce.
 #       See https://github.com/uber/horovod for more details.
-flags.DEFINE_string('variable_update', 'parameter_server',
+flags.DEFINE_enum('variable_update', 'parameter_server',
+                  ('parameter_server', 'replicated', 'distributed_replicated',
+                   'independent', 'distributed_all_reduce', 'horovod'),
                     'The method for managing variables: parameter_server, '
                     'replicated, distributed_replicated, independent, '
                     'distributed_all_reduce, horovod')
