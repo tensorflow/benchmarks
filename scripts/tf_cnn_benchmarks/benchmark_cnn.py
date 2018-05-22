@@ -166,15 +166,15 @@ flags.DEFINE_boolean('cache_data', False,
                      'many times. The purpose of this flag is to make it '
                      'possible to write regression tests that are not '
                      'bottlenecked by CNS throughput.')
-flags.DEFINE_string('local_parameter_device', 'gpu',
-                    'Device to use as parameter server: cpu or gpu. For '
-                    'distributed training, it can affect where caching of '
-                    'variables happens.')
-flags.DEFINE_string('device', 'gpu',
-                    'Device to use for computation: cpu or gpu')
-flags.DEFINE_string('data_format', 'NCHW',
-                    'Data layout to use: NHWC (TF native) or NCHW (cuDNN '
-                    'native, requires GPU).')
+flags.DEFINE_enum('local_parameter_device', 'gpu', ('cpu', 'gpu', 'CPU', 'GPU'),
+                  'Device to use as parameter server: cpu or gpu. For '
+                  'distributed training, it can affect where caching of '
+                  'variables happens.')
+flags.DEFINE_enum('device', 'gpu', ('cpu', 'gpu', 'CPU', 'GPU'),
+                  'Device to use for computation: cpu or gpu')
+flags.DEFINE_enum('data_format', 'NCHW', ('NHWC', 'NCHW'),
+                  'Data layout to use: NHWC (TF native) or NCHW (cuDNN '
+                  'native, requires GPU).')
 flags.DEFINE_integer('num_intra_threads', 1,
                      'Number of threads to use for intra-op parallelism. If '
                      'set to 0, the system will pick an appropriate number.')
@@ -208,8 +208,8 @@ flags.DEFINE_string('partitioned_graph_file_prefix', None,
                     'If specified, after the graph has been partitioned and '
                     'optimized, write out each partitioned graph to a file '
                     'with the given prefix.')
-flags.DEFINE_string('optimizer', 'sgd',
-                    'Optimizer to use: momentum or sgd or rmsprop')
+flags.DEFINE_enum('optimizer', 'sgd', ('momentum', 'sgd', 'rmsprop'),
+                  'Optimizer to use: momentum or sgd or rmsprop')
 flags.DEFINE_float('init_learning_rate', None,
                    'Initial learning rate for training.')
 flags.DEFINE_string('piecewise_learning_rate_schedule', None,
@@ -386,10 +386,12 @@ flags.DEFINE_integer('fp16_inc_loss_scale_every_n', 1000,
 #       an MPI framework (e.g. Open MPI). Each worker runs training on
 #       single GPU, and averages gradients using NCCL or MPI all-reduce.
 #       See https://github.com/uber/horovod for more details.
-flags.DEFINE_string('variable_update', 'parameter_server',
-                    'The method for managing variables: parameter_server, '
-                    'replicated, distributed_replicated, independent, '
-                    'distributed_all_reduce, horovod')
+flags.DEFINE_enum('variable_update', 'parameter_server',
+                  ('parameter_server', 'replicated', 'distributed_replicated',
+                   'independent', 'distributed_all_reduce', 'horovod'),
+                  'The method for managing variables: parameter_server, '
+                  'replicated, distributed_replicated, independent, '
+                  'distributed_all_reduce, horovod')
 flags.DEFINE_string('all_reduce_spec', None,
                     'A specification of the all_reduce algorithm to be used '
                     'for reducing gradients.  For more details, see '
