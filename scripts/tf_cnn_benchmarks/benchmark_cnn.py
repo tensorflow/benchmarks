@@ -1050,6 +1050,9 @@ class BenchmarkCNN(object):
         'replicated' in self.params.variable_update and
         self.params.all_reduce_spec and 'nccl' in self.params.all_reduce_spec):
       raise ValueError('fp16 variables are not supported with NCCL')
+    if (self.params.use_fp16 and self.params.fp16_vars and
+        self.params.gradient_repacking):
+      raise ValueError('--fp16_vars cannot be used with --gradient_repacking')
 
     if self.params.variable_update == 'horovod' and self.params.num_gpus > 1:
       raise ValueError('Horovod benchmarks require num_gpus=1 on each worker')

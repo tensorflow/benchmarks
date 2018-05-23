@@ -91,7 +91,7 @@ class BatchAllReduceAlgorithm(object):
       num_splits: If not None, tensors will be concatenated and split into this
         many pieces during the all-reduce, then split back into their original
         shapes afterwards. Has no impact on correctness and can improve
-        performance.
+        performance. Requires all tensors to be the same type.
       compact_tensors: If True, tensors are casted to fp16 before being all-
         reduced. Improves performance, but hurts numerical stability.
       defer_tensors: If True, every time the return value
