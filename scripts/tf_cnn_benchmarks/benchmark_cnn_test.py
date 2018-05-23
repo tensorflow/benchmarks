@@ -212,7 +212,9 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
                      local_parameter_device='GPU',
                      staged_vars=False,
                      optimizer='momentum',
-                     all_reduce_spec='nccl',
+                     # TODO(b/80125832): Enable nccl in tests
+                     # all_reduce_spec='nccl',
+                     all_reduce_spec='',
                      use_fp16=False,
                      fp16_vars=False,
                      fp16_enable_auto_loss_scale=False,
@@ -1080,9 +1082,10 @@ class VariableUpdateTest(tf.test.TestCase):
     self._test_variable_updates(params, var_updates=('replicated',))
     params = params._replace(all_reduce_spec='psgpu')
     self._test_variable_updates(params, var_updates=('replicated',))
-    params = params._replace(all_reduce_spec='nccl',
-                             compact_gradient_transfer=False)
-    self._test_variable_updates(params, var_updates=('replicated',))
+    # TODO(b/80125832): Enable nccl in tests
+    # params = params._replace(all_reduce_spec='nccl',
+    #                          compact_gradient_transfer=False)
+    # self._test_variable_updates(params, var_updates=('replicated',))
 
   def testPrintBaseLoss(self):
     params = test_util.get_var_update_params()._replace(
@@ -1179,12 +1182,13 @@ class VariableMgrLocalReplicatedTest(tf.test.TestCase):
     self._test_grad_aggregation(params, 10)
     params = base_params._replace(num_gpus=8, hierarchical_copy=True)
     self._test_grad_aggregation(params, 10)
-    params = base_params._replace(all_reduce_spec='nccl',
-                                  compact_gradient_transfer=False,
-                                  # For some reason, this test freezes when
-                                  # num_gpus=10
-                                  num_gpus=8)
-    self._test_grad_aggregation(params, 10)
+    # TODO(b/80125832): Enable nccl in tests
+    # params = base_params._replace(all_reduce_spec='nccl',
+    #                               compact_gradient_transfer=False,
+    #                               # For some reason, this test freezes when
+    #                               # num_gpus=10
+    #                               num_gpus=8)
+    # self._test_grad_aggregation(params, 10)
     params = base_params._replace(all_reduce_spec='pscpu')
     self._test_grad_aggregation(params, 10)
 
@@ -1193,12 +1197,13 @@ class VariableMgrLocalReplicatedTest(tf.test.TestCase):
                                   variable_consistency='relaxed',
                                   hierarchical_copy=True)
     self._test_grad_aggregation(params, 10)
-    params = base_params._replace(num_gpus=8,
-                                  gradient_repacking=3,
-                                  variable_consistency='relaxed',
-                                  all_reduce_spec='nccl',
-                                  compact_gradient_transfer=False)
-    self._test_grad_aggregation(params, 10)
+    # TODO(b/80125832): Enable nccl in tests
+    # params = base_params._replace(num_gpus=8,
+    #                               gradient_repacking=3,
+    #                               variable_consistency='relaxed',
+    #                               all_reduce_spec='nccl',
+    #                               compact_gradient_transfer=False)
+    # self._test_grad_aggregation(params, 10)
     params = base_params._replace(gradient_repacking=3,
                                   variable_consistency='relaxed',
                                   all_reduce_spec='pscpu')
