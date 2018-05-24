@@ -1112,7 +1112,7 @@ class BenchmarkCNN(object):
           params, create_config_proto(params))
       assert isinstance(self.cluster_manager, cnn_util.BaseClusterManager)
 
-      worker_prefix = '/job:worker/task:%s' % self.task_index
+      worker_prefix = '/job:worker/replica:0/task:%s' % self.task_index
       if use_ps_server:
         self.param_server_device = tf.train.replica_device_setter(
             worker_device=worker_prefix + '/cpu:0',
@@ -1120,11 +1120,11 @@ class BenchmarkCNN(object):
         # This device on which the queues for managing synchronization between
         # servers should be stored.
         self.sync_queue_devices = [
-            '/job:ps/task:%s/cpu:0' % i
+            '/job:ps/replica:0/task:%s/cpu:0' % i
             for i in range(self.cluster_manager.num_ps())
         ]
       else:
-        self.sync_queue_devices = ['/job:worker/task:0/cpu:0']
+        self.sync_queue_devices = ['/job:worker/replica:0/task:0/cpu:0']
     else:
       self.task_index = 0
       self.cluster_manager = None
@@ -1216,7 +1216,7 @@ class BenchmarkCNN(object):
       if use_ps_server:
         self.global_step_device = self.param_server_device
       else:
-        self.global_step_device = '/job:worker/task:0/cpu:0'
+        self.global_step_device = '/job:worker/replica:0/task:0/cpu:0'
     else:
       self.global_step_device = self.cpu_device
 
@@ -1246,8 +1246,8 @@ class BenchmarkCNN(object):
 
   def reset_devices_for_task(self, task_num, is_local=False):
     """Used to imitate another task when building a distributed graph."""
-    worker_prefix = ('job:localhost'
-                     if is_local else '/job:worker/task:%s' % task_num)
+    worker_prefix = ('job:localhost' if is_local else
+                     '/job:worker/replica:0/task:%s' % task_num)
     self.cpu_device = '%s/cpu:0' % worker_prefix
     self.raw_devices = [
         '%s/%s:%i' % (worker_prefix, self.params.device, i)
@@ -1262,7 +1262,7 @@ class BenchmarkCNN(object):
       return self.raw_devices
     else:
       return [
-          'job:worker/task%s/%s:%i' % (t, self.params.device, i)
+          'job:worker/replica:0/task%s/%s:%i' % (t, self.params.device, i)
           for t in xrange(self.num_workers)
           for i in xrange(self.num_gpus)
       ]

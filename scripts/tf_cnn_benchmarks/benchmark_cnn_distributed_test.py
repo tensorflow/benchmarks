@@ -403,6 +403,16 @@ class TfCnnBenchmarksDistributedTest(tf.test.TestCase):
         use_fp16=True, variable_update='distributed_replicated')
     self._test_distributed(test_name, 2, 2, params)
 
+  def testReplicatedRealData(self):
+    test_name = 'testReplicatedRealData'
+    imagenet_dir = os.path.join(platforms_util.get_test_data_dir(),
+                                'fake_tf_record_data')
+    params = test_util.get_params(test_name)._replace(
+        variable_update='distributed_replicated',
+        data_dir=imagenet_dir,
+        data_name='imagenet')
+    self._test_distributed(test_name, 2, 2, params)
+
 
 class DistributedVariableUpdateTest(tf.test.TestCase):
   """Tests that variables are updated correctly in distributed mode."""
