@@ -22,7 +22,6 @@ import re
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.contrib import nccl
 from tensorflow.contrib.all_reduce.python import all_reduce
 
 AllReduceSpecTuple = pycoll.namedtuple('AllReduceSpecTuple', 'alg shards limit')
@@ -228,7 +227,7 @@ def sum_grad_and_var_all_reduce(grad_and_vars,
     #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
     scaled_grads = [g for g, _ in grad_and_vars]
     if alg == 'nccl':
-      summed_grads = nccl.all_sum(scaled_grads)
+      summed_grads = all_reduce.build_nccl_all_reduce(scaled_grads, tf.add)
     elif alg == 'xring':
       summed_grads = all_reduce.build_ring_all_reduce(
           scaled_grads, num_workers, num_shards, gpu_indices, tf.add)
