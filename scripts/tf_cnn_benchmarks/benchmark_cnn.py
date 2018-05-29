@@ -2183,7 +2183,9 @@ class BenchmarkCNN(object):
       # Build the per-worker image processing
       function_buffering_resources = data_utils.build_prefetch_image_processing(
           self.model.get_image_size(), self.model.get_image_size(),
-          self.batch_size // len(self.devices), self.cpu_device, self.params,
+          self.batch_size // len(self.devices),
+          len(self.devices), self.image_preprocessor.parse_and_preprocess,
+          self.cpu_device, self.params,
           self.devices, self.dataset)
 
       # Build the per-worker model replica.
