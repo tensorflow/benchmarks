@@ -1880,14 +1880,8 @@ class BenchmarkCNN(object):
     assert not self.params.staged_vars
     assert not self.variable_mgr.supports_staged_vars()
 
-    # Adjust seed so different workers start read different input files.
-    if self.params.variable_update == 'horovod':
-      import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
-      seed_adjustment = hvd.rank()
-    else:
-      seed_adjustment = 0
-    tf.set_random_seed(self.params.tf_random_seed + seed_adjustment)
-    np.random.seed(4321 + seed_adjustment)
+    tf.set_random_seed(self.params.tf_random_seed)
+    np.random.seed(4321)
     phase_train = not (self.params.eval or self.params.forward_only)
 
     log_fn('Generating model')
@@ -2367,7 +2361,7 @@ class BenchmarkCNN(object):
         else:
           horovod_device = ''
         # All-reduce gradients using Horovod.
-        grads = [hvd.allreduce(grad, average=False, device_dense=horovod_device)
+        grads = [hvd.allreduce(grad, device_dense=horovod_device)
                  for grad in grads]
 
       if self.params.staged_vars:
