@@ -23,6 +23,9 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.contrib.all_reduce.python import all_reduce
+from tensorflow.python.framework import device as pydev
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import collective_ops
 
 AllReduceSpecTuple = pycoll.namedtuple('AllReduceSpecTuple', 'alg shards limit')
 
@@ -73,6 +76,7 @@ def parse_all_reduce_spec(all_reduce_spec):
   Not all syntactically correct specifications are supported.
   Examples of supported all_reduce_spec strings, with semantics explained:
 
+    'collective' == apply tf.collective_reduce operator to all tensors.
     'xring' == apply ring all-reduce to all tensors
     'xring#2' == apply ring all-reduce to all tensors, using two simultaneous
             transfer rings, each operating on 1/2 of each tensor.
@@ -129,7 +133,7 @@ def parse_all_reduce_spec(all_reduce_spec):
         shards = 1
       if alg not in [
           'nccl', 'nccl/xring', 'nccl/rechd', 'nccl/pscpu', 'xring', 'pscpu',
-          'psgpu', 'pscpu/pscpu'
+          'psgpu', 'pscpu/pscpu', 'collective'
       ]:
         raise ValueError('all_reduce_spec (%s) contains invalid alg %s' %
                          (all_reduce_spec, alg))
@@ -215,49 +219,140 @@ def split_grads_by_size(threshold_size, device_grads):
   return small_grads, large_grads
 
 
-def sum_grad_and_var_all_reduce(grad_and_vars,
+_instance_key = 1
+
+
+def new_collective_instance_key():
+  """Returns a new instance key for use in defining a collective op."""
+  global _instance_key
+  v = _instance_key
+  _instance_key += 1
+  return v
+
+
+_group_key = 1
+_group_key_table = dict()
+
+
+def collective_group_key(devices):
+  """Returns a group key for the set of devices.
+
+  Args:
+    devices: list of strings naming devices in a collective group.
+
+  Returns:
+    int key uniquely identifying the set of device names.
+  """
+  global _group_key
+  global _group_key_table
+  parsed = [pydev.DeviceSpec.from_string(d) for d in devices]
+  names = sorted(['%s:%d' % (d.device_type, d.device_index) for d in parsed])
+  concat = ','.join(names)
+  if concat not in _group_key_table.keys():
+    new_key = _group_key
+    _group_key += 1
+    _group_key_table[concat] = new_key
+  rv = _group_key_table[concat]
+  return rv
+
+
+def build_collective_reduce(input_tensors, num_workers,
+                            red_op='Add', un_op='Id'):
+  """Build a subgraph that does one full all-reduce, using the collective Op.
+
+  Args:
+    input_tensors: tensors within a single worker graph that are to be reduced
+      together; must be one per device.
+    num_workers: total number of workers with identical independent graphs that
+      will be doing this same reduction.  The reduction will actually include
+      the corresponding tensors at all these workers.
+    red_op: string naming the reduction op
+    un_op: string naming the unary final op
+
+  Returns:
+    An array of final tensors, one per device, computed by the full reduction.
+
+  Raises:
+    ValueError: There must be at least two tensors over all the workers.
+  """
+  group_size = len(input_tensors) * num_workers
+  if group_size < 2:
+    raise ValueError('num_workers * len(input_tensors) must be 2 or greater')
+  devices = [t.device for t in input_tensors]
+  num_devices = len(devices)
+  group_key = collective_group_key(devices)
+  instance_key = new_collective_instance_key()
+  out_tensors = []
+  subdiv_offsets = [0]  # TODO(tucker): maybe support non-default subdiv spec
+  for d in range(num_devices):
+    with ops.device(devices[d]):
+      reduce_op = collective_ops.all_reduce(input_tensors[d],
+                                            group_size, group_key, instance_key,
+                                            red_op, un_op,
+                                            subdiv_offsets)
+      out_tensors.append(reduce_op)
+  return out_tensors
+
+
+def broadcast_send(t, shape, dtype, group_size, group_key, instance_key):
+  return collective_ops.broadcast_send(t, shape, dtype, group_size, group_key,
+                                       instance_key)
+
+
+def broadcast_recv(shape, dtype, group_size, group_key, instance_key):
+  return collective_ops.broadcast_recv(shape, dtype, group_size, group_key,
+                                       instance_key)
+
+
+def sum_grad_and_var_all_reduce(single_session,
+                                grad_and_vars,
                                 num_workers,
                                 alg,
                                 gpu_indices,
                                 aux_devices=None,
                                 num_shards=1):
   """Apply all-reduce algorithm over specified gradient tensors."""
-  with tf.name_scope('allreduce'):
-    # Note that each grad_and_vars looks like the following:
-    #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
-    scaled_grads = [g for g, _ in grad_and_vars]
-    if alg == 'nccl':
-      summed_grads = all_reduce.build_nccl_all_reduce(scaled_grads, tf.add)
-    elif alg == 'xring':
-      summed_grads = all_reduce.build_ring_all_reduce(
-          scaled_grads, num_workers, num_shards, gpu_indices, tf.add)
-    elif alg == 'nccl/xring':
-      summed_grads = all_reduce.build_nccl_then_ring(scaled_grads, num_shards,
-                                                     tf.add)
-    elif alg == 'nccl/rechd':
-      summed_grads = all_reduce.build_nccl_then_recursive_hd(
-          scaled_grads, tf.add)
-    elif alg == 'nccl/pscpu':
-      summed_grads = all_reduce.build_nccl_then_shuffle(
-          scaled_grads, aux_devices, tf.add, tf.add_n)
-    elif alg == 'pscpu/pscpu':
-      summed_grads = all_reduce.build_shuffle_then_shuffle(
-          scaled_grads,
-          aux_devices,
-          # TODO(tucker): devise a way of better specifying the device set
-          # for the second level.
-          [aux_devices[0]],
-          tf.add_n)
-    elif alg in ['pscpu', 'psgpu']:
-      summed_grads = all_reduce.build_shuffle_all_reduce(
-          scaled_grads, aux_devices, tf.add_n)
-    else:
-      raise ValueError('unsupported all_reduce alg: ', alg)
+  scaled_grads = [g for g, _ in grad_and_vars]
+  if alg == 'collective':
+    assert not single_session
+    summed_grads = build_collective_reduce(
+        scaled_grads, num_workers, 'Add', 'Id')
+  else:
+    with tf.name_scope('allreduce'):
+      # Note that each grad_and_vars looks like the following:
+      #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
+      if alg == 'nccl':
+        summed_grads = all_reduce.build_nccl_all_reduce(scaled_grads, tf.add)
+      elif alg == 'xring':
+        summed_grads = all_reduce.build_ring_all_reduce(
+            scaled_grads, num_workers, num_shards, gpu_indices, tf.add)
+      elif alg == 'nccl/xring':
+        summed_grads = all_reduce.build_nccl_then_ring(scaled_grads, num_shards,
+                                                       tf.add)
+      elif alg == 'nccl/rechd':
+        summed_grads = all_reduce.build_nccl_then_recursive_hd(
+            scaled_grads, tf.add)
+      elif alg == 'nccl/pscpu':
+        summed_grads = all_reduce.build_nccl_then_shuffle(
+            scaled_grads, aux_devices, tf.add, tf.add_n)
+      elif alg == 'pscpu/pscpu':
+        summed_grads = all_reduce.build_shuffle_then_shuffle(
+            scaled_grads,
+            aux_devices,
+            # TODO(tucker): devise a way of better specifying the device set
+            # for the second level.
+            [aux_devices[0]],
+            tf.add_n)
+      elif alg in ['pscpu', 'psgpu']:
+        summed_grads = all_reduce.build_shuffle_all_reduce(
+            scaled_grads, aux_devices, tf.add_n)
+      else:
+        raise ValueError('unsupported all_reduce alg: ', alg)
 
-    result = []
-    for (_, v), g in zip(grad_and_vars, summed_grads):
-      result.append([g, v])
-    return result
+  result = []
+  for (_, v), g in zip(grad_and_vars, summed_grads):
+    result.append([g, v])
+  return result
 
 
 def contains_any(haystack, needles):
@@ -277,17 +372,21 @@ def contains_any(haystack, needles):
   return False
 
 
-def sum_gradients_all_reduce(dev_prefixes,
+def sum_gradients_all_reduce(single_session,
+                             dev_prefixes,
                              tower_grads,
                              num_workers,
                              alg,
                              num_shards,
                              gpu_indices,
                              agg_small_grads_max_bytes=0,
-                             agg_small_grads_max_group=10):
+                             agg_small_grads_max_group=10,
+                             allreduce_merge_scope=1):
   """Apply all-reduce algorithm over specified gradient tensors.
 
   Args:
+    single_session: true if reduction is applied to one graph across
+      all workers, false if ths application is to a single-worker graph only.
     dev_prefixes: list of prefix strings to use to generate PS device names.
     tower_grads: the gradients to reduce.
     num_workers: number of worker processes across entire job.
@@ -298,6 +397,9 @@ def sum_gradients_all_reduce(dev_prefixes,
       in number of bytes.
     agg_small_grads_max_group: largest permitted aggregation of small
       tensors.
+    allreduce_merge_scope: size of groups into which to partition consecutive
+      gradients grouped under a common 'allreduce' name scope for application
+      of ScopedAllocator optimization.
 
   Returns:
     list of reduced tensors
@@ -325,12 +427,19 @@ def sum_gradients_all_reduce(dev_prefixes,
   else:
     packing = None
   reduced_gv_list = []
-  for grad_and_vars in zip(*tower_grads):
-    reduced_gv_list.append(
-        sum_grad_and_var_all_reduce(
-            grad_and_vars, num_workers, alg, gpu_indices, aux_devices
-            if is_hierarchical else aux_device_groups[group_index], num_shards))
-    group_index = (group_index + 1) % len(aux_device_groups)
+  gv = list(zip(*tower_grads))
+  chunked_gv = [gv[x:x + allreduce_merge_scope]
+                for x in xrange(0, len(gv), allreduce_merge_scope)]
+  for chunk in chunked_gv:
+    with tf.name_scope('allreduce'):
+      for grad_and_vars in chunk:
+        reduced_gv_list.append(sum_grad_and_var_all_reduce(
+            single_session,
+            grad_and_vars, num_workers, alg, gpu_indices,
+            (aux_devices if is_hierarchical
+             else aux_device_groups[group_index]),
+            num_shards))
+        group_index = (group_index + 1) % len(aux_device_groups)
   new_tower_grads = [list(x) for x in zip(*reduced_gv_list)]
   if packing:
     new_tower_grads = unpack_small_tensors(new_tower_grads, packing)

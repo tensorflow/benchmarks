@@ -31,6 +31,40 @@ import allreduce
 
 class AllReduceTest(tf.test.TestCase):
 
+  def testGroupKey(self):
+    d0 = ['/job:worker/replica:0/task:0/device:GPU:1',
+          '/job:worker/replica:0/task:0/device:GPU:0',
+          '/job:worker/replica:0/task:0/device:GPU:3',]
+    d1 = ['/job:worker/replica:0/task:1/device:GPU:1',
+          '/job:worker/replica:0/task:1/device:GPU:0',
+          '/job:worker/replica:0/task:1/device:GPU:3',]
+    d2 = ['/job:worker/replica:0/task:1/device:GPU:1',
+          '/job:worker/replica:0/task:1/device:GPU:3',
+          '/job:worker/replica:0/task:1/device:GPU:0',]
+    d3 = ['/job:worker/replica:0/task:1/device:GPU:1',
+          '/job:worker/replica:0/task:1/device:GPU:3',
+          '/job:worker/replica:0/task:1/device:GPU:2',]
+    d4 = ['/job:worker/task:0/device:GPU:1',
+          '/job:worker/task:0/device:GPU:2',
+          '/job:worker/task:0/device:GPU:3',]
+    d5 = ['/job:worker/task:0/device:CPU:1',
+          '/job:worker/task:0/device:CPU:2']
+    d6 = ['/job:worker/task:0/device:CPU:2',
+          '/job:worker/task:0/device:CPU:1']
+    g0 = allreduce.collective_group_key(d0)
+    g1 = allreduce.collective_group_key(d1)
+    g2 = allreduce.collective_group_key(d2)
+    g3 = allreduce.collective_group_key(d3)
+    g4 = allreduce.collective_group_key(d4)
+    g5 = allreduce.collective_group_key(d5)
+    g6 = allreduce.collective_group_key(d6)
+    self.assertEqual(g0, g1)
+    self.assertEqual(g0, g2)
+    self.assertTrue(g0 != g3)
+    self.assertEqual(g3, g4)
+    self.assertEqual(g5, g6)
+    self.assertTrue(g4 != g5)
+
   def testExtractRanges(self):
     x = []
     expected_ranges = []
@@ -368,14 +402,17 @@ class DynamicPackingTest(test_util.TensorFlowTestCase):
       num_workers = 1
       alg = 'xring'
       shards = 1
+      single_session = True
       gpu_indices = range(0, tt.num_devices)
       assert len(gpu_indices) == len(tower_grads)
       no_pack_all_reduce = allreduce.sum_gradients_all_reduce(
+          single_session,
           dev_prefixes, tower_grads, num_workers, alg, shards,
           gpu_indices,
           agg_small_grads_max_bytes=0, agg_small_grads_max_group=1)
       packed_tg, packing = allreduce.pack_small_tensors(tower_grads, 100, 100)
       packed_all_reduce = allreduce.sum_gradients_all_reduce(
+          single_session,
           dev_prefixes, packed_tg, num_workers, alg, shards,
           gpu_indices,
           agg_small_grads_max_bytes=0, agg_small_grads_max_group=1)

@@ -382,16 +382,22 @@ flags.DEFINE_integer('fp16_inc_loss_scale_every_n', 1000,
 #       in a single session, using all-reduce to mutally reduce the
 #       gradients.  Uses no parameter servers.  When there is only one
 #       worker, this is the same as replicated.
+#   collective_all_reduce: Distributed training where all replicas run
+#       independepently except for variable initialization and for
+#       gradient reduction which is done via collective all-reduce.
+#       NOTE: collective_all_reduce in conjunction with use_fp16 can
+#       lead to NaNs in some models (resnet50).  TODO(tucker): fix it.
 #   horovod: Distributed training using Horovod library. Runs workers using
 #       an MPI framework (e.g. Open MPI). Each worker runs training on
 #       single GPU, and averages gradients using NCCL or MPI all-reduce.
 #       See https://github.com/uber/horovod for more details.
 flags.DEFINE_enum('variable_update', 'parameter_server',
                   ('parameter_server', 'replicated', 'distributed_replicated',
-                   'independent', 'distributed_all_reduce', 'horovod'),
+                   'independent', 'distributed_all_reduce',
+                   'collective_all_reduce', 'horovod'),
                   'The method for managing variables: parameter_server, '
                   'replicated, distributed_replicated, independent, '
-                  'distributed_all_reduce, horovod')
+                  'distributed_all_reduce, collective_all_reduce, horovod')
 flags.DEFINE_string('all_reduce_spec', None,
                     'A specification of the all_reduce algorithm to be used '
                     'for reducing gradients.  For more details, see '
@@ -424,6 +430,11 @@ flags.DEFINE_integer('agg_small_grads_max_bytes', 0,
 flags.DEFINE_integer('agg_small_grads_max_group', 10,
                      'When aggregating small tensors for all-reduce do not '
                      'aggregate more than this many into one new tensor.')
+flags.DEFINE_integer('allreduce_merge_scope', 1,
+                     'Establish a name scope around this many '
+                     'gradients prior to creating the all-reduce operations. '
+                     'It may affect the ability of the backend to merge '
+                     'parallel ops.')
 
 # Distributed training parameters.
 flags.DEFINE_enum('job_name', '', ('ps', 'worker', 'controller', ''),
@@ -567,6 +578,7 @@ def create_config_proto(params):
   config.allow_soft_placement = True
   config.intra_op_parallelism_threads = params.num_intra_threads
   config.inter_op_parallelism_threads = params.num_inter_threads
+  config.experimental.collective_group_leader = '/job:worker/replica:0/task:0'
   config.gpu_options.force_gpu_compatible = params.force_gpu_compatible
   if params.allow_growth is not None:
     config.gpu_options.allow_growth = params.allow_growth
@@ -625,11 +637,12 @@ def benchmark_one_step(sess,
                        params,
                        summary_op=None,
                        show_images_per_sec=True,
-                       benchmark_logger=None):
+                       benchmark_logger=None,
+                       collective_graph_key=0):
   """Advance one step of benchmarking."""
   should_profile = profiler and 0 <= step < _NUM_STEPS_TO_PROFILE
   need_options_and_metadata = (
-      should_profile or
+      should_profile or collective_graph_key > 0 or
       ((trace_filename or partitioned_graph_file_prefix) and step == -2)
   )
   if need_options_and_metadata:
@@ -638,6 +651,8 @@ def benchmark_one_step(sess,
       run_options.trace_level = tf.RunOptions.FULL_TRACE
     if partitioned_graph_file_prefix and step == -2:
       run_options.output_partition_graphs = True
+    if collective_graph_key > 0:
+      run_options.experimental.collective_graph_key = collective_graph_key
     run_metadata = tf.RunMetadata()
   else:
     run_options = None
@@ -1096,7 +1111,9 @@ class BenchmarkCNN(object):
 
     # PS server is used for distributed jobs not using all-reduce.
     use_ps_server = self.job_name and (self.params.variable_update !=
-                                       'distributed_all_reduce')
+                                       'distributed_all_reduce' and
+                                       self.params.variable_update !=
+                                       'collective_all_reduce')
     # controller is used for distributed_all_reduce with > 1 worker.
     use_controller = (
         self.params.variable_update == 'distributed_all_reduce' and
@@ -1104,6 +1121,10 @@ class BenchmarkCNN(object):
     if use_controller and not params.controller_host:
       raise ValueError('When variable_update==distributed_all_reduce '
                        'controller_host must also be specified.')
+    # collective_all_reduce doesn't need a controller or ps
+    self.distributed_collective = (
+        self.params.variable_update == 'collective_all_reduce' and
+        self.job_name)
 
     self.local_parameter_device_flag = self.params.local_parameter_device
     if self.job_name:
@@ -1186,14 +1207,25 @@ class BenchmarkCNN(object):
       self.variable_mgr = variable_mgr.VariableMgrLocalReplicated(
           self, self.params.all_reduce_spec,
           self.params.agg_small_grads_max_bytes,
-          self.params.agg_small_grads_max_group)
+          self.params.agg_small_grads_max_group,
+          self.params.allreduce_merge_scope)
     elif self.params.variable_update == 'distributed_all_reduce':
       assert self.params.cross_replica_sync
       self.variable_mgr = variable_mgr.VariableMgrDistributedAllReduce(
           self, self.params.all_reduce_spec,
-          ('worker' if self.num_workers > 1 else 'localhost'), self.num_workers,
-          self.params.agg_small_grads_max_bytes,
-          self.params.agg_small_grads_max_group)
+          ('worker' if self.num_workers > 1 else 'localhost'),
+          self.num_workers, self.params.agg_small_grads_max_bytes,
+          self.params.agg_small_grads_max_group,
+          self.params.allreduce_merge_scope)
+    elif self.params.variable_update == 'collective_all_reduce':
+      assert self.params.cross_replica_sync
+      if self.num_workers > 1:
+        raise ValueError('collective_all_reduce not yet supported for '
+                         'num_workers > 1')
+      self.variable_mgr = variable_mgr.VariableMgrCollectiveAllReduce(
+          self, self.params.all_reduce_spec,
+          self.num_workers, self.num_gpus, self.task_index,
+          self.params.allreduce_merge_scope)
     elif self.params.variable_update == 'distributed_replicated':
       assert self.params.cross_replica_sync
       if not self.job_name:
@@ -1290,7 +1322,8 @@ class BenchmarkCNN(object):
     log_fn('Optimizer:   %s' % self.params.optimizer)
     log_fn('Variables:   %s' % self.params.variable_update)
     if (self.params.variable_update == 'replicated' or
-        self.params.variable_update == 'distributed_all_reduce'):
+        self.params.variable_update == 'distributed_all_reduce'
+        or self.params.variable_update == 'collective_all_reduce'):
       log_fn('AllReduce:   %s' % self.params.all_reduce_spec)
     if self.job_name:
       log_fn('Sync:        %s' % self.params.cross_replica_sync)
@@ -1524,8 +1557,8 @@ class BenchmarkCNN(object):
       with tf.control_dependencies([main_fetch_group]):
         fetches['inc_global_step'] = global_step.assign_add(1)
 
-    if ((not self.single_session) and self.job_name and
-        self.params.cross_replica_sync):
+    if ((not self.single_session) and (not self.distributed_collective) and
+        self.job_name and self.params.cross_replica_sync):
       # Block all replicas until all replicas are ready for next step.
       fetches['sync_queues'] = self.add_sync_queues_and_barrier(
           'sync_queues_step_end_', [main_fetch_group])
@@ -1537,8 +1570,8 @@ class BenchmarkCNN(object):
       variable_mgr_init_ops.extend([table_init_ops])
     with tf.control_dependencies([local_var_init_op]):
       variable_mgr_init_ops.extend(self.variable_mgr.get_post_init_ops())
-    if (not self.single_session and self.job_name and
-        self.params.cross_replica_sync):
+    if ((not self.single_session) and (not self.distributed_collective) and
+        self.job_name and self.params.cross_replica_sync):
       # Ensure all workers execute variable_mgr_init_ops before they start
       # executing the model.
       variable_mgr_init_ops.append(
@@ -1577,8 +1610,11 @@ class BenchmarkCNN(object):
     # passing in None for summary_op to avoid a summary_thread being started.
     # Running summaries and training operations in parallel could run out of
     # GPU memory.
-    saver = tf.train.Saver(
-        self.variable_mgr.savable_variables(), save_relative_paths=True)
+    if is_chief:
+      saver = tf.train.Saver(
+          self.variable_mgr.savable_variables(), save_relative_paths=True)
+    else:
+      saver = None
     ready_for_local_init_op = None
     if self.job_name and not self.single_session:
       # In distributed mode, we don't want to run local_var_init_op_group until
@@ -1594,11 +1630,20 @@ class BenchmarkCNN(object):
       bcast_global_variables_op = hvd.broadcast_global_variables(0)
     else:
       bcast_global_variables_op = None
+
+    if self.params.variable_update == 'collective_all_reduce':
+      # It doesn't matter what this collective_graph_key value is,
+      # so long as it's > 0 and the same at every worker.
+      init_run_options = tf.RunOptions()
+      init_run_options.experimental.collective_graph_key = 6
+    else:
+      init_run_options = tf.RunOptions()
     sv = tf.train.Supervisor(
         # For the purpose of Supervisor, all Horovod workers are 'chiefs',
         # since we want session to be initialized symmetrically on all the
         # workers.
-        is_chief=is_chief or self.params.variable_update == 'horovod',
+        is_chief=is_chief or (self.params.variable_update == 'horovod'
+                              or self.distributed_collective),
         # Log dir should be unset on non-chief workers to prevent Horovod
         # workers from corrupting each other's checkpoints.
         logdir=self.params.train_dir if is_chief else None,
@@ -1608,7 +1653,8 @@ class BenchmarkCNN(object):
         global_step=global_step,
         summary_op=None,
         save_model_secs=self.params.save_model_secs,
-        summary_writer=summary_writer)
+        summary_writer=summary_writer,
+        local_init_run_options=init_run_options)
 
     step_train_times = []
     start_standard_services = (
@@ -1691,13 +1737,16 @@ class BenchmarkCNN(object):
           fetch_summary = summary_op
         else:
           fetch_summary = None
+        collective_graph_key = 7 if (
+            self.params.variable_update == 'collective_all_reduce') else 0
         summary_str = benchmark_one_step(
             sess, fetches, local_step,
             self.batch_size * (self.num_workers
                                if self.single_session else 1), step_train_times,
             self.trace_filename, self.params.partitioned_graph_file_prefix,
             profiler, image_producer, self.params, fetch_summary,
-            benchmark_logger=self.benchmark_logger)
+            benchmark_logger=self.benchmark_logger,
+            collective_graph_key=collective_graph_key)
         if summary_str is not None and is_chief:
           sv.summary_computed(sess, summary_str)
         local_step += 1
@@ -1743,6 +1792,7 @@ class BenchmarkCNN(object):
         # Wait for other workers to reach the end, so this worker doesn't
         # go away underneath them.
         sess.run([execution_barrier])
+
     sv.stop()
     if profiler:
       generate_tfprof_profile(profiler, self.params.tfprof_file)

@@ -307,6 +307,7 @@ class AllReduceSpecAlgorithm(BatchAllReduceAlgorithm):
     tower_grads = [[(t, None) for t in device_tensors]
                    for device_tensors in all_device_tensors]
     aggregated_device_grads = allreduce.sum_gradients_all_reduce(
+        False,  # single_session
         ['/job:localhost'],
         tower_grads,
         1,
