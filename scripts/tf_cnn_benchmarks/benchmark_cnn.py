@@ -2040,7 +2040,8 @@ class BenchmarkCNN(object):
         gradient_clip = self.params.gradient_clip
         learning_rate = get_learning_rate(self.params, global_step,
                                           self.dataset.num_examples_per_epoch(),
-                                          self.model, self.batch_size)
+                                          self.model,
+                                          self.batch_size * self.num_workers)
 
         if gradient_clip is not None:
           clipped_grads = [(tf.clip_by_value(grad, -gradient_clip,
