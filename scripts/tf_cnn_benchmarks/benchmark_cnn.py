@@ -2193,6 +2193,7 @@ class BenchmarkCNN(object):
     return (global_image_producer_ops, enqueue_ops, fetches)
 
   # TODO(rohanj): Refactor this function and share with other code path.
+  # TODO(reedwm): Add a test case for this function
   def _build_model_single_session_with_dataset_prefetching(self):
     """Build the TensorFlow graph for multiple replicas in a single_session.
 
@@ -2239,7 +2240,9 @@ class BenchmarkCNN(object):
       # Build the per-worker image processing
       function_buffering_resources = data_utils.build_prefetch_image_processing(
           self.model.get_image_size(), self.model.get_image_size(),
-          self.batch_size // len(self.devices), self.cpu_device, self.params,
+          self.batch_size // len(self.devices),
+          len(self.devices), self.image_preprocessor.parse_and_preprocess,
+          self.cpu_device, self.params,
           self.devices, self.dataset)
 
       # Build the per-worker model replica.
