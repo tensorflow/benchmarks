@@ -124,7 +124,7 @@ flags.DEFINE_boolean('use_datasets', True,
 flags.DEFINE_string('input_preprocessor', 'default',
                     'Name of input preprocessor. The list of supported input '
                     'preprocessors are defined in preprocessing.py.')
-flags.DEFINE_string('gpu_thread_mode', 'gpu_private',
+flags.DEFINE_string('gpu_thread_mode', 'gpu_shared',
                     'Methods to assign GPU host work to threads. '
                     'global: all GPUs and CPUs share the same global threads; '
                     'gpu_private: a private threadpool for each GPU; '
