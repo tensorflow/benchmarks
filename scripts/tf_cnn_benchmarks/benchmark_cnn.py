@@ -675,8 +675,11 @@ def benchmark_one_step(sess,
   step_train_times.append(train_time)
   if (show_images_per_sec and step >= 0 and
       (step == 0 or (step + 1) % params.display_every == 0)):
+    speed_mean, speed_uncertainty, speed_jitter = get_perf_timing(
+        batch_size, step_train_times)
     log_str = '%i\t%s\t%.*f' % (
-        step + 1, get_perf_timing_str(batch_size, step_train_times),
+        step + 1,
+        get_perf_timing_str(speed_mean, speed_uncertainty, speed_jitter),
         LOSS_AND_ACCURACY_DIGITS_TO_SHOW, lossval)
     if 'top_1_accuracy' in results:
       log_str += '\t%.*f\t%.*f' % (
@@ -684,9 +687,13 @@ def benchmark_one_step(sess,
           LOSS_AND_ACCURACY_DIGITS_TO_SHOW, results['top_5_accuracy'])
     log_fn(log_str)
     if benchmark_logger:
-      # TODO(scottzhu): This might impact the benchmark speed since it writes
-      # the benchmark log to local directory.
-      benchmark_logger.log_evaluation_result(results)
+      benchmark_logger.log_metric(
+          'current_examples_per_sec', speed_mean, global_step=step + 1)
+      if 'top_1_accuracy' in results:
+        benchmark_logger.log_metric(
+            'top_1_accuracy', results['top_1_accuracy'], global_step=step + 1)
+        benchmark_logger.log_metric(
+            'top_5_accuracy', results['top_5_accuracy'], global_step=step + 1)
   if need_options_and_metadata:
     if should_profile:
       profiler.add_step(step, run_metadata)
@@ -719,18 +726,21 @@ def benchmark_one_step(sess,
   return summary_str
 
 
-def get_perf_timing_str(batch_size, step_train_times, scale=1):
-  times = np.array(step_train_times)
-  speeds = batch_size / times
-  speed_mean = scale * batch_size / np.mean(times)
+def get_perf_timing_str(speed_mean, speed_uncertainty, speed_jitter, scale=1):
   if scale == 1:
-    speed_uncertainty = np.std(speeds) / np.sqrt(float(len(speeds)))
-    speed_madstd = 1.4826 * np.median(np.abs(speeds - np.median(speeds)))
-    speed_jitter = speed_madstd
     return ('images/sec: %.1f +/- %.1f (jitter = %.1f)' %
             (speed_mean, speed_uncertainty, speed_jitter))
   else:
     return 'images/sec: %.1f' % speed_mean
+
+
+def get_perf_timing(batch_size, step_train_times, scale=1):
+  times = np.array(step_train_times)
+  speeds = batch_size / times
+  speed_mean = scale * batch_size / np.mean(times)
+  speed_uncertainty = np.std(speeds) / np.sqrt(float(len(speeds)))
+  speed_jitter = 1.4826 * np.median(np.abs(speeds - np.median(speeds)))
+  return speed_mean, speed_uncertainty, speed_jitter
 
 
 def load_checkpoint(saver, sess, ckpt_dir):
