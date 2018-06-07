@@ -483,7 +483,14 @@ flags.DEFINE_string('benchmark_log_dir', None,
                     'The directory to place the log files containing the '
                     'results of benchmark. The logs are created by '
                     'BenchmarkFileLogger. Requires the root of the Tensorflow '
-                    ' models repository to be in $PYTHTONPATH.')
+                    'models repository to be in $PYTHTONPATH.')
+flags.DEFINE_string('benchmark_test_id', None,
+                    'The unique test ID of the benchmark run. It could be the '
+                    'combination of key parameters. It is hardware independent '
+                    'and could be used compare the performance between '
+                    'different test runs. This flag is designed for human '
+                    'consumption, and does not have any impact within the '
+                    'system.')
 
 platforms_util.define_platform_params()
 
@@ -1394,7 +1401,8 @@ class BenchmarkCNN(object):
       # only contain the latest info. The benchmark_log_dir should be updated
       # for every new run.
       self.benchmark_logger.log_run_info(
-          self.model.get_model(), benchmark_info['dataset_name'], run_param)
+          self.model.get_model(), benchmark_info['dataset_name'], run_param,
+          test_id=self.params.benchmark_test_id)
 
   def run(self):
     """Run the benchmark task assigned to this process.
