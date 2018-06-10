@@ -2040,8 +2040,11 @@ class BenchmarkCNN(object):
         gradient_clip = self.params.gradient_clip
         # TODO(reedwm): Greatly simplify the learning rate code.
         if self.params.variable_update == 'horovod':
+            # Each worker independently increments global_step.
             examples_per_step = self.batch_size * self.num_workers
         else:
+            # global_step is shared by all workers, and so every iteration
+            # global_step is incremented by num_workers.
             examples_per_step = self.batch_size
         learning_rate = get_learning_rate(self.params, global_step,
                                           self.dataset.num_examples_per_epoch(),
