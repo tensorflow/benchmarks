@@ -1720,11 +1720,20 @@ class BenchmarkCNN(object):
 
       log_fn('Running warm up')
       local_step = -1 * self.num_warmup_batches
+      if self.single_session:
+        # In single session mode, each step, the global_step is incremented by
+        # 1. In non-single session mode, each step, the global_step is
+        # incremented once per worker. This means we need to divide
+        # init_global_step by num_workers only in non-single session mode.
+        end_local_step = self.num_batches - self.init_global_step
+      else:
+        end_local_step = self.num_batches - (self.init_global_step /
+                                             self.num_workers)
 
       if not global_step_watcher:
         # In cross-replica sync mode, all workers must run the same number of
         # local steps, or else the workers running the extra step will block.
-        done_fn = lambda: local_step == self.num_batches
+        done_fn = lambda: local_step >= end_local_step
       else:
         done_fn = global_step_watcher.done
       if self.params.debugger is not None:

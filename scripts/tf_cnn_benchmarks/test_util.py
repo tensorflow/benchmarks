@@ -245,6 +245,8 @@ def train_and_eval(testcase,
   for lines in initial_train_logs:
     initial_train_outputs = get_training_outputs_from_logs(
         lines, print_training_accuracy)
+    if params.cross_replica_sync and params.batch_group_size == 1:
+      testcase.assertEqual(len(initial_train_outputs), params.num_batches)
     if check_output_values:
       check_training_outputs_are_reasonable(testcase, initial_train_outputs,
                                             print_training_accuracy,
@@ -264,8 +266,9 @@ def train_and_eval(testcase,
   for lines in train_logs_from_ckpt:
     train_outputs_from_ckpt = get_training_outputs_from_logs(
         lines, print_training_accuracy)
-    # TODO(b/64480147): Once the bug is fixed, verify it here by asserting that
-    # the model was trained for the correct number of batches.
+    if params.cross_replica_sync and params.batch_group_size == 1:
+      testcase.assertEqual(len(train_outputs_from_ckpt),
+                           params.num_batches // 2 - params.num_warmup_batches)
     if check_output_values:
       check_training_outputs_are_reasonable(
           testcase, train_outputs_from_ckpt, print_training_accuracy,
