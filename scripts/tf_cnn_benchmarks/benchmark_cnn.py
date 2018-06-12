@@ -2056,9 +2056,17 @@ class BenchmarkCNN(object):
         avg_grads = self.variable_mgr.get_gradients_to_apply(d, gradient_state)
 
         gradient_clip = self.params.gradient_clip
+        # TODO(reedwm): Greatly simplify the learning rate code.
+        if self.params.variable_update == 'horovod':
+          # Each worker independently increments global_step.
+          examples_per_step = self.batch_size * self.num_workers
+        else:
+          # global_step is shared by all workers, and so every iteration
+          # global_step is incremented by num_workers.
+          examples_per_step = self.batch_size
         learning_rate = get_learning_rate(self.params, global_step,
                                           self.dataset.num_examples_per_epoch(),
-                                          self.model, self.batch_size)
+                                          self.model, examples_per_step)
 
         if gradient_clip is not None:
           clipped_grads = [(tf.clip_by_value(grad, -gradient_clip,
