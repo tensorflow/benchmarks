@@ -1272,6 +1272,9 @@ class BenchmarkCNN(object):
     self.image_preprocessor = self.get_image_preprocessor()
     self.datasets_use_prefetch = (
         self.params.datasets_use_prefetch and
+        # TODO(rohanj): Figure out why --datasets_use_prefetch freezes on the
+        # CPU.
+        self.params.device.lower() != 'cpu' and
         self.image_preprocessor.supports_datasets())
     self.init_global_step = 0
 
