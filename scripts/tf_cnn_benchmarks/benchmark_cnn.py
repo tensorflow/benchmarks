@@ -39,6 +39,8 @@ from google.protobuf import text_format
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import debug as tf_debug
 from tensorflow.python.client import timeline
+from tensorflow.python.framework import graph_util
+from tensorflow.python.framework import importer
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import nest
@@ -79,6 +81,8 @@ flags.DEFINE_integer('eval_interval_secs', 0,
                      'run. Pass 0 to eval only once.')
 flags.DEFINE_boolean('forward_only', False,
                      'whether use forward-only or training for benchmarking')
+flags.DEFINE_boolean('freeze_when_forward_only', False,
+                     'whether to freeze the graph when in forward-only mode.')
 flags.DEFINE_boolean('print_training_accuracy', False,
                      'whether to calculate and print training accuracy during '
                      'training')
@@ -1112,6 +1116,22 @@ class BenchmarkCNN(object):
       raise ValueError('--hierarchical_copy requires --num_gpus to be greater '
                        'than 1')
 
+    if self.params.forward_only and self.params.freeze_when_forward_only:
+      if self.params.train_dir is not None:
+        raise ValueError('In forward_only mode, when --freeze_when_forward_only'
+                         ' is True, --train_dir should not be specified')
+      if self.params.data_dir and not self.params.datasets_use_prefetch:
+        raise ValueError('In forward_only mode, when --freeze_when_forward_only'
+                         ' is True and --data_dir is set, '
+                         '--datasets_use_prefetch should be set to True')
+      if self.params.job_name:
+        raise ValueError('In forward_only mode, when --freeze_when_forward_only'
+                         ' is True, --job_name should not be specified and '
+                         'distributed running is not supported')
+      self.forward_only_and_freeze = True
+    else:
+      self.forward_only_and_freeze = False
+
     # Use the batch size from the command line if specified, otherwise use the
     # model's default batch size.  Scale the benchmark's batch size by the
     # number of GPUs.
@@ -1430,12 +1450,13 @@ class BenchmarkCNN(object):
       elif self.params.job_name and self.params.job_name != 'controller':
         raise ValueError('unrecognized job name: %s' % self.params.job_name)
 
-    with tf.Graph().as_default():
-      self._log_benchmark_run()
-      if self.params.eval:
+    self._log_benchmark_run()
+    if self.params.eval:
+      with tf.Graph().as_default():
+        # TODO(laigd): freeze the graph in eval mode.
         return self._eval_cnn()
-      else:
-        return self._benchmark_cnn()
+    else:
+      return self._benchmark_cnn()
 
   def _eval_cnn(self):
     """Evaluate a model every self.params.eval_interval_secs.
@@ -1543,12 +1564,48 @@ class BenchmarkCNN(object):
         }
         self.benchmark_logger.log_evaluation_result(eval_result)
 
+  # GraphInfo encapsulates the tensors/ops that we care about after building a
+  # graph. We use them to benchmark the graph.
+  GraphInfo = namedtuple(  # pylint: disable=invalid-name
+      'GraphInfo',
+      [
+          # Ops that produce the raw image batches
+          'image_producer_ops',
+          # Ops that adds the preprocessed images to the staging areas
+          'enqueue_ops',
+          # Fetches of sess.run()
+          'fetches',
+          # Op that performs synchronization in distributed mode
+          'execution_barrier',
+          # The global step variable
+          'global_step',
+          # Group of ops that perform per-device initialization work
+          'local_var_init_op_group'
+      ])
+
   def _benchmark_cnn(self):
     """Run cnn in benchmark mode. Skip the backward pass if forward_only is on.
 
     Returns:
       Dictionary containing training statistics (num_workers, num_steps,
       average_wall_time, images_per_sec).
+    """
+    graph = tf.Graph()
+    with graph.as_default():
+      build_result = self._build_graph()
+    if self.forward_only_and_freeze:
+      (graph, result_to_benchmark) = self._freeze_graph(graph, build_result)
+    else:
+      result_to_benchmark = build_result
+    with graph.as_default():
+      return self._benchmark_graph(result_to_benchmark)
+
+  def _build_graph(self):
+    """Build the graph.
+
+    Returns:
+      A namedtuple containing the ops/tensors that required by
+      _benchmark_graph().
     """
     if self.params.variable_update == 'distributed_all_reduce':
       self.single_session = True
@@ -1586,11 +1643,17 @@ class BenchmarkCNN(object):
 
     local_var_init_op = tf.local_variables_initializer()
     table_init_ops = tf.tables_initializer()
-    variable_mgr_init_ops = [local_var_init_op]
+
+    # Skips the init ops for variables in forward_only mode so we can remove all
+    # the assign ops when converting variables to constants.
+    variable_mgr_init_ops = []
+    if not self.forward_only_and_freeze:
+      variable_mgr_init_ops.append(local_var_init_op)
     if table_init_ops:
       variable_mgr_init_ops.extend([table_init_ops])
-    with tf.control_dependencies([local_var_init_op]):
-      variable_mgr_init_ops.extend(self.variable_mgr.get_post_init_ops())
+    if not self.forward_only_and_freeze:
+      with tf.control_dependencies([local_var_init_op]):
+        variable_mgr_init_ops.extend(self.variable_mgr.get_post_init_ops())
     if ((not self.single_session) and (not self.distributed_collective) and
         self.job_name and self.params.cross_replica_sync):
       # Ensure all workers execute variable_mgr_init_ops before they start
@@ -1600,6 +1663,25 @@ class BenchmarkCNN(object):
                                            variable_mgr_init_ops))
     local_var_init_op_group = tf.group(*variable_mgr_init_ops)
 
+    return BenchmarkCNN.GraphInfo(
+        image_producer_ops=image_producer_ops,
+        enqueue_ops=enqueue_ops,
+        fetches=fetches,
+        execution_barrier=execution_barrier,
+        global_step=global_step,
+        local_var_init_op_group=local_var_init_op_group)
+
+  def _benchmark_graph(self, graph_info):
+    """Benchmark the graph.
+
+    Args:
+      graph_info: the namedtuple returned by _build_graph() which
+        contains all necessary information to benchmark the graph, including
+        named tensors/ops list, fetches, etc.
+    Returns:
+      Dictionary containing training statistics (num_workers, num_steps,
+      average_wall_time, images_per_sec).
+    """
     if self.params.variable_update == 'horovod':
       import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
       # First worker will be 'chief' - it will write summaries and
@@ -1617,21 +1699,22 @@ class BenchmarkCNN(object):
 
     # We want to start the benchmark timer right after a image_producer barrier
     # and avoids undesired waiting times on barriers.
-    if ((self.num_warmup_batches + len(enqueue_ops) - 1) %
+    if ((self.num_warmup_batches + len(graph_info.enqueue_ops) - 1) %
         self.batch_group_size) != 0:
       self.num_warmup_batches = int(
-          math.ceil((self.num_warmup_batches + len(enqueue_ops) - 1.0) /
-                    (self.batch_group_size
-                    )) * self.batch_group_size - len(enqueue_ops) + 1)
+          math.ceil(
+              (self.num_warmup_batches + len(graph_info.enqueue_ops) - 1.0) /
+              (self.batch_group_size)) * self.batch_group_size -
+          len(graph_info.enqueue_ops) + 1)
       log_fn('Round up warm up steps to %d to match batch_group_size' %
              self.num_warmup_batches)
-      assert ((self.num_warmup_batches + len(enqueue_ops) - 1) %
+      assert ((self.num_warmup_batches + len(graph_info.enqueue_ops) - 1) %
               self.batch_group_size) == 0
     # We run the summaries in the same thread as the training operations by
     # passing in None for summary_op to avoid a summary_thread being started.
     # Running summaries and training operations in parallel could run out of
     # GPU memory.
-    if is_chief:
+    if is_chief and not self.forward_only_and_freeze:
       saver = tf.train.Saver(
           self.variable_mgr.savable_variables(), save_relative_paths=True)
     else:
@@ -1669,9 +1752,9 @@ class BenchmarkCNN(object):
         # workers from corrupting each other's checkpoints.
         logdir=self.params.train_dir if is_chief else None,
         ready_for_local_init_op=ready_for_local_init_op,
-        local_init_op=local_var_init_op_group,
+        local_init_op=graph_info.local_var_init_op_group,
         saver=saver,
-        global_step=global_step,
+        global_step=graph_info.global_step,
         summary_op=None,
         save_model_secs=self.params.save_model_secs,
         summary_writer=summary_writer,
@@ -1690,19 +1773,19 @@ class BenchmarkCNN(object):
         sess.run(bcast_global_variables_op)
 
       image_producer = None
-      if image_producer_ops is not None:
+      if graph_info.image_producer_ops is not None:
         image_producer = cnn_util.ImageProducer(
-            sess, image_producer_ops, self.batch_group_size,
+            sess, graph_info.image_producer_ops, self.batch_group_size,
             self.params.use_python32_barrier)
         image_producer.start()
-        for i in xrange(len(enqueue_ops)):
-          sess.run(enqueue_ops[:(i + 1)])
+        for i in xrange(len(graph_info.enqueue_ops)):
+          sess.run(graph_info.enqueue_ops[:(i + 1)])
           image_producer.notify_image_consumption()
-      self.init_global_step, = sess.run([global_step])
+      self.init_global_step, = sess.run([graph_info.global_step])
       if self.job_name and not self.params.cross_replica_sync:
         # TODO(zhengxq): Do we need to use a global step watcher at all?
         global_step_watcher = GlobalStepWatcher(
-            sess, global_step,
+            sess, graph_info.global_step,
             self.num_workers * self.num_warmup_batches +
             self.init_global_step,
             self.num_workers * (self.num_warmup_batches + self.num_batches) - 1)
@@ -1749,9 +1832,9 @@ class BenchmarkCNN(object):
       while not done_fn():
         if local_step == 0:
           log_fn('Done warm up')
-          if execution_barrier:
+          if graph_info.execution_barrier:
             log_fn('Waiting for other replicas to finish warm up')
-            sess.run([execution_barrier])
+            sess.run([graph_info.execution_barrier])
 
           header_str = ('Step\tImg/sec\t' +
                         self.params.loss_type_to_report.replace('/', ' '))
@@ -1770,7 +1853,7 @@ class BenchmarkCNN(object):
         collective_graph_key = 7 if (
             self.params.variable_update == 'collective_all_reduce') else 0
         summary_str = benchmark_one_step(
-            sess, fetches, local_step,
+            sess, graph_info.fetches, local_step,
             self.batch_size * (self.num_workers
                                if self.single_session else 1), step_train_times,
             self.trace_filename, self.params.partitioned_graph_file_prefix,
@@ -1816,12 +1899,12 @@ class BenchmarkCNN(object):
         checkpoint_path = os.path.join(self.params.train_dir, 'model.ckpt')
         if not gfile.Exists(self.params.train_dir):
           gfile.MakeDirs(self.params.train_dir)
-        sv.saver.save(sess, checkpoint_path, global_step)
+        sv.saver.save(sess, checkpoint_path, graph_info.global_step)
 
-      if execution_barrier:
+      if graph_info.execution_barrier:
         # Wait for other workers to reach the end, so this worker doesn't
         # go away underneath them.
-        sess.run([execution_barrier])
+        sess.run([graph_info.execution_barrier])
 
     sv.stop()
     if profiler:
@@ -1832,6 +1915,81 @@ class BenchmarkCNN(object):
         'average_wall_time': average_wall_time,
         'images_per_sec': images_per_sec
     }
+
+  def _freeze_graph(self, graph, graph_info):
+    """Freeze and re-import the graph.
+
+    Args:
+      graph: the graph to freeze.
+      graph_info: the namedtuple returned by _build_graph() which
+        contains all necessary information to benchmark the graph, including
+        named tensors/ops list, fetches, etc.
+    Returns:
+      The updated graph and graph_info with the ops/tensors/fetches updated
+      according to the imported graph.
+    """
+    assert isinstance(graph_info.fetches, dict)
+    assert isinstance(graph_info.global_step, tf.Variable)
+
+    # Get the names of the ops that need to keep during conversion.
+    flattened_op_names = list(set([
+        v.name.split(':')[0] for v in nest.flatten(graph_info) if v is not None
+    ]))
+    output_node_names = flattened_op_names + [
+        graph_info.global_step.initializer.name,
+        graph_info.global_step.value().op.name
+    ]
+
+    # Freeze the graph.
+    with graph.as_default():
+      with tf.Session(config=create_config_proto(self.params)) as sess:
+        sess.run(tf.global_variables_initializer())
+        sess.run(tf.local_variables_initializer())
+        converted_graphdef = graph_util.convert_variables_to_constants(
+            sess,
+            graph.as_graph_def(add_shapes=True),
+            output_node_names,
+            # TODO(laigd): consider making global_step a constant.
+            variable_names_blacklist=graph_info.global_step.name)
+
+    scope_name = 'converted'
+    converted_name = lambda name: (scope_name + '/' + name)
+
+    # Creates a new graph as the default and import the converted graph back.
+    updated_graph = tf.Graph()
+
+    def _get_tensors_or_ops(inputs):
+      """Gets the updated tensors or ops from 'updated_graph'."""
+      def _get_fn(elem):
+        if elem is None:
+          return None
+        name = converted_name(elem.name)
+        if ':' in name:
+          return updated_graph.get_tensor_by_name(name)
+        return updated_graph.get_operation_by_name(name)
+
+      if isinstance(inputs, (list, dict, tuple)):
+        return nest.map_structure(_get_fn, inputs)
+      else:
+        return _get_fn(inputs)
+
+    with updated_graph.as_default():
+      importer.import_graph_def(graph_def=converted_graphdef, name=scope_name)
+
+      # Updates global_step.
+      updated_global_step = tf.Variable.from_proto(
+          graph_info.global_step.to_proto(), scope_name)
+      tf.add_to_collection(tf.GraphKeys.GLOBAL_VARIABLES, updated_global_step)
+
+    updated_graph_info = BenchmarkCNN.GraphInfo(
+        image_producer_ops=_get_tensors_or_ops(graph_info.image_producer_ops),
+        enqueue_ops=_get_tensors_or_ops(graph_info.enqueue_ops),
+        execution_barrier=_get_tensors_or_ops(graph_info.execution_barrier),
+        local_var_init_op_group=_get_tensors_or_ops(
+            graph_info.local_var_init_op_group),
+        fetches=_get_tensors_or_ops(graph_info.fetches),
+        global_step=updated_global_step)
+    return (updated_graph, updated_graph_info)
 
   def _build_image_processing(self, shift_ratio=0):
     """"Build the image (pre)processing portion of the model graph."""

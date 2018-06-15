@@ -251,13 +251,17 @@ def train_and_eval(testcase,
       check_training_outputs_are_reasonable(testcase, initial_train_outputs,
                                             print_training_accuracy,
                                             max_final_loss=max_final_loss)
-  train_dir_entries = set(os.listdir(params.train_dir))
-  testcase.assertGreater(len(train_dir_entries), 0)
+  if params.train_dir is not None:
+    train_dir_entries = set(os.listdir(params.train_dir))
+    testcase.assertGreater(len(train_dir_entries), 0)
+  else:
+    train_dir_entries = None
 
   if skip == 'eval_and_train_from_checkpoint':
     return
 
   # Part 2: Train from the loaded checkpoint.
+  testcase.assertIsNotNone(train_dir_entries)
   tf.logging.info('Training model from loaded checkpoint')
   # Run for same number of batches as before.
   params = params._replace(num_batches=params.num_batches * 2)

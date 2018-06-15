@@ -553,6 +553,12 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     # Evaluation is not supported with --forward_only, so we set skip='eval'.
     self._train_and_eval_local(params, skip='eval')
 
+  def testForwardOnlyAndFreeze(self):
+    params = test_util.get_params('testForwardOnlyAndFreeze')._replace(
+        forward_only=True, freeze_when_forward_only=True, train_dir=None)
+    # Training is not supported with --freeze_when_forward_only.
+    self._train_and_eval_local(params, skip='eval_and_train_from_checkpoint')
+
   def testNoDistortions(self):
     params = test_util.get_params('testNoDistortions')._replace(
         distortions=False)
