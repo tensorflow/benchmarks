@@ -2157,7 +2157,8 @@ class BenchmarkCNN(object):
         self.model.get_image_size(), self.model.get_image_size(),
         self.batch_size, len(
             self.devices), self.image_preprocessor.parse_and_preprocess,
-        self.cpu_device, self.params, self.devices, self.dataset)
+        self.cpu_device, self.params, self.devices, get_data_type(self.params),
+        self.dataset)
 
     update_ops = None
 
@@ -2439,7 +2440,7 @@ class BenchmarkCNN(object):
           self.batch_size // len(self.devices),
           len(self.devices), self.image_preprocessor.parse_and_preprocess,
           self.cpu_device, self.params,
-          self.devices, self.dataset)
+          self.devices, get_data_type(self.params), self.dataset)
 
       # Build the per-worker model replica.
       for rel_device_num in range(len(self.devices)):

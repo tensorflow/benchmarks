@@ -28,7 +28,7 @@ from tensorflow.python.platform import gfile
 
 def build_prefetch_image_processing(height, width, batch_size, num_splits,
                                     preprocess_fn, cpu_device, params,
-                                    gpu_devices, dataset):
+                                    gpu_devices, data_type, dataset):
   """"Returns FunctionBufferingResources that do image pre(processing)."""
   with tf.device(cpu_device):
     if params.eval:
@@ -52,6 +52,7 @@ def build_prefetch_image_processing(height, width, batch_size, num_splits,
       with tf.device(gpu_devices[device_num]):
         buffer_resource_handle = prefetching_ops.function_buffering_resource(
             f=remote_fn,
+            output_types=[data_type, tf.int32],
             target_device=cpu_device,
             string_arg=args[0],
             buffer_size=params.datasets_prefetch_buffer_size,
