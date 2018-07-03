@@ -734,7 +734,7 @@ def benchmark_one_step(sess,
             'text' if as_text else 'binary',
             os.path.join(path, graph_filename)))
         tf.train.write_graph(graph_def, path, graph_filename, as_text)
-  return summary_str
+  return (summary_str, lossval)
 
 
 def get_perf_timing_str(speed_mean, speed_uncertainty, speed_jitter, scale=1):
@@ -1829,6 +1829,7 @@ class BenchmarkCNN(object):
                                                          self.params.debugger)
       profiler = tf.profiler.Profiler() if self.params.tfprof_file else None
       loop_start_time = time.time()
+      last_average_loss = None
       while not done_fn():
         if local_step == 0:
           log_fn('Done warm up')
@@ -1852,7 +1853,7 @@ class BenchmarkCNN(object):
           fetch_summary = None
         collective_graph_key = 7 if (
             self.params.variable_update == 'collective_all_reduce') else 0
-        summary_str = benchmark_one_step(
+        (summary_str, last_average_loss) = benchmark_one_step(
             sess, graph_info.fetches, local_step,
             self.batch_size * (self.num_workers
                                if self.single_session else 1), step_train_times,
@@ -1909,12 +1910,15 @@ class BenchmarkCNN(object):
     sv.stop()
     if profiler:
       generate_tfprof_profile(profiler, self.params.tfprof_file)
-    return {
+    stats = {
         'num_workers': self.num_workers,
         'num_steps': num_steps,
         'average_wall_time': average_wall_time,
         'images_per_sec': images_per_sec
     }
+    if last_average_loss is not None:
+      stats['last_average_loss'] = last_average_loss
+    return stats
 
   def _freeze_graph(self, graph, graph_info):
     """Freeze and re-import the graph.
