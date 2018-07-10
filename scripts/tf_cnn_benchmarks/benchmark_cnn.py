@@ -1600,6 +1600,16 @@ class BenchmarkCNN(object):
     with graph.as_default():
       return self._benchmark_graph(result_to_benchmark)
 
+  GPU_CACHED_IMAGES_VARIABLE_NAME = 'gpu_cached_images'
+
+  def _unfreezable_local_variables(self, graph):
+    """Get the local variables that we don't want to freeze."""
+    return graph.get_collection(
+        tf.GraphKeys.LOCAL_VARIABLES,
+        # We don't freeze the gpu_cached_images local variable so it won't get
+        # constant folded with ops which process the input.
+        scope='.*' + BenchmarkCNN.GPU_CACHED_IMAGES_VARIABLE_NAME)
+
   def _build_graph(self):
     """Build the graph.
 
@@ -1641,27 +1651,29 @@ class BenchmarkCNN(object):
       fetches['sync_queues'] = self.add_sync_queues_and_barrier(
           'sync_queues_step_end_', [main_fetch_group])
 
-    local_var_init_op = tf.local_variables_initializer()
+    # Skips the init ops for freezable local variables in forward_only mode so
+    # we can remove all the assign ops when converting variables to constants.
+    if self.forward_only_and_freeze:
+      local_var_init_op = tf.variables_initializer(
+          self._unfreezable_local_variables(tf.get_default_graph()))
+    else:
+      local_var_init_op = tf.local_variables_initializer()
     table_init_ops = tf.tables_initializer()
 
-    # Skips the init ops for variables in forward_only mode so we can remove all
-    # the assign ops when converting variables to constants.
-    variable_mgr_init_ops = []
-    if not self.forward_only_and_freeze:
-      variable_mgr_init_ops.append(local_var_init_op)
+    variable_manager_init_ops = [local_var_init_op]
     if table_init_ops:
-      variable_mgr_init_ops.extend([table_init_ops])
+      variable_manager_init_ops.extend([table_init_ops])
     if not self.forward_only_and_freeze:
       with tf.control_dependencies([local_var_init_op]):
-        variable_mgr_init_ops.extend(self.variable_mgr.get_post_init_ops())
+        variable_manager_init_ops.extend(self.variable_mgr.get_post_init_ops())
     if ((not self.single_session) and (not self.distributed_collective) and
         self.job_name and self.params.cross_replica_sync):
-      # Ensure all workers execute variable_mgr_init_ops before they start
+      # Ensure all workers execute variable_manager_init_ops before they start
       # executing the model.
-      variable_mgr_init_ops.append(
+      variable_manager_init_ops.append(
           self.add_sync_queues_and_barrier('init_ops_end_',
-                                           variable_mgr_init_ops))
-    local_var_init_op_group = tf.group(*variable_mgr_init_ops)
+                                           variable_manager_init_ops))
+    local_var_init_op_group = tf.group(*variable_manager_init_ops)
 
     return BenchmarkCNN.GraphInfo(
         image_producer_ops=image_producer_ops,
@@ -1936,13 +1948,26 @@ class BenchmarkCNN(object):
     assert isinstance(graph_info.global_step, tf.Variable)
 
     # Get the names of the ops that need to keep during conversion.
-    flattened_op_names = list(set([
-        v.name.split(':')[0] for v in nest.flatten(graph_info) if v is not None
-    ]))
-    output_node_names = flattened_op_names + [
-        graph_info.global_step.initializer.name,
-        graph_info.global_step.value().op.name
-    ]
+    flattened_op_names = list(
+        set([
+            v.name.split(':')[0]
+            for v in nest.flatten(graph_info)
+            if v is not None
+        ]))
+    # Get variables that we don't want to freeze.
+    # TODO(laigd): consider making global_step a constant.
+    variables_to_keep = {graph_info.global_step: tf.GraphKeys.GLOBAL_VARIABLES}
+    variables_to_keep.update({
+        local_variable: tf.GraphKeys.LOCAL_VARIABLES
+        for local_variable in self._unfreezable_local_variables(graph)
+    })
+
+    output_node_names = (
+        flattened_op_names +
+        # Add variable initializer and read ops to the output list, so
+        # convert_variables_to_constants() will keep them.
+        [variable.initializer.name for variable in variables_to_keep] +
+        [variable.value().op.name for variable in variables_to_keep])
 
     # Freeze the graph.
     with graph.as_default():
@@ -1953,24 +1978,22 @@ class BenchmarkCNN(object):
             sess,
             graph.as_graph_def(add_shapes=True),
             output_node_names,
-            # TODO(laigd): consider making global_step a constant.
-            variable_names_blacklist=graph_info.global_step.name)
-
-    scope_name = 'converted'
-    converted_name = lambda name: (scope_name + '/' + name)
+            variable_names_blacklist=[
+                variable.op.name for variable in variables_to_keep
+            ])
 
     # Creates a new graph as the default and import the converted graph back.
     updated_graph = tf.Graph()
 
     def _get_tensors_or_ops(inputs):
       """Gets the updated tensors or ops from 'updated_graph'."""
-      def _get_fn(elem):
-        if elem is None:
+
+      def _get_fn(element):
+        if element is None:
           return None
-        name = converted_name(elem.name)
-        if ':' in name:
-          return updated_graph.get_tensor_by_name(name)
-        return updated_graph.get_operation_by_name(name)
+        if ':' in element.name:
+          return updated_graph.get_tensor_by_name(element.name)
+        return updated_graph.get_operation_by_name(element.name)
 
       if isinstance(inputs, (list, dict, tuple)):
         return nest.map_structure(_get_fn, inputs)
@@ -1978,12 +2001,14 @@ class BenchmarkCNN(object):
         return _get_fn(inputs)
 
     with updated_graph.as_default():
-      importer.import_graph_def(graph_def=converted_graphdef, name=scope_name)
+      importer.import_graph_def(graph_def=converted_graphdef, name='')
 
-      # Updates global_step.
-      updated_global_step = tf.Variable.from_proto(
-          graph_info.global_step.to_proto(), scope_name)
-      tf.add_to_collection(tf.GraphKeys.GLOBAL_VARIABLES, updated_global_step)
+      # Update the variables
+      for variable in variables_to_keep:
+        updated_variable = tf.Variable.from_proto(variable.to_proto())
+        tf.add_to_collection(variables_to_keep[variable], updated_variable)
+        if variable is graph_info.global_step:
+          updated_global_step = updated_variable
 
     updated_graph_info = BenchmarkCNN.GraphInfo(
         image_producer_ops=_get_tensors_or_ops(graph_info.image_producer_ops),
@@ -2544,7 +2569,7 @@ class BenchmarkCNN(object):
               stddev=60,
               name='synthetic_images')
           images = tf.contrib.framework.local_variable(
-              images, name='gpu_cached_images')
+              images, name=BenchmarkCNN.GPU_CACHED_IMAGES_VARIABLE_NAME)
           labels = tf.random_uniform(
               labels_shape,
               minval=0,
