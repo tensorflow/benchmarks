@@ -179,7 +179,7 @@ flags.DEFINE_enum('device', 'gpu', ('cpu', 'gpu', 'CPU', 'GPU'),
 flags.DEFINE_enum('data_format', 'NCHW', ('NHWC', 'NCHW'),
                   'Data layout to use: NHWC (TF native) or NCHW (cuDNN '
                   'native, requires GPU).')
-flags.DEFINE_integer('num_intra_threads', 1,
+flags.DEFINE_integer('num_intra_threads', None,
                      'Number of threads to use for intra-op parallelism. If '
                      'set to 0, the system will pick an appropriate number.')
 flags.DEFINE_integer('num_inter_threads', 0,
@@ -587,7 +587,11 @@ def create_config_proto(params):
   """
   config = tf.ConfigProto()
   config.allow_soft_placement = True
-  config.intra_op_parallelism_threads = params.num_intra_threads
+  if params.num_intra_threads is None:
+    if params.device == 'gpu':
+      config.intra_op_parallelism_threads = 1
+  else:
+    config.intra_op_parallelism_threads = params.num_intra_threads
   config.inter_op_parallelism_threads = params.num_inter_threads
   config.experimental.collective_group_leader = '/job:worker/replica:0/task:0'
   config.gpu_options.force_gpu_compatible = params.force_gpu_compatible
