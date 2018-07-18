@@ -304,13 +304,15 @@ class VariableMgrLocalReplicated(VariableMgr):
     if self.benchmark_cnn.enable_auto_loss_scale:
       # Check for infs or nans
       is_finite_list = []
-      for tower_grads in reduced_grads:
-        with tf.colocate_with(tower_grads[0]):
-          # TODO(tanmingxing): Create fused op that takes in a list of tensors
-          # as input and returns scalar boolean True if there are any infs/nans.
-          is_finite_list.append(tf.reduce_all(
-              [tf.reduce_all(tf.is_finite(g)) for g in tower_grads]))
-      self.grad_has_inf_nan = tf.logical_not(tf.reduce_all(is_finite_list))
+      with tf.name_scope('check_for_inf_and_nan'):
+        for tower_grads in reduced_grads:
+          with tf.colocate_with(tower_grads[0]):
+            # TODO(tanmingxing): Create fused op that takes in a list of tensors
+            # as input and returns scalar boolean True if there are any
+            # infs/nans.
+            is_finite_list.append(tf.reduce_all(
+                [tf.reduce_all(tf.is_finite(g)) for g in tower_grads]))
+        self.grad_has_inf_nan = tf.logical_not(tf.reduce_all(is_finite_list))
     reduced_device_grads = [[
         (g, v) for g, (_, v) in zip(grads, grad_vars)
     ] for grads, grad_vars in zip(reduced_grads, device_grads)]

@@ -255,17 +255,15 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
       if params.variable_update == 'parameter_server':
         for v in all_vars:
           tf.logging.debug('var: %s' % v.name)
-          if v.name.startswith('v/'):
-            if v.name == 'v/tower_0/gpu_cached_images:0':
-              self.assertEquals(v.device, '/device:GPU:0')
-            else:
-              self.assertEquals(v.device,
-                                '/device:%s:0' % local_parameter_device)
-              self._assert_correct_var_type(v, params)
-          elif v.name.startswith('v_1/'):
-            self.assertEquals(v.name, 'v_1/tower_1/gpu_cached_images:0')
-            self.assertEquals(v.device, '/device:GPU:1')
-          elif v.name in ('images:0', 'labels:0', 'init_learning_rate:0',
+          match = re.match(r'tower_(\d+)/v/gpu_cached_images:0', v.name)
+          if match:
+            self.assertEquals(v.device, '/device:GPU:%s' % match.group(1))
+          elif v.name.startswith('v/'):
+            self.assertEquals(v.device,
+                              '/device:%s:0' % local_parameter_device)
+            self._assert_correct_var_type(v, params)
+          elif v.name in ('image_processing/images:0',
+                          'image_processing/labels:0', 'init_learning_rate:0',
                           'global_step:0', 'loss_scale:0',
                           'loss_scale_normal_steps:0'):
             self.assertEquals(v.device, '/device:CPU:0')
@@ -275,11 +273,11 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
         v0_count = 0
         v1_count = 0
         for v in all_vars:
-          if v.name.startswith('v/'):
-            self.assertEquals(v.name, 'v/tower_1/gpu_cached_images:0')
+          if v.name.startswith('tower_0/v0/'):
+            self.assertEquals(v.name, 'tower_0/v0/gpu_cached_images:0')
             self.assertEquals(v.device, '/device:GPU:0')
-          elif v.name.startswith('v_1/'):
-            self.assertEquals(v.name, 'v_1/tower_1/gpu_cached_images:0')
+          elif v.name.startswith('tower_1/v1/'):
+            self.assertEquals(v.name, 'tower_1/v1/gpu_cached_images:0')
             self.assertEquals(v.device, '/device:GPU:1')
           elif v.name.startswith('v0/'):
             v0_count += 1
@@ -289,7 +287,8 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
             v1_count += 1
             self.assertEquals(v.device, '/device:GPU:1')
             self._assert_correct_var_type(v, params)
-          elif v.name in ('images:0', 'labels:0', 'init_learning_rate:0',
+          elif v.name in ('image_processing/images:0',
+                          'image_processing/labels:0', 'init_learning_rate:0',
                           'global_step:0', 'loss_scale:0',
                           'loss_scale_normal_steps:0'):
             self.assertEquals(v.device, '/device:CPU:0')
@@ -834,7 +833,7 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     with tf.Graph().as_default() as graph:
       bench._build_model()
       global_step = graph.get_tensor_by_name('global_step:0')
-      learning_rate = graph.get_tensor_by_name('learning_rate:0')
+      learning_rate = graph.get_tensor_by_name('learning_rate_tensor:0')
       with self.test_session(graph=graph, use_gpu=True) as sess:
         items = global_step_to_expected_learning_rate.items()
         for global_step_val, expected_learning_rate in items:

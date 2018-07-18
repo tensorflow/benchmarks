@@ -942,45 +942,47 @@ def get_learning_rate(params, global_step, num_examples_per_epoch, model,
   Raises:
     ValueError: Invalid or unsupported params.
   """
-  num_batches_per_epoch = (float(num_examples_per_epoch) / batch_size)
+  with tf.name_scope('learning_rate'):
+    num_batches_per_epoch = (float(num_examples_per_epoch) / batch_size)
 
-  if params.piecewise_learning_rate_schedule:
-    if (params.init_learning_rate or params.learning_rate_decay_factor or
-        params.minimum_learning_rate or params.num_epochs_per_decay):
-      raise ValueError('No other learning rate-related flags can be specified '
-                       'if --piecewise_learning_rate_schedule is specified')
-    learning_rate = get_piecewise_learning_rate(
-        params.piecewise_learning_rate_schedule,
-        global_step, num_batches_per_epoch)
-  elif params.init_learning_rate:
-    learning_rate = params.init_learning_rate
-    if (params.num_epochs_per_decay > 0 and
-        params.learning_rate_decay_factor > 0):
-      decay_steps = int(num_batches_per_epoch * params.num_epochs_per_decay)
+    if params.piecewise_learning_rate_schedule:
+      if (params.init_learning_rate or params.learning_rate_decay_factor or
+          params.minimum_learning_rate or params.num_epochs_per_decay):
+        raise ValueError('No other learning rate-related flags can be '
+                         'specified if --piecewise_learning_rate_schedule is '
+                         'specified')
+      learning_rate = get_piecewise_learning_rate(
+          params.piecewise_learning_rate_schedule,
+          global_step, num_batches_per_epoch)
+    elif params.init_learning_rate:
+      learning_rate = params.init_learning_rate
+      if (params.num_epochs_per_decay > 0 and
+          params.learning_rate_decay_factor > 0):
+        decay_steps = int(num_batches_per_epoch * params.num_epochs_per_decay)
 
-      # Decay the learning rate exponentially based on the number of steps.
-      learning_rate = tf.train.exponential_decay(
-          params.init_learning_rate,
-          global_step,
-          decay_steps,
-          params.learning_rate_decay_factor,
-          staircase=True)
+        # Decay the learning rate exponentially based on the number of steps.
+        learning_rate = tf.train.exponential_decay(
+            params.init_learning_rate,
+            global_step,
+            decay_steps,
+            params.learning_rate_decay_factor,
+            staircase=True)
 
-      if params.minimum_learning_rate != 0.:
-        learning_rate = tf.maximum(learning_rate,
-                                   params.minimum_learning_rate)
-  else:
-    learning_rate = model.get_learning_rate(global_step, batch_size)
-  if params.num_learning_rate_warmup_epochs > 0 and (
-      params.init_learning_rate or params.piecewise_learning_rate_schedule):
-    warmup_steps = int(num_batches_per_epoch *
-                       params.num_learning_rate_warmup_epochs)
-    init_lr = (params.init_learning_rate or
-               float(params.piecewise_learning_rate_schedule.split(';')[0]))
-    warmup_lr = init_lr * tf.cast(global_step, tf.float32) / tf.cast(
-        warmup_steps, tf.float32)
-    learning_rate = tf.cond(global_step < warmup_steps,
-                            lambda: warmup_lr, lambda: learning_rate)
+        if params.minimum_learning_rate != 0.:
+          learning_rate = tf.maximum(learning_rate,
+                                     params.minimum_learning_rate)
+    else:
+      learning_rate = model.get_learning_rate(global_step, batch_size)
+    if params.num_learning_rate_warmup_epochs > 0 and (
+        params.init_learning_rate or params.piecewise_learning_rate_schedule):
+      warmup_steps = int(num_batches_per_epoch *
+                         params.num_learning_rate_warmup_epochs)
+      init_lr = (params.init_learning_rate or
+                 float(params.piecewise_learning_rate_schedule.split(';')[0]))
+      warmup_lr = init_lr * tf.cast(global_step, tf.float32) / tf.cast(
+          warmup_steps, tf.float32)
+      learning_rate = tf.cond(global_step < warmup_steps,
+                              lambda: warmup_lr, lambda: learning_rate)
 
   return learning_rate
 
@@ -1637,7 +1639,7 @@ class BenchmarkCNN(object):
       else:
         (image_producer_ops, enqueue_ops, fetches) = self._build_model()
     fetches_list = nest.flatten(list(fetches.values()))
-    main_fetch_group = tf.group(*fetches_list)
+    main_fetch_group = tf.group(*fetches_list, name='main_fetch_group')
     execution_barrier = None
     if (not self.single_session and self.job_name and
         not self.params.cross_replica_sync):
@@ -1645,7 +1647,7 @@ class BenchmarkCNN(object):
           'execution_barrier_', [])
 
     global_step = tf.train.get_global_step()
-    with tf.device(self.global_step_device):
+    with tf.device(self.global_step_device), tf.name_scope('inc_global_step'):
       with tf.control_dependencies([main_fetch_group]):
         fetches['inc_global_step'] = global_step.assign_add(1)
 
@@ -1657,11 +1659,12 @@ class BenchmarkCNN(object):
 
     # Skips the init ops for freezable local variables in forward_only mode so
     # we can remove all the assign ops when converting variables to constants.
-    if self.forward_only_and_freeze:
-      local_var_init_op = tf.variables_initializer(
-          self._unfreezable_local_variables(tf.get_default_graph()))
-    else:
-      local_var_init_op = tf.local_variables_initializer()
+    with tf.name_scope('local_variable_initialization'):
+      if self.forward_only_and_freeze:
+        local_var_init_op = tf.variables_initializer(
+            self._unfreezable_local_variables(tf.get_default_graph()))
+      else:
+        local_var_init_op = tf.local_variables_initializer()
     table_init_ops = tf.tables_initializer()
 
     variable_manager_init_ops = [local_var_init_op]
@@ -1677,7 +1680,8 @@ class BenchmarkCNN(object):
       variable_manager_init_ops.append(
           self.add_sync_queues_and_barrier('init_ops_end_',
                                            variable_manager_init_ops))
-    local_var_init_op_group = tf.group(*variable_manager_init_ops)
+    local_var_init_op_group = tf.group(*variable_manager_init_ops,
+                                       name='local_var_init_op_group')
 
     return BenchmarkCNN.GraphInfo(
         image_producer_ops=image_producer_ops,
@@ -2045,7 +2049,8 @@ class BenchmarkCNN(object):
         image_producer_stages.append(
             data_flow_ops.StagingArea(
                 [images_splits[0].dtype, labels_splits[0].dtype],
-                shapes=[images_shape, labels_shape]))
+                shapes=[images_shape, labels_shape],
+                shared_name='image_producer_staging_area_%d' % device_num))
         for group_index in xrange(self.batch_group_size):
           if not self.use_synthetic_gpu_images:
             batch_index = group_index + device_num * self.batch_group_size
@@ -2094,15 +2099,16 @@ class BenchmarkCNN(object):
           self.loss_scale_normal_steps = None
 
     # Build the processing and model for the worker.
-    (image_producer_ops,
-     image_producer_stages) = self._build_image_processing(shift_ratio=0)
-    image_producer_ops = tf.group(*image_producer_ops)
+    with tf.name_scope('image_processing'):
+      (image_producer_ops,
+       image_producer_stages) = self._build_image_processing(shift_ratio=0)
+      image_producer_ops = tf.group(*image_producer_ops)
     update_ops = None
     staging_delta_ops = []
 
     for device_num in range(len(self.devices)):
-      with self.variable_mgr.create_outer_variable_scope(
-          device_num), tf.name_scope('tower_%i' % device_num) as name_scope:
+      with tf.name_scope('tower_%i' % device_num) as name_scope, (
+          self.variable_mgr.create_outer_variable_scope(device_num)):
         results = self.add_forward_pass_and_gradients(
             phase_train, device_num, device_num,
             image_producer_stages[device_num], gpu_compute_stage_ops,
@@ -2134,7 +2140,8 @@ class BenchmarkCNN(object):
       for staging_ops in self.variable_mgr.staging_vars_on_devices:
         gpu_compute_stage_ops.extend(
             [put_op for _, (put_op, _) in six.iteritems(staging_ops)])
-    enqueue_ops.append(tf.group(*gpu_compute_stage_ops))
+    enqueue_ops.append(tf.group(*gpu_compute_stage_ops,
+                                name='gpu_compute_stage_ops_group'))
     if gpu_grad_stage_ops:
       staging_delta_ops += gpu_grad_stage_ops
     if staging_delta_ops:
@@ -2186,18 +2193,19 @@ class BenchmarkCNN(object):
           self.loss_scale_normal_steps = None
 
     # Build the processing and model for the worker.
-    function_buffering_resources = data_utils.build_prefetch_image_processing(
-        self.model.get_image_size(), self.model.get_image_size(),
-        self.batch_size, len(
-            self.devices), self.image_preprocessor.parse_and_preprocess,
-        self.cpu_device, self.params, self.devices, get_data_type(self.params),
-        self.dataset)
+    with tf.name_scope('image_processing'):
+      function_buffering_resources = data_utils.build_prefetch_image_processing(
+          self.model.get_image_size(), self.model.get_image_size(),
+          self.batch_size, len(
+              self.devices), self.image_preprocessor.parse_and_preprocess,
+          self.cpu_device, self.params, self.devices,
+          get_data_type(self.params), self.dataset)
 
     update_ops = None
 
     for device_num in range(len(self.devices)):
-      with self.variable_mgr.create_outer_variable_scope(
-          device_num), tf.name_scope('tower_%i' % device_num) as name_scope:
+      with tf.name_scope('tower_%i' % device_num) as name_scope, (
+          self.variable_mgr.create_outer_variable_scope(device_num)):
         function_buffering_resource = function_buffering_resources[device_num]
         results = self.add_forward_pass_and_gradients(
             phase_train, device_num, device_num, None, None, None,
@@ -2256,8 +2264,11 @@ class BenchmarkCNN(object):
     training_ops = []
     for d, device in enumerate(apply_gradient_devices):
       with tf.device(device):
-        average_loss = tf.reduce_mean(losses)
-        avg_grads = self.variable_mgr.get_gradients_to_apply(d, gradient_state)
+        with tf.name_scope('average_loss'):
+          average_loss = tf.reduce_mean(losses)
+        with tf.name_scope('get_gradients_to_apply'):
+          avg_grads = self.variable_mgr.get_gradients_to_apply(d,
+                                                               gradient_state)
 
         gradient_clip = self.params.gradient_clip
         # TODO(reedwm): Greatly simplify the learning rate code.
@@ -2273,13 +2284,14 @@ class BenchmarkCNN(object):
                                           self.model, examples_per_step)
 
         if gradient_clip is not None:
-          clipped_grads = [(tf.clip_by_value(grad, -gradient_clip,
-                                             +gradient_clip), var)
-                           for grad, var in avg_grads]
+          with tf.name_scope('clip_gradients'):
+            clipped_grads = [(tf.clip_by_value(grad, -gradient_clip,
+                                               +gradient_clip), var)
+                             for grad, var in avg_grads]
         else:
           clipped_grads = avg_grads
 
-        learning_rate = tf.identity(learning_rate, name='learning_rate')
+        learning_rate = tf.identity(learning_rate, name='learning_rate_tensor')
         opt = get_optimizer(self.params, learning_rate)
         loss_scale_params = variable_mgr_util.AutoLossScaleParams(
             enable_auto_loss_scale=self.enable_auto_loss_scale,
@@ -2288,9 +2300,11 @@ class BenchmarkCNN(object):
             inc_loss_scale_every_n=self.params.fp16_inc_loss_scale_every_n,
             is_chief=not self.job_name or self.task_index == 0)
 
-        self.variable_mgr.append_apply_gradients_ops(
-            gradient_state, opt, clipped_grads, training_ops, loss_scale_params)
-    train_op = tf.group(*(training_ops + update_ops))
+        with tf.name_scope('append_apply_gradient_ops'):
+          self.variable_mgr.append_apply_gradients_ops(
+              gradient_state, opt, clipped_grads, training_ops,
+              loss_scale_params)
+    train_op = tf.group(*(training_ops + update_ops), name='train_ops_group')
 
     with tf.device(self.cpu_device):
       if self.task_index == 0 and self.params.summary_verbosity >= 1:
@@ -2302,16 +2316,7 @@ class BenchmarkCNN(object):
                             self.loss_scale_normal_steps)
 
         if self.params.summary_verbosity >= 2:
-          # Histogram of log values of all non-zero gradients.
-          all_grads = []
-          for grad, var in avg_grads:
-            all_grads.append(tf.reshape(grad, [-1]))
-          grads = tf.abs(tf.concat(all_grads, 0))
-          # exclude grads with zero values.
-          indices_for_non_zero_grads = tf.where(tf.not_equal(grads, 0))
-          log_grads = tf.reshape(
-              tf.log(tf.gather(grads, indices_for_non_zero_grads)), [-1])
-          tf.summary.histogram('log_gradients', log_grads)
+          self.gradient_histogram_summary(avg_grads)
 
         if self.params.summary_verbosity >= 3:
           for grad, var in avg_grads:
@@ -2323,6 +2328,19 @@ class BenchmarkCNN(object):
     fetches['train_op'] = train_op
     fetches['average_loss'] = average_loss
     return fetches
+
+  def gradient_histogram_summary(self, avg_grads):
+    """Create histogram of log values of all non-zero gradients."""
+    with tf.name_scope('log_gradients_summary'):
+      all_grads = []
+      for grad, _ in avg_grads:
+        all_grads.append(tf.reshape(grad, [-1]))
+      grads = tf.abs(tf.concat(all_grads, 0))
+      # exclude grads with zero values.
+      indices_for_non_zero_grads = tf.where(tf.not_equal(grads, 0))
+      log_grads = tf.reshape(
+          tf.log(tf.gather(grads, indices_for_non_zero_grads)), [-1])
+      tf.summary.histogram('log_gradients', log_grads)
 
   def _build_model_single_session(self):
     """Build the TensorFlow graph for multiple replicas in a single_session.
@@ -2372,9 +2390,10 @@ class BenchmarkCNN(object):
       # belonging to the next worker (task).
       self.reset_devices_for_task(task_num, is_local)
       # Build the per-worker image processing
-      (image_producer_ops, image_producer_stages) = (
-          self._build_image_processing(
-              shift_ratio=(float(task_num) / self.num_workers)))
+      with tf.name_scope('image_processing'):
+        (image_producer_ops, image_producer_stages) = (
+            self._build_image_processing(
+                shift_ratio=(float(task_num) / self.num_workers)))
       global_image_producer_ops.extend(image_producer_ops)
       # Build the per-worker model replica.
       for rel_device_num in range(len(self.devices)):
@@ -2412,7 +2431,8 @@ class BenchmarkCNN(object):
                 tf.get_collection(tf.GraphKeys.UPDATE_OPS, name_scope))
             assert not self.variable_mgr.staging_delta_ops
 
-    enqueue_ops.append(tf.group(*gpu_compute_stage_ops))
+    enqueue_ops.append(tf.group(*gpu_compute_stage_ops,
+                                name='gpu_compute_stage_ops'))
     assert not self.variable_mgr.supports_staged_vars()
     assert not gpu_grad_stage_ops
 
@@ -2468,12 +2488,14 @@ class BenchmarkCNN(object):
       # belonging to the next worker (task).
       self.reset_devices_for_task(task_num, is_local)
       # Build the per-worker image processing
-      function_buffering_resources = data_utils.build_prefetch_image_processing(
-          self.model.get_image_size(), self.model.get_image_size(),
-          self.batch_size // len(self.devices),
-          len(self.devices), self.image_preprocessor.parse_and_preprocess,
-          self.cpu_device, self.params,
-          self.devices, get_data_type(self.params), self.dataset)
+      with tf.name_scope('image_processing'):
+        function_buffering_resources = (
+            data_utils.build_prefetch_image_processing(
+                self.model.get_image_size(), self.model.get_image_size(),
+                self.batch_size // len(self.devices), len(
+                    self.devices), self.image_preprocessor.parse_and_preprocess,
+                self.cpu_device, self.params, self.devices,
+                get_data_type(self.params), self.dataset))
 
       # Build the per-worker model replica.
       for rel_device_num in range(len(self.devices)):
@@ -2601,31 +2623,35 @@ class BenchmarkCNN(object):
       base_loss = loss_func(logits, labels, aux_logits=aux_logits)
       params = self.variable_mgr.trainable_variables_on_device(
           rel_device_num, abs_device_num)
-      fp32_params = params
-      if data_type == tf.float16 and self.params.fp16_vars:
-        # fp16 reductions are very slow on GPUs, so cast to fp32 before calling
-        # tf.nn.l2_loss and tf.add_n.
-        # TODO(b/36217816): Once the bug is fixed, investigate if we should do
-        # this reduction in fp16.
-        fp32_params = (tf.cast(p, tf.float32) for p in params)
+      l2_loss = None
       total_loss = base_loss
-      if rel_device_num == len(self.devices) - 1:
-        # We compute the L2 loss for only one device instead of all of them,
-        # because the L2 loss for each device is the same. To adjust for this,
-        # we multiply the L2 loss by the number of devices. We choose the last
-        # device because for some reason, on a Volta DGX1, the first four
-        # GPUs take slightly longer to complete a step than the last four.
-        # TODO(reedwm): Shard the L2 loss computations across GPUs.
-        if self.params.single_l2_loss_op:
-          # TODO(reedwm): If faster, create a fused op that does the L2 loss on
-          # multiple tensors, and use that instead of concatenating tensors.
-          reshaped_params = [tf.reshape(p, (-1,)) for p in fp32_params]
-          l2_loss = tf.nn.l2_loss(tf.concat(reshaped_params, axis=0))
-        else:
-          l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in fp32_params])
-        weight_decay = self.params.weight_decay
-        if weight_decay is not None and weight_decay != 0.:
-          total_loss += len(self.devices) * weight_decay * l2_loss
+      with tf.name_scope('l2_loss'):
+        fp32_params = params
+        if data_type == tf.float16 and self.params.fp16_vars:
+          # fp16 reductions are very slow on GPUs, so cast to fp32 before
+          # calling tf.nn.l2_loss and tf.add_n.
+          # TODO(b/36217816): Once the bug is fixed, investigate if we should do
+          # this reduction in fp16.
+          fp32_params = (tf.cast(p, tf.float32) for p in params)
+        if rel_device_num == len(self.devices) - 1:
+          # We compute the L2 loss for only one device instead of all of them,
+          # because the L2 loss for each device is the same. To adjust for this,
+          # we multiply the L2 loss by the number of devices. We choose the
+          # last device because for some reason, on a Volta DGX1, the first four
+          # GPUs take slightly longer to complete a step than the last four.
+          # TODO(reedwm): Shard the L2 loss computations across GPUs.
+          if self.params.single_l2_loss_op:
+            # TODO(reedwm): If faster, create a fused op that does the L2 loss
+            # on multiple tensors, and use that instead of concatenating
+            # tensors.
+            reshaped_params = [tf.reshape(p, (-1,)) for p in fp32_params]
+            l2_loss = tf.nn.l2_loss(tf.concat(reshaped_params, axis=0))
+          else:
+            l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in fp32_params])
+      weight_decay = self.params.weight_decay
+      if (weight_decay is not None and weight_decay != 0. and
+          l2_loss is not None):
+        total_loss += len(self.devices) * weight_decay * l2_loss
 
       aggmeth = tf.AggregationMethod.DEFAULT
       scaled_loss = (total_loss if self.loss_scale is None
