@@ -66,10 +66,10 @@ def bottleneck_block_v1(cnn, depth, depth_bottleneck, stride):
           depth, 1, 1, stride, stride, activation=None,
           use_batch_norm=True, input_layer=input_layer,
           num_channels_in=in_size, bias=None)
-    cnn.conv(depth_bottleneck, 1, 1, stride, stride,
+    cnn.conv(depth_bottleneck, 1, 1, 1, 1,
              input_layer=input_layer, num_channels_in=in_size,
              use_batch_norm=True, bias=None)
-    cnn.conv(depth_bottleneck, 3, 3, 1, 1, mode='SAME_RESNET',
+    cnn.conv(depth_bottleneck, 3, 3, stride, stride, mode='SAME_RESNET',
              use_batch_norm=True, bias=None)
     res = cnn.conv(depth, 1, 1, 1, 1, activation=None,
                    use_batch_norm=True, bias=None)
