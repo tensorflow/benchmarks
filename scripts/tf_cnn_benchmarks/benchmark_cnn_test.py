@@ -76,8 +76,8 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
     params = benchmark_cnn.make_params(
         model=self.get_model_name(),
         num_batches=1,
-        num_intra_threads=1,
-        num_inter_threads=12,
+        num_intra_threads=0,
+        num_inter_threads=0,
         distortions=False,
         batch_size=2,
         variable_update='replicated',
