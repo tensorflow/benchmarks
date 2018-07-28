@@ -77,12 +77,17 @@ def bottleneck_block_v1(cnn, depth, depth_bottleneck, stride):
     cnn.top_layer = output
     cnn.top_size = depth
 
-def bottleneck_block_v15(cnn, depth, depth_bottleneck, stride):
-  """Bottleneck block with identity short-cut for ResNet v1 with 3x3 stride 2.
 
-  ResNet v1.5 is the informal name for ResNet v1 where the first 3x3 conv in
-  each block has a stride 2 an the 1x1 a stride 1.  ResNet v1 has the stride 2
-  on the 1x1 and stride 1 on the 3x3.
+def bottleneck_block_v1_5(cnn, depth, depth_bottleneck, stride):
+  """Bottleneck block with identity short-cut for ResNet v1.5.
+
+  ResNet v1.5 is the informal name for ResNet v1 where stride 2 is used in the
+  first 3x3 convolution of each block instead of the first 1x1 convolution.
+
+  First seen at https://github.com/facebook/fb.resnet.torch. Used in the paper
+  "Accurate, Large Minibatch SGD: Training ImageNet in 1 Hour"
+  (arXiv:1706.02677v2) and by fast.ai to train to accuracy in 45 epochs using
+  multiple image sizes.
 
   Args:
     cnn: the network to append bottleneck blocks.
@@ -119,6 +124,7 @@ def bottleneck_block_v15(cnn, depth, depth_bottleneck, stride):
     output = tf.nn.relu(shortcut + res)
     cnn.top_layer = output
     cnn.top_size = depth
+
 
 def bottleneck_block_v2(cnn, depth, depth_bottleneck, stride):
   """Bottleneck block with identity short-cut for ResNet v2.
@@ -178,7 +184,7 @@ def bottleneck_block(cnn, depth, depth_bottleneck, stride, version):
   if version == 'v2':
     bottleneck_block_v2(cnn, depth, depth_bottleneck, stride)
   elif version == 'v1.5':
-    bottleneck_block_v15(cnn, depth, depth_bottleneck, stride)
+    bottleneck_block_v1_5(cnn, depth, depth_bottleneck, stride)
   else:
     bottleneck_block_v1(cnn, depth, depth_bottleneck, stride)
 
