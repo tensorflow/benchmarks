@@ -613,6 +613,8 @@ def create_config_proto(params):
   if params.variable_update == 'horovod':
     import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
     config.gpu_options.visible_device_list = str(hvd.local_rank())
+  if params.variable_update == 'collective_all_reduce':
+    config.gpu_options.experimental.num_dev_to_dev_copy_streams = 2
 
   return config
 
@@ -1262,9 +1264,6 @@ class BenchmarkCNN(object):
           self.params.allreduce_merge_scope)
     elif self.params.variable_update == 'collective_all_reduce':
       assert self.params.cross_replica_sync
-      if self.num_workers > 1:
-        raise ValueError('collective_all_reduce not yet supported for '
-                         'num_workers > 1')
       self.variable_mgr = variable_mgr.VariableMgrCollectiveAllReduce(
           self, self.params.all_reduce_spec,
           self.num_workers, self.num_gpus, self.task_index,
@@ -1290,6 +1289,8 @@ class BenchmarkCNN(object):
     if self.job_name:
       if use_ps_server:
         self.global_step_device = self.param_server_device
+      elif self.params.variable_update == 'collective_all_reduce':
+        self.global_step_device = self.cpu_device
       else:
         self.global_step_device = '/job:worker/replica:0/task:0/cpu:0'
     else:
@@ -1740,7 +1741,8 @@ class BenchmarkCNN(object):
     else:
       saver = None
     ready_for_local_init_op = None
-    if self.job_name and not self.single_session:
+    if self.job_name and not (self.single_session or
+                              self.distributed_collective):
       # In distributed mode, we don't want to run local_var_init_op_group until
       # the global variables are initialized, because local_var_init_op_group
       # may use global variables (such as in distributed replicated mode). We
@@ -2272,7 +2274,8 @@ class BenchmarkCNN(object):
 
         gradient_clip = self.params.gradient_clip
         # TODO(reedwm): Greatly simplify the learning rate code.
-        if self.params.variable_update == 'horovod':
+        if (self.params.variable_update == 'horovod' or
+            self.params.variable_update == 'collective_all_reduce'):
           # Each worker independently increments global_step.
           examples_per_step = self.batch_size * self.num_workers
         else:
