@@ -298,8 +298,10 @@ class ResnetModel(model_lib.Model):
 def create_resnet50_model():
   return ResnetModel('resnet50', (3, 4, 6, 3))
 
+
 def create_resnet50_v1_5_model():
   return ResnetModel('resnet50_v1.5', (3, 4, 6, 3))
+
 
 def create_resnet50_v2_model():
   return ResnetModel('resnet50_v2', (3, 4, 6, 3))
