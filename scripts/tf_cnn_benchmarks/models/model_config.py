@@ -66,6 +66,7 @@ _model_name_to_imagenet_model = {
     'official_resnet200':
     lambda: official_resnet_model.ImagenetResnetModel(200, version=1),
     'resnet50': resnet_model.create_resnet50_model,
+    'resnet50_v1.5': resnet_model.create_resnet50_v1_5_model,
     'resnet50_v2': resnet_model.create_resnet50_v2_model,
     'resnet101': resnet_model.create_resnet101_model,
     'resnet101_v2': resnet_model.create_resnet101_v2_model,
