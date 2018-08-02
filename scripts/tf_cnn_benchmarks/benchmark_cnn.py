@@ -2810,41 +2810,42 @@ def setup(params):
       os.environ['OMP_NUM_THREADS'] = str(params.num_intra_threads)
 
   # Sets GPU thread settings
-  params = params._replace(gpu_thread_mode=params.gpu_thread_mode.lower())
-  if params.gpu_thread_mode not in ['global', 'gpu_shared', 'gpu_private']:
-    raise ValueError('Invalid gpu_thread_mode: %s' % params.gpu_thread_mode)
-  os.environ['TF_GPU_THREAD_MODE'] = params.gpu_thread_mode
+  if params.device.lower() == 'gpu':
+    params = params._replace(gpu_thread_mode=params.gpu_thread_mode.lower())
+    if params.gpu_thread_mode not in ['global', 'gpu_shared', 'gpu_private']:
+      raise ValueError('Invalid gpu_thread_mode: %s' % params.gpu_thread_mode)
+    os.environ['TF_GPU_THREAD_MODE'] = params.gpu_thread_mode
 
-  if params.per_gpu_thread_count and params.gpu_thread_mode == 'global':
-    raise ValueError(
-        'Invalid per_gpu_thread_count with gpu_thread_mode=global: %s' %
-        params.per_gpu_thread_count)
-  # Default to two threads. One for the device compute and the other for
-  # memory copies.
-  per_gpu_thread_count = params.per_gpu_thread_count or 2
-  total_gpu_thread_count = per_gpu_thread_count * params.num_gpus
+    if params.per_gpu_thread_count and params.gpu_thread_mode == 'global':
+      raise ValueError(
+          'Invalid per_gpu_thread_count with gpu_thread_mode=global: %s' %
+          params.per_gpu_thread_count)
+    # Default to two threads. One for the device compute and the other for
+    # memory copies.
+    per_gpu_thread_count = params.per_gpu_thread_count or 2
+    total_gpu_thread_count = per_gpu_thread_count * params.num_gpus
 
-  if params.gpu_thread_mode == 'gpu_private':
-    os.environ['TF_GPU_THREAD_COUNT'] = str(per_gpu_thread_count)
-  elif params.gpu_thread_mode == 'gpu_shared':
-    os.environ['TF_GPU_THREAD_COUNT'] = str(total_gpu_thread_count)
+    if params.gpu_thread_mode == 'gpu_private':
+      os.environ['TF_GPU_THREAD_COUNT'] = str(per_gpu_thread_count)
+    elif params.gpu_thread_mode == 'gpu_shared':
+      os.environ['TF_GPU_THREAD_COUNT'] = str(total_gpu_thread_count)
 
-  cpu_count = multiprocessing.cpu_count()
-  if not params.num_inter_threads and params.gpu_thread_mode in [
-      'gpu_private', 'gpu_shared'
-  ]:
-    main_thread_count = max(cpu_count - total_gpu_thread_count, 1)
-    params = params._replace(num_inter_threads=main_thread_count)
+    cpu_count = multiprocessing.cpu_count()
+    if not params.num_inter_threads and params.gpu_thread_mode in [
+        'gpu_private', 'gpu_shared'
+    ]:
+      main_thread_count = max(cpu_count - total_gpu_thread_count, 1)
+      params = params._replace(num_inter_threads=main_thread_count)
 
-  if (params.datasets_use_prefetch and
-      params.datasets_num_private_threads is None):
-    # From the total cpu thread count, subtract the total_gpu_thread_count,
-    # and then 2 threads per GPU device for event monitoring and sending /
-    # receiving tensors
-    num_monitoring_threads = 2 * params.num_gpus
-    num_private_threads = max(
-        cpu_count - total_gpu_thread_count - num_monitoring_threads, 1)
-    params = params._replace(datasets_num_private_threads=num_private_threads)
+    if (params.datasets_use_prefetch and
+        params.datasets_num_private_threads is None):
+      # From the total cpu thread count, subtract the total_gpu_thread_count,
+      # and then 2 threads per GPU device for event monitoring and sending /
+      # receiving tensors
+      num_monitoring_threads = 2 * params.num_gpus
+      num_private_threads = max(
+          cpu_count - total_gpu_thread_count - num_monitoring_threads, 1)
+      params = params._replace(datasets_num_private_threads=num_private_threads)
 
   if params.variable_update == 'horovod':
     import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
