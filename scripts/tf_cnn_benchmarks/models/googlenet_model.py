@@ -25,7 +25,8 @@ References:
 from models import model
 
 
-class GooglenetModel(model.Model):
+class GooglenetModel(model.CNNModel):
+  """GoogLeNet."""
 
   def __init__(self):
     super(GooglenetModel, self).__init__('googlenet', 224, 32, 0.005)

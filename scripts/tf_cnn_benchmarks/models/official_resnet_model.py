@@ -23,7 +23,7 @@ import datasets
 from models import model as model_lib
 
 
-class ImagenetResnetModel(model_lib.Model):
+class ImagenetResnetModel(model_lib.CNNModel):
   """Official resnet models."""
 
   def __init__(self, resnet_size, version=2):

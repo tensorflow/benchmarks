@@ -19,30 +19,19 @@ import convnet_builder
 
 
 class Model(object):
-  """Base model configuration for CNN benchmarks."""
+  """Base model config for DNN benchmarks."""
 
-  def __init__(self,
-               model,
-               image_size,
-               batch_size,
-               learning_rate,
-               layer_counts=None,
-               fp16_loss_scale=128):
-    self.model = model
-    self.image_size = image_size
+  def __init__(self, model_name, batch_size, learning_rate, fp16_loss_scale):
+    self.model = model_name
     self.batch_size = batch_size
     self.default_batch_size = batch_size
     self.learning_rate = learning_rate
-    self.layer_counts = layer_counts
     # TODO(reedwm) Set custom loss scales for each model instead of using the
     # default of 128.
     self.fp16_loss_scale = fp16_loss_scale
 
   def get_model(self):
     return self.model
-
-  def get_image_size(self):
-    return self.image_size
 
   def get_batch_size(self):
     return self.batch_size
@@ -52,9 +41,6 @@ class Model(object):
 
   def get_default_batch_size(self):
     return self.default_batch_size
-
-  def get_layer_counts(self):
-    return self.layer_counts
 
   def get_fp16_loss_scale(self):
     return self.fp16_loss_scale
@@ -66,6 +52,33 @@ class Model(object):
 
   def add_inference(self, unused_cnn):
     raise ValueError('Must be implemented in derived classes')
+
+  def build_network(self, inputs, **kwargs):
+    del inputs
+    del kwargs
+    raise ValueError('Must be implemented in derived classes')
+
+
+class CNNModel(Model):
+  """Base model configuration for CNN benchmarks."""
+
+  def __init__(self,
+               model,
+               image_size,
+               batch_size,
+               learning_rate,
+               layer_counts=None,
+               fp16_loss_scale=128):
+    super(CNNModel, self).__init__(model, batch_size, learning_rate,
+                                   fp16_loss_scale)
+    self.image_size = image_size
+    self.layer_counts = layer_counts
+
+  def get_image_size(self):
+    return self.image_size
+
+  def get_layer_counts(self):
+    return self.layer_counts
 
   def skip_final_affine_layer(self):
     """Returns if the caller of this class should skip the final affine layer.

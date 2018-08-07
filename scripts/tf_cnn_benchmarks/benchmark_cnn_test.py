@@ -1003,7 +1003,7 @@ class VariableUpdateTest(tf.test.TestCase):
   def _get_benchmark_cnn_losses(self, inputs, params):
     """Returns the losses of BenchmarkCNN on the given inputs and params."""
     logs = []
-    model = test_util.TestModel()
+    model = test_util.TestCNNModel()
     with test_util.monkey_patch(benchmark_cnn,
                                 log_fn=test_util.print_and_add_to_list(logs),
                                 LOSS_AND_ACCURACY_DIGITS_TO_SHOW=15):
@@ -1022,16 +1022,16 @@ class VariableUpdateTest(tf.test.TestCase):
   def _test_variable_update(self, params):
     """Tests variables are updated correctly when the given params are used.
 
-    A BenchmarkCNN is created with a TestModel, and is run with some scalar
+    A BenchmarkCNN is created with a TestCNNModel, and is run with some scalar
     images. The losses are then compared with the losses obtained with
-    TestModel().manually_compute_losses()
+    TestCNNModel().manually_compute_losses()
 
     Args:
       params: a Params tuple used to create BenchmarkCNN.
     """
     inputs = test_util.get_fake_var_update_inputs()
     actual_losses = self._get_benchmark_cnn_losses(inputs, params)
-    expected_losses, = test_util.TestModel().manually_compute_losses(
+    expected_losses, = test_util.TestCNNModel().manually_compute_losses(
         inputs, 1, params)
     rtol = 3e-2 if params.use_fp16 else 1e-5
     self.assertAllClose(actual_losses[:len(expected_losses)], expected_losses,

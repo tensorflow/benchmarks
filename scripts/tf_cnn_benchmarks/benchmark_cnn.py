@@ -2773,8 +2773,8 @@ class BenchmarkCNN(object):
       return tf.group(*queue_ops)
 
 
-class BenchmarkSeq2Seq(BenchmarkCNN):
-  """Class for benchmarking a seq2seq network."""
+class BenchmarkNMT(BenchmarkCNN):
+  """Class for benchmarking a NMT network."""
 
   def __init__(self, params, dataset=None, model=None):
     # pylint:disable=super-init-not-called
@@ -2788,16 +2788,22 @@ class BenchmarkSeq2Seq(BenchmarkCNN):
     """
     pass
 
-  def _build_model_single_session_with_dataset_prefetching(self):
-    pass
+  def _build_model(self):
+    """Build the TensorFlow graph."""
+
+    # Not implemented since it's FLAGS.dataset_use_prefetch is default True.
+    raise NotImplementedError
 
   def _build_model_single_session(self):
-    pass
+    """Build the TensorFlow graph for multiple replicas in a single_session."""
+
+    # Not implemented since it's FLAGS.dataset_use_prefetch is default True.
+    raise NotImplementedError
 
   def _build_model_with_dataset_prefetching(self):
     pass
 
-  def _build_model(self):
+  def _build_model_single_session_with_dataset_prefetching(self):
     pass
 
 

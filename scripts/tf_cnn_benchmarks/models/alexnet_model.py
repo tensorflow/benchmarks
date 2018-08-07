@@ -25,7 +25,7 @@ import tensorflow as tf
 from models import model
 
 
-class AlexnetModel(model.Model):
+class AlexnetModel(model.CNNModel):
   """Alexnet cnn model."""
 
   def __init__(self):
@@ -48,7 +48,7 @@ class AlexnetModel(model.Model):
     cnn.dropout()
 
 
-class AlexnetCifar10Model(model.Model):
+class AlexnetCifar10Model(model.CNNModel):
   """Alexnet cnn model for cifar datasets.
 
   The model architecture follows the one defined in the tensorflow tutorial

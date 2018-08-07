@@ -24,7 +24,8 @@ References:
 from models import model
 
 
-class Lenet5Model(model.Model):
+class Lenet5Model(model.CNNModel):
+  """Lenet5."""
 
   def __init__(self):
     super(Lenet5Model, self).__init__('lenet5', 28, 32, 0.005)

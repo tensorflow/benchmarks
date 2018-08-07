@@ -532,7 +532,7 @@ def _build_nasnet_base(images,
   return logits, end_points
 
 
-class NasnetModel(model.Model):
+class NasnetModel(model.CNNModel):
   """Nasnet model configuration."""
 
   def __init__(self):
@@ -547,7 +547,7 @@ class NasnetModel(model.Model):
     cnn.top_size = cnn.top_layer.shape[-1].value
 
 
-class NasnetLargeModel(model.Model):
+class NasnetLargeModel(model.CNNModel):
   """Nasnet model configuration."""
 
   def __init__(self):
@@ -562,7 +562,7 @@ class NasnetLargeModel(model.Model):
     cnn.top_size = cnn.top_layer.shape[-1].value
 
 
-class NasnetCifarModel(model.Model):
+class NasnetCifarModel(model.CNNModel):
   """Nasnet cifar model configuration."""
 
   def __init__(self):

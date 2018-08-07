@@ -186,7 +186,7 @@ def training_scope(**kwargs):
   return lib.training_scope(**kwargs)
 
 
-class MobilenetModel(model.Model):
+class MobilenetModel(model.CNNModel):
   """Mobilenet model configuration."""
 
   def __init__(self):
@@ -196,4 +196,3 @@ class MobilenetModel(model.Model):
     with tf.contrib.slim.arg_scope(training_scope(is_training=cnn.phase_train)):
       cnn.top_layer, _ = mobilenet(cnn.top_layer, is_training=cnn.phase_train)
       cnn.top_size = cnn.top_layer.shape[-1].value
-

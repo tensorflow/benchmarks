@@ -433,7 +433,7 @@ def manually_compute_losses(numpy_inputs, inputs_placeholder, loss, num_workers,
   return losses
 
 
-class TestModel(model.Model):
+class TestCNNModel(model.CNNModel):
   """A simple model used for testing.
 
   The input is a 1-channel 1x1 image, consisting of a single number. The model
@@ -444,8 +444,8 @@ class TestModel(model.Model):
   """
 
   def __init__(self):
-    super(TestModel, self).__init__('test_model', image_size=1, batch_size=1,
-                                    learning_rate=1)
+    super(TestCNNModel, self).__init__(
+        'test_cnn_model', image_size=1, batch_size=1, learning_rate=1)
 
   VAR_A_INITIAL_VALUE = 1.
   VAR_B_INITIAL_VALUE = 2.

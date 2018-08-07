@@ -235,7 +235,7 @@ def residual_block(cnn, depth, stride, version):
   cnn.top_size = depth
 
 
-class ResnetModel(model_lib.Model):
+class ResnetModel(model_lib.CNNModel):
   """Resnet cnn network configuration."""
 
   def __init__(self, model, layer_counts):
@@ -323,7 +323,7 @@ def create_resnet152_v2_model():
   return ResnetModel('resnet152_v2', (3, 8, 36, 3))
 
 
-class ResnetCifar10Model(model_lib.Model):
+class ResnetCifar10Model(model_lib.CNNModel):
   """Resnet cnn network configuration for Cifar 10 dataset.
 
   V1 model architecture follows the one defined in the paper:
