@@ -59,6 +59,27 @@ from platforms import util as platforms_util
 
 _DEFAULT_NUM_BATCHES = 100
 
+
+# GraphInfo encapsulates the tensors/ops that we care about after building a
+# graph. We use them to benchmark the graph.
+GraphInfo = namedtuple(  # pylint: disable=invalid-name
+    'GraphInfo',
+    [
+        # Ops that produce the input batches (before preprocessing).
+        'input_producer_op',
+        # Ops that adds the preprocessed images to the staging areas
+        'enqueue_ops',
+        # Fetches of sess.run()
+        'fetches',
+        # Op that performs synchronization in distributed mode
+        'execution_barrier',
+        # The global step variable
+        'global_step',
+        # Group of ops that perform per-device initialization work
+        'local_var_init_op_group'
+    ])
+
+
 # TODO(reedwm): add upper_bound and lower_bound to appropriate integer and
 # float flags, and change certain string flags to enum flags.
 
@@ -1461,11 +1482,11 @@ class BenchmarkCNN(object):
     if self.params.eval:
       with tf.Graph().as_default():
         # TODO(laigd): freeze the graph in eval mode.
-        return self._eval_cnn()
+        return self._run_eval()
     else:
-      return self._benchmark_cnn()
+      return self._benchmark_train()
 
-  def _eval_cnn(self):
+  def _run_eval(self):
     """Evaluate a model every self.params.eval_interval_secs.
 
     Returns:
@@ -1473,10 +1494,10 @@ class BenchmarkCNN(object):
       dictionary.
     """
     if self.datasets_use_prefetch:
-      (image_producer_ops, enqueue_ops, fetches) = (
+      (input_producer_op, enqueue_ops, fetches) = (
           self._build_model_with_dataset_prefetching())
     else:
-      (image_producer_ops, enqueue_ops, fetches) = self._build_model()
+      (input_producer_op, enqueue_ops, fetches) = self._build_model()
     saver = tf.train.Saver(self.variable_mgr.savable_variables())
     summary_writer = tf.summary.FileWriter(self.params.eval_dir,
                                            tf.get_default_graph())
@@ -1493,14 +1514,14 @@ class BenchmarkCNN(object):
     # TODO(huangyp): Check if checkpoints haven't updated for hours and abort.
     while True:
       self._eval_once(saver, summary_writer, target, local_var_init_op_group,
-                      image_producer_ops, enqueue_ops, fetches, summary_op)
+                      input_producer_op, enqueue_ops, fetches, summary_op)
       if self.params.eval_interval_secs <= 0:
         break
       time.sleep(self.params.eval_interval_secs)
     return {}
 
   def _eval_once(self, saver, summary_writer, target, local_var_init_op_group,
-                 image_producer_ops, enqueue_ops, fetches, summary_op):
+                 input_producer_op, enqueue_ops, fetches, summary_op):
     """Evaluate the model from a checkpoint using validation dataset."""
     with tf.Session(
         target=target, config=create_config_proto(self.params)) as sess:
@@ -1515,9 +1536,9 @@ class BenchmarkCNN(object):
       if self.dataset.queue_runner_required():
         tf.train.start_queue_runners(sess=sess)
       image_producer = None
-      if image_producer_ops is not None:
+      if input_producer_op is not None:
         image_producer = cnn_util.ImageProducer(
-            sess, image_producer_ops, self.batch_group_size,
+            sess, input_producer_op, self.batch_group_size,
             self.params.use_python32_barrier)
         image_producer.start()
         for i in xrange(len(enqueue_ops)):
@@ -1571,26 +1592,7 @@ class BenchmarkCNN(object):
         }
         self.benchmark_logger.log_evaluation_result(eval_result)
 
-  # GraphInfo encapsulates the tensors/ops that we care about after building a
-  # graph. We use them to benchmark the graph.
-  GraphInfo = namedtuple(  # pylint: disable=invalid-name
-      'GraphInfo',
-      [
-          # Ops that produce the raw image batches
-          'image_producer_ops',
-          # Ops that adds the preprocessed images to the staging areas
-          'enqueue_ops',
-          # Fetches of sess.run()
-          'fetches',
-          # Op that performs synchronization in distributed mode
-          'execution_barrier',
-          # The global step variable
-          'global_step',
-          # Group of ops that perform per-device initialization work
-          'local_var_init_op_group'
-      ])
-
-  def _benchmark_cnn(self):
+  def _benchmark_train(self):
     """Run cnn in benchmark mode. Skip the backward pass if forward_only is on.
 
     Returns:
@@ -1627,18 +1629,18 @@ class BenchmarkCNN(object):
     if self.params.variable_update == 'distributed_all_reduce':
       self.single_session = True
       if self.datasets_use_prefetch:
-        (image_producer_ops, enqueue_ops, fetches) = (
+        (input_producer_op, enqueue_ops, fetches) = (
             self._build_model_single_session_with_dataset_prefetching())
       else:
-        (image_producer_ops, enqueue_ops, fetches) = (
+        (input_producer_op, enqueue_ops, fetches) = (
             self._build_model_single_session())
     else:
       self.single_session = False
       if self.datasets_use_prefetch:
-        (image_producer_ops, enqueue_ops, fetches) = (
+        (input_producer_op, enqueue_ops, fetches) = (
             self._build_model_with_dataset_prefetching())
       else:
-        (image_producer_ops, enqueue_ops, fetches) = self._build_model()
+        (input_producer_op, enqueue_ops, fetches) = self._build_model()
     fetches_list = nest.flatten(list(fetches.values()))
     main_fetch_group = tf.group(*fetches_list, name='main_fetch_group')
     execution_barrier = None
@@ -1684,8 +1686,8 @@ class BenchmarkCNN(object):
     local_var_init_op_group = tf.group(*variable_manager_init_ops,
                                        name='local_var_init_op_group')
 
-    return BenchmarkCNN.GraphInfo(
-        image_producer_ops=image_producer_ops,
+    return GraphInfo(
+        input_producer_op=input_producer_op,
         enqueue_ops=enqueue_ops,
         fetches=fetches,
         execution_barrier=execution_barrier,
@@ -1795,9 +1797,9 @@ class BenchmarkCNN(object):
         sess.run(bcast_global_variables_op)
 
       image_producer = None
-      if graph_info.image_producer_ops is not None:
+      if graph_info.input_producer_op is not None:
         image_producer = cnn_util.ImageProducer(
-            sess, graph_info.image_producer_ops, self.batch_group_size,
+            sess, graph_info.input_producer_op, self.batch_group_size,
             self.params.use_python32_barrier)
         image_producer.start()
         for i in xrange(len(graph_info.enqueue_ops)):
@@ -2020,8 +2022,8 @@ class BenchmarkCNN(object):
         if variable is graph_info.global_step:
           updated_global_step = updated_variable
 
-    updated_graph_info = BenchmarkCNN.GraphInfo(
-        image_producer_ops=_get_tensors_or_ops(graph_info.image_producer_ops),
+    updated_graph_info = GraphInfo(
+        input_producer_op=_get_tensors_or_ops(graph_info.input_producer_op),
         enqueue_ops=_get_tensors_or_ops(graph_info.enqueue_ops),
         execution_barrier=_get_tensors_or_ops(graph_info.execution_barrier),
         local_var_init_op_group=_get_tensors_or_ops(
@@ -2030,15 +2032,15 @@ class BenchmarkCNN(object):
         global_step=updated_global_step)
     return (updated_graph, updated_graph_info)
 
-  def _build_image_processing(self, shift_ratio=0):
+  def _build_input_processing(self, shift_ratio=0):
     """"Build the image (pre)processing portion of the model graph."""
     with tf.device(self.cpu_device):
       if self.params.eval:
         subset = 'validation'
       else:
         subset = 'train'
-      image_producer_ops = []
-      image_producer_stages = []
+      input_producer_op = []
+      input_producer_stages = []
       images_splits, labels_splits = self.image_preprocessor.minibatch(
           self.dataset,
           subset=subset,
@@ -2048,7 +2050,7 @@ class BenchmarkCNN(object):
       images_shape = images_splits[0].get_shape()
       labels_shape = labels_splits[0].get_shape()
       for device_num in range(len(self.devices)):
-        image_producer_stages.append(
+        input_producer_stages.append(
             data_flow_ops.StagingArea(
                 [images_splits[0].dtype, labels_splits[0].dtype],
                 shapes=[images_shape, labels_shape],
@@ -2056,10 +2058,10 @@ class BenchmarkCNN(object):
         for group_index in xrange(self.batch_group_size):
           if not self.use_synthetic_gpu_images:
             batch_index = group_index + device_num * self.batch_group_size
-            put_op = image_producer_stages[device_num].put(
+            put_op = input_producer_stages[device_num].put(
                 [images_splits[batch_index], labels_splits[batch_index]])
-            image_producer_ops.append(put_op)
-    return (image_producer_ops, image_producer_stages)
+            input_producer_op.append(put_op)
+    return (input_producer_op, input_producer_stages)
 
   def _build_model(self):
     """Build the TensorFlow graph."""
@@ -2101,10 +2103,10 @@ class BenchmarkCNN(object):
           self.loss_scale_normal_steps = None
 
     # Build the processing and model for the worker.
-    with tf.name_scope('image_processing'):
-      (image_producer_ops,
-       image_producer_stages) = self._build_image_processing(shift_ratio=0)
-      image_producer_ops = tf.group(*image_producer_ops)
+    with tf.name_scope('input_processing'):
+      (input_producer_op,
+       input_producer_stages) = self._build_input_processing(shift_ratio=0)
+      input_producer_op = tf.group(*input_producer_op)
     update_ops = None
     staging_delta_ops = []
 
@@ -2113,7 +2115,7 @@ class BenchmarkCNN(object):
           self.variable_mgr.create_outer_variable_scope(device_num)):
         results = self.add_forward_pass_and_gradients(
             phase_train, device_num, device_num,
-            image_producer_stages[device_num], gpu_compute_stage_ops,
+            input_producer_stages[device_num], gpu_compute_stage_ops,
             gpu_grad_stage_ops)
         if phase_train:
           losses.append(results['loss'])
@@ -2152,7 +2154,7 @@ class BenchmarkCNN(object):
     fetches = self._build_fetches(global_step, all_logits, losses, device_grads,
                                   enqueue_ops, update_ops, all_top_1_ops,
                                   all_top_5_ops, phase_train)
-    return (image_producer_ops, enqueue_ops, fetches)
+    return (input_producer_op, enqueue_ops, fetches)
 
   # TODO(rohanj): Refactor this function and share with other code path.
   def _build_model_with_dataset_prefetching(self):
@@ -2195,7 +2197,7 @@ class BenchmarkCNN(object):
           self.loss_scale_normal_steps = None
 
     # Build the processing and model for the worker.
-    with tf.name_scope('image_processing'):
+    with tf.name_scope('input_processing'):
       function_buffering_resources = data_utils.build_prefetch_image_processing(
           self.model.get_image_size(), self.model.get_image_size(),
           self.batch_size, len(
@@ -2349,7 +2351,7 @@ class BenchmarkCNN(object):
     """Build the TensorFlow graph for multiple replicas in a single_session.
 
     Returns:
-      image_producer_ops:
+      input_producer_op:
       enqueue_ops:
       fetches:
 
@@ -2383,7 +2385,7 @@ class BenchmarkCNN(object):
       global_step = tf.train.get_or_create_global_step()
 
     update_ops = []
-    global_image_producer_ops = []
+    global_input_producer_op = []
 
     is_local = not self.job_name
     if is_local:
@@ -2393,11 +2395,11 @@ class BenchmarkCNN(object):
       # belonging to the next worker (task).
       self.reset_devices_for_task(task_num, is_local)
       # Build the per-worker image processing
-      with tf.name_scope('image_processing'):
-        (image_producer_ops, image_producer_stages) = (
-            self._build_image_processing(
+      with tf.name_scope('input_processing'):
+        (input_producer_op, input_producer_stages) = (
+            self._build_input_processing(
                 shift_ratio=(float(task_num) / self.num_workers)))
-      global_image_producer_ops.extend(image_producer_ops)
+      global_input_producer_op.extend(input_producer_op)
       # Build the per-worker model replica.
       for rel_device_num in range(len(self.devices)):
         abs_device_num = task_num * len(self.devices) + rel_device_num
@@ -2406,7 +2408,7 @@ class BenchmarkCNN(object):
                 'task_%i_tower_%i' % (task_num, rel_device_num)) as name_scope:
           task_results = self.add_forward_pass_and_gradients(
               phase_train, rel_device_num, abs_device_num,
-              image_producer_stages[rel_device_num], gpu_compute_stage_ops,
+              input_producer_stages[rel_device_num], gpu_compute_stage_ops,
               gpu_grad_stage_ops)
           if phase_train:
             losses.append(task_results['loss'])
@@ -2442,8 +2444,8 @@ class BenchmarkCNN(object):
     fetches = self._build_fetches(global_step, all_logits, losses, device_grads,
                                   enqueue_ops, update_ops, all_top_1_ops,
                                   all_top_5_ops, phase_train)
-    global_image_producer_ops = tf.group(*global_image_producer_ops)
-    return (global_image_producer_ops, enqueue_ops, fetches)
+    global_input_producer_op = tf.group(*global_input_producer_op)
+    return (global_input_producer_op, enqueue_ops, fetches)
 
   # TODO(rohanj): Refactor this function and share with other code path.
   # TODO(reedwm): Add a test case for this function
@@ -2451,7 +2453,7 @@ class BenchmarkCNN(object):
     """Build the TensorFlow graph for multiple replicas in a single_session.
 
     Returns:
-      image_producer_ops:
+      input_producer_op:
       enqueue_ops:
       fetches:
 
@@ -2491,7 +2493,7 @@ class BenchmarkCNN(object):
       # belonging to the next worker (task).
       self.reset_devices_for_task(task_num, is_local)
       # Build the per-worker image processing
-      with tf.name_scope('image_processing'):
+      with tf.name_scope('input_processing'):
         function_buffering_resources = (
             data_utils.build_prefetch_image_processing(
                 self.model.get_image_size(), self.model.get_image_size(),
@@ -2769,6 +2771,34 @@ class BenchmarkCNN(object):
           sync_queues[self.task_index].dequeue_many(len(sync_queues) - 1))
 
       return tf.group(*queue_ops)
+
+
+class BenchmarkSeq2Seq(BenchmarkCNN):
+  """Class for benchmarking a seq2seq network."""
+
+  def __init__(self, params, dataset=None, model=None):
+    # pylint:disable=super-init-not-called
+    pass
+
+  def _build_graph(self):
+    """Build the graph.
+
+    Returns:
+      A namedtuple containing the ops/tensors required by _benchmark_graph().
+    """
+    pass
+
+  def _build_model_single_session_with_dataset_prefetching(self):
+    pass
+
+  def _build_model_single_session(self):
+    pass
+
+  def _build_model_with_dataset_prefetching(self):
+    pass
+
+  def _build_model(self):
+    pass
 
 
 def store_benchmarks(names_to_values, params):

@@ -262,8 +262,8 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
             self.assertEquals(v.device,
                               '/device:%s:0' % local_parameter_device)
             self._assert_correct_var_type(v, params)
-          elif v.name in ('image_processing/images:0',
-                          'image_processing/labels:0', 'init_learning_rate:0',
+          elif v.name in ('input_processing/images:0',
+                          'input_processing/labels:0', 'init_learning_rate:0',
                           'global_step:0', 'loss_scale:0',
                           'loss_scale_normal_steps:0'):
             self.assertEquals(v.device, '/device:CPU:0')
@@ -287,8 +287,8 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
             v1_count += 1
             self.assertEquals(v.device, '/device:GPU:1')
             self._assert_correct_var_type(v, params)
-          elif v.name in ('image_processing/images:0',
-                          'image_processing/labels:0', 'init_learning_rate:0',
+          elif v.name in ('input_processing/images:0',
+                          'input_processing/labels:0', 'init_learning_rate:0',
                           'global_step:0', 'loss_scale:0',
                           'loss_scale_normal_steps:0'):
             self.assertEquals(v.device, '/device:CPU:0')
