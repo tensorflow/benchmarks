@@ -44,7 +44,6 @@ from tensorflow.python.framework import importer
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import nest
-import benchmark_storage
 import cnn_util
 import constants
 import data_utils
@@ -496,12 +495,6 @@ flags.DEFINE_string('train_dir', None,
                     'checkpoint at the end.')
 flags.DEFINE_string('eval_dir', '/tmp/tf_cnn_benchmarks/eval',
                     'Directory where to write eval event logs.')
-flags.DEFINE_string('result_storage', None,
-                    'Specifies storage option for benchmark results. None '
-                    'means results won\'t be stored. '
-                    '`cbuild_benchmark_datastore` means results will be stored '
-                    'in cbuild datastore (note: this option requires special '
-                    'permissions and meant to be used from cbuilds).')
 
 # Benchmark logging for model garden metric
 flags.DEFINE_string('benchmark_log_dir', None,
@@ -1914,7 +1907,6 @@ class BenchmarkCNN(object):
       if image_producer is not None:
         image_producer.done()
       if is_chief:
-        store_benchmarks({'total_images_per_sec': images_per_sec}, self.params)
         if self.benchmark_logger:
           self.benchmark_logger.log_metric(
               'average_examples_per_sec', images_per_sec, global_step=num_steps)
@@ -2805,11 +2797,6 @@ class BenchmarkNMT(BenchmarkCNN):
 
   def _build_model_single_session_with_dataset_prefetching(self):
     pass
-
-
-def store_benchmarks(names_to_values, params):
-  if params.result_storage:
-    benchmark_storage.store_benchmark(names_to_values, params.result_storage)
 
 
 def setup(params):
