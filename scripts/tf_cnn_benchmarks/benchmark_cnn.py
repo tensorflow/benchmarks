@@ -2600,22 +2600,36 @@ class BenchmarkCNN(object):
               dtype=tf.int32,
               name='synthetic_labels')
 
-    with tf.device(self.devices[rel_device_num]):
+    def forward_pass_and_gradients():
+      """Builds forward pass and gradient computation network.
+
+      When phase_train=True and print_training_accuracy=False:
+        return [loss] + grads
+
+      When phase_train=True and print_training_accuracy=True:
+        return [logits, loss] + grads
+
+      When phase_train=False,
+        return [logits]
+
+      Its output can always be unpacked by
+
+      ```
+        outputs = forward_pass_and_gradients()
+        logits, loss, grads = unpack_forward_pass_and_gradients_output(outputs)
+      ```
+
+      Returns:
+        outputs: A list of tensors depending on different modes.
+      """
+
       logits, aux_logits = self.model.build_network(
           images, phase_train, nclass, self.dataset.depth, data_type,
           self.data_format, self.params.use_tf_layers, self.params.fp16_vars)
-      results = {}  # The return value
-      if not phase_train or self.params.print_training_accuracy:
-        top_1_op = tf.reduce_sum(
-            tf.cast(tf.nn.in_top_k(logits, labels, 1), data_type))
-        top_5_op = tf.reduce_sum(
-            tf.cast(tf.nn.in_top_k(logits, labels, 5), data_type))
-        results['top_1_op'] = top_1_op
-        results['top_5_op'] = top_5_op
 
       if not phase_train:
-        results['logits'] = logits
-        return results
+        return [logits]
+
       loss_func = self.model.loss_function or loss_function
       base_loss = loss_func(logits, labels, aux_logits=aux_logits)
       params = self.variable_mgr.trainable_variables_on_device(
@@ -2688,15 +2702,72 @@ class BenchmarkCNN(object):
         gpu_grad_stage_ops.append(grad_stage_op)
         grads = grad_stage.get()
 
-      param_refs = self.variable_mgr.trainable_variables_on_device(
-          rel_device_num, abs_device_num, writable=True)
-      gradvars = list(zip(grads, param_refs))
       if self.params.loss_type_to_report == 'total_loss':
-        results['loss'] = total_loss
+        loss = total_loss
       else:
-        results['loss'] = base_loss
-      results['gradvars'] = gradvars
+        loss = base_loss
+
+      if self.params.print_training_accuracy:
+        return [logits, loss] + grads
+      else:
+        return [loss] + grads
+
+    def unpack_forward_pass_and_gradients_output(forward_pass_and_grad_outputs):
+      """Unpacks outputs from forward_pass_and_gradients.
+
+      Args:
+        forward_pass_and_grad_outputs: Output from forward_pass_and_gradients.
+
+      Returns:
+        logits: Unscaled probability distribution from forward pass.
+          If unavailable, None is returned.
+        loss: Loss function result from logits.
+          If unavailable, None is returned.
+        grads: Gradients for all trainable variables.
+          If unavailable, None is returned.
+      """
+      logits = None
+      # logits is only fetched in non-train mode or when
+      # print_training_accuracy is set.
+      if not phase_train or self.params.print_training_accuracy:
+        logits = forward_pass_and_grad_outputs.pop(0)
+
+      loss = (
+          forward_pass_and_grad_outputs[0]
+          if forward_pass_and_grad_outputs else None)
+      grads = (
+          forward_pass_and_grad_outputs[1:]
+          if forward_pass_and_grad_outputs else None)
+
+      return logits, loss, grads
+
+    def make_results(logits, loss, grads):
+      """Generate results based on logits, loss and grads."""
+      results = {}  # The return value
+
+      if logits is not None:
+        results['logits'] = logits
+        top_1_op = tf.reduce_sum(
+            tf.cast(tf.nn.in_top_k(logits, labels, 1), data_type))
+        top_5_op = tf.reduce_sum(
+            tf.cast(tf.nn.in_top_k(logits, labels, 5), data_type))
+        results['top_1_op'] = top_1_op
+        results['top_5_op'] = top_5_op
+
+      if loss is not None:
+        results['loss'] = loss
+
+      if grads is not None:
+        param_refs = self.variable_mgr.trainable_variables_on_device(
+            rel_device_num, abs_device_num, writable=True)
+        results['gradvars'] = list(zip(grads, param_refs))
+
       return results
+
+    with tf.device(self.devices[rel_device_num]):
+      outputs = forward_pass_and_gradients()
+      logits, loss, grads = unpack_forward_pass_and_gradients_output(outputs)
+      return make_results(logits, loss, grads)
 
   def get_image_preprocessor(self):
     """Returns the image preprocessor to used, based on the model.
