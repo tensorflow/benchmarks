@@ -2765,7 +2765,8 @@ class BenchmarkCNN(object):
       return results
 
     with tf.device(self.devices[rel_device_num]):
-      outputs = forward_pass_and_gradients()
+      outputs = platforms_util.maybe_compile(forward_pass_and_gradients,
+                                             self.params)
       logits, loss, grads = unpack_forward_pass_and_gradients_output(outputs)
       return make_results(logits, loss, grads)
 
