@@ -24,6 +24,7 @@ from collections import namedtuple
 import math
 import multiprocessing
 import os
+import re
 import threading
 import time
 
@@ -490,6 +491,8 @@ flags.DEFINE_integer('save_summaries_steps', 0,
 flags.DEFINE_integer('save_model_secs', 0,
                      'How often to save trained models. Pass 0 to disable '
                      'checkpoints.')
+flags.DEFINE_integer('max_ckpts_to_keep', 5,
+                     'Max number of checkpoints to keep.')
 flags.DEFINE_string('train_dir', None,
                     'Path to session checkpoints. Pass None to disable saving '
                     'checkpoint at the end.')
@@ -775,27 +778,60 @@ def get_perf_timing(batch_size, step_train_times, scale=1):
 
 
 def load_checkpoint(saver, sess, ckpt_dir):
-  ckpt = tf.train.get_checkpoint_state(ckpt_dir)
-  if ckpt and ckpt.model_checkpoint_path:
-    if os.path.isabs(ckpt.model_checkpoint_path):
-      # Restores from checkpoint with absolute path.
-      model_checkpoint_path = ckpt.model_checkpoint_path
-    else:
-      # Restores from checkpoint with relative path.
-      model_checkpoint_path = os.path.join(ckpt_dir, ckpt.model_checkpoint_path)
-    # Assuming model_checkpoint_path looks something like:
-    #   /my-favorite-path/imagenet_train/model.ckpt-0,
-    # extract global_step from it.
-    global_step = ckpt.model_checkpoint_path.split('/')[-1].split('-')[-1]
-    if not global_step.isdigit():
-      global_step = 0
-    else:
-      global_step = int(global_step)
-    saver.restore(sess, model_checkpoint_path)
-    log_fn('Successfully loaded model from %s.' % ckpt.model_checkpoint_path)
-    return global_step
+  """Loads checkpoint from provided directory or full path.
+
+  Args:
+    saver: Saver used to restore the checkpoint.
+    sess: TensorFlow session.
+    ckpt_dir: Path to a folder of checkpoints or full path to a checkpoint.
+
+  Returns:
+    Global step.
+  """
+  model_checkpoint_path = _get_checkpoint_to_load(ckpt_dir)
+  global_step = model_checkpoint_path.split('/')[-1].split('-')[-1]
+  if not global_step.isdigit():
+    global_step = 0
   else:
-    raise CheckpointNotFoundException('No checkpoint file found.')
+    global_step = int(global_step)
+  saver.restore(sess, model_checkpoint_path)
+  log_fn('Successfully loaded model from %s.' % model_checkpoint_path)
+  return global_step
+
+
+def _get_checkpoint_to_load(ckpt_dir):
+  """Returns which checkpoint to load.
+
+  Args:
+    ckpt_dir: Path to a folder of checkpoints or full path to a checkpoint.
+
+  Returns:
+    Full path to checkpoint to load.
+
+  Raises:
+    CheckpointNotFoundException: If checkpoint is not found.
+  """
+  p = re.compile(r'ckpt-\d+$')
+  if p.search(ckpt_dir):
+    model_checkpoint_path = ckpt_dir
+  else:
+    # Finds latest checkpoint in directory provided
+    ckpt = tf.train.get_checkpoint_state(ckpt_dir)
+    if ckpt and ckpt.model_checkpoint_path:
+      if os.path.isabs(ckpt.model_checkpoint_path):
+        # Restores from checkpoint with absolute path.
+        model_checkpoint_path = ckpt.model_checkpoint_path
+      else:
+        # Restores from checkpoint with relative path.
+        model_checkpoint_path = os.path.join(ckpt_dir,
+                                             ckpt.model_checkpoint_path)
+        # Assuming model_checkpoint_path looks something like:
+        #   /my-favorite-path/imagenet_train/model.ckpt-0,
+        # extract global_step from it.
+    else:
+      raise CheckpointNotFoundException('No checkpoint file found in dir:{}'.
+                                        format(ckpt_dir))
+  return model_checkpoint_path
 
 
 # Params are passed to BenchmarkCNN's constructor. Params is a map from name
@@ -1732,7 +1768,9 @@ class BenchmarkCNN(object):
     # GPU memory.
     if is_chief and not self.forward_only_and_freeze:
       saver = tf.train.Saver(
-          self.variable_mgr.savable_variables(), save_relative_paths=True)
+          self.variable_mgr.savable_variables(),
+          save_relative_paths=True,
+          max_to_keep=self.params.max_ckpts_to_keep)
     else:
       saver = None
     ready_for_local_init_op = None

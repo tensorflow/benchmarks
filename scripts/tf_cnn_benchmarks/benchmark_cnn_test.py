@@ -21,6 +21,9 @@ from __future__ import print_function
 import os
 import re
 
+import mock
+from mock import patch
+
 import numpy as np
 import tensorflow as tf
 from google.protobuf import text_format
@@ -668,6 +671,40 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     os.rename(params.train_dir, new_train_dir)
     params = params._replace(train_dir=new_train_dir, eval=True)
     self._run_benchmark_cnn_with_black_and_white_images(params)
+
+  @patch('tensorflow.train.Saver')
+  @patch('benchmark_cnn._get_checkpoint_to_load')
+  def testLoadCheckpoint(self, mock_checkpoint_to_load, mock_saver):
+    """Tests load checkpoint with full path to checkpoint."""
+    expected_checkpoint = '/path/to/checkpoints/model.ckpt-1243'
+    mock_checkpoint_to_load.return_value = expected_checkpoint
+
+    global_batch = benchmark_cnn.load_checkpoint(mock_saver,
+                                                 None,
+                                                 expected_checkpoint)
+    self.assertEqual(global_batch, 1243)
+
+  def testGetCheckpointToLoadFullPath(self):
+    """Tests passing full path."""
+    ckpt_path = '/foo/bar/model.ckpt-189'
+    full_path = benchmark_cnn._get_checkpoint_to_load(ckpt_path)
+    self.assertEqual(full_path, ckpt_path)
+
+  def testGetCheckpointToLoadException(self):
+    """Tests exception for directory without a checkpoint."""
+    ckpt_path = '/foo/bar/checkpoints'
+    self.assertRaises(benchmark_cnn.CheckpointNotFoundException,
+                      benchmark_cnn._get_checkpoint_to_load, ckpt_path)
+
+  @patch('tensorflow.train.get_checkpoint_state')
+  def testGetCheckpointToLoad(self, mock_checkpoint_state):
+    """Tests passing path to checkpoint folder."""
+    expected_checkpoint = '/path/to/checkpoints/model.ckpt-1243'
+    mock_checkpoint_state.return_value = mock.Mock(
+        model_checkpoint_path=expected_checkpoint)
+    ckpt_path = '/path/to/checkpoints/'
+    full_path = benchmark_cnn._get_checkpoint_to_load(ckpt_path)
+    self.assertEqual(full_path, expected_checkpoint)
 
   def testImagenetPreprocessor(self):
     imagenet_dir = os.path.join(platforms_util.get_test_data_dir(),
