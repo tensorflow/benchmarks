@@ -61,6 +61,36 @@ def build_prefetch_image_processing(height, width, batch_size, num_splits,
     return function_buffering_resources
 
 
+def build_multi_device_iterator(batch_size, num_splits, preprocess_fn,
+                                cpu_device, params, gpu_devices, dataset):
+  """Creates a MultiDeviceIterator."""
+  assert num_splits == len(gpu_devices)
+  with tf.name_scope('batch_processing'):
+    if params.eval:
+      subset = 'validation'
+    else:
+      subset = 'train'
+    batch_size_per_split = batch_size // num_splits
+    ds = create_dataset(
+        batch_size,
+        num_splits,
+        batch_size_per_split,
+        preprocess_fn,
+        dataset,
+        subset,
+        train=(not params.eval),
+        cache_data=params.cache_data,
+        num_threads=params.datasets_num_private_threads)
+    multi_device_iterator = prefetching_ops.MultiDeviceIterator(
+        ds,
+        gpu_devices,
+        source_device=cpu_device,
+        max_buffer_size=params.multi_device_iterator_max_buffer_size)
+    tf.add_to_collection(tf.GraphKeys.TABLE_INITIALIZERS,
+                         multi_device_iterator.initializer)
+    return multi_device_iterator
+
+
 def get_images_and_labels(function_buffering_resource, data_type):
   """Given a FunctionBufferingResource obtains images and labels from it."""
   return prefetching_ops.function_buffering_resource_get_next(
@@ -68,16 +98,16 @@ def get_images_and_labels(function_buffering_resource, data_type):
       output_types=[data_type, tf.int32])
 
 
-def create_iterator(batch_size,
-                    num_splits,
-                    batch_size_per_split,
-                    preprocess_fn,
-                    dataset,
-                    subset,
-                    train,
-                    cache_data,
-                    num_threads=None):
-  """Creates a dataset iterator for the benchmark."""
+def create_dataset(batch_size,
+                   num_splits,
+                   batch_size_per_split,
+                   preprocess_fn,
+                   dataset,
+                   subset,
+                   train,
+                   cache_data,
+                   num_threads=None):
+  """Creates a dataset for the benchmark."""
   glob_pattern = dataset.tf_record_pattern(subset)
   file_names = gfile.Glob(glob_pattern)
   if not file_names:
@@ -107,11 +137,12 @@ def create_iterator(batch_size,
         ds,
         threadpool.PrivateThreadPool(
             num_threads, display_name='input_pipeline_thread_pool'))
-    ds_iterator = ds.make_initializable_iterator()
-    tf.add_to_collection(tf.GraphKeys.TABLE_INITIALIZERS,
-                         ds_iterator.initializer)
-  else:
-    ds_iterator = ds.make_one_shot_iterator()
+  return ds
+
+
+def create_iterator(ds):
+  ds_iterator = ds.make_initializable_iterator()
+  tf.add_to_collection(tf.GraphKeys.TABLE_INITIALIZERS, ds_iterator.initializer)
   return ds_iterator
 
 
@@ -120,9 +151,11 @@ def minibatch_fn(height, width, batch_size, num_splits, preprocess_fn, dataset,
   """Returns a function and list of args for the fn to create a minibatch."""
   batch_size_per_split = batch_size // num_splits
   with tf.name_scope('batch_processing'):
-    ds_iterator = create_iterator(batch_size, num_splits, batch_size_per_split,
-                                  preprocess_fn, dataset, subset, train,
-                                  cache_data, num_threads)
+    ds = create_dataset(batch_size, num_splits, batch_size_per_split,
+                        preprocess_fn, dataset, subset, train, cache_data,
+                        num_threads)
+    ds_iterator = create_iterator(ds)
+
     ds_iterator_string_handle = ds_iterator.string_handle()
 
     @function.Defun(tf.string)

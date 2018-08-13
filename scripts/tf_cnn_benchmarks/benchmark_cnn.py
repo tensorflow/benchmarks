@@ -300,6 +300,15 @@ flags.DEFINE_integer('datasets_num_private_threads', None,
                      'all datasets computation. By default, we pick an '
                      'appropriate number. If set to 0, we use the default '
                      'tf-Compute threads for dataset operations.')
+flags.DEFINE_boolean(
+    'use_multi_device_iterator', False,
+    'If true, we use the MultiDeviceIterator for prefetching, '
+    'which deterministically prefetches the data onto the '
+    'various GPUs')
+flags.DEFINE_integer(
+    'multi_device_iterator_max_buffer_size', 1,
+    'Configuration parameter for the MultiDeviceIterator that '
+    ' specifies the host side buffer size for each device.')
 
 # Performance tuning parameters.
 flags.DEFINE_boolean('winograd_nonfused', True,
@@ -2190,22 +2199,37 @@ class BenchmarkCNN(object):
 
     # Build the processing and model for the worker.
     with tf.name_scope('input_processing'):
-      function_buffering_resources = data_utils.build_prefetch_image_processing(
-          self.model.get_image_size(), self.model.get_image_size(),
-          self.batch_size, len(
-              self.devices), self.image_preprocessor.parse_and_preprocess,
-          self.cpu_device, self.params, self.devices,
-          get_data_type(self.params), self.dataset)
+      function_buffering_resources = None
+      all_input_data = None
+      if self.params.use_multi_device_iterator:
+        multi_device_iterator = data_utils.build_multi_device_iterator(
+            self.batch_size, len(self.devices),
+            self.image_preprocessor.parse_and_preprocess, self.cpu_device,
+            self.params, self.raw_devices, self.dataset)
+        all_input_data = multi_device_iterator.get_next()
+      else:
+        function_buffering_resources = (
+            data_utils.build_prefetch_image_processing(
+                self.model.get_image_size(), self.model.get_image_size(),
+                self.batch_size, len(
+                    self.devices), self.image_preprocessor.parse_and_preprocess,
+                self.cpu_device, self.params, self.devices,
+                get_data_type(self.params), self.dataset))
 
     update_ops = None
 
     for device_num in range(len(self.devices)):
       with tf.name_scope('tower_%i' % device_num) as name_scope, (
           self.variable_mgr.create_outer_variable_scope(device_num)):
-        function_buffering_resource = function_buffering_resources[device_num]
+        function_buffering_resource = None
+        input_data = None
+        if function_buffering_resources:
+          function_buffering_resource = function_buffering_resources[device_num]
+        if all_input_data:
+          input_data = all_input_data[device_num]
         results = self.add_forward_pass_and_gradients(
             phase_train, device_num, device_num, None, None, None,
-            function_buffering_resource)
+            function_buffering_resource, input_data)
         if phase_train:
           losses.append(results['loss'])
           device_grads.append(results['gradvars'])
@@ -2486,25 +2510,41 @@ class BenchmarkCNN(object):
       self.reset_devices_for_task(task_num, is_local)
       # Build the per-worker image processing
       with tf.name_scope('input_processing'):
-        function_buffering_resources = (
-            data_utils.build_prefetch_image_processing(
-                self.model.get_image_size(), self.model.get_image_size(),
-                self.batch_size // len(self.devices), len(
-                    self.devices), self.image_preprocessor.parse_and_preprocess,
-                self.cpu_device, self.params, self.devices,
-                get_data_type(self.params), self.dataset))
+        function_buffering_resources = None
+        all_input_data = None
+        if self.params.use_multi_device_iterator:
+          multi_device_iterator = data_utils.build_multi_device_iterator(
+              self.model.get_image_size(),
+              self.model.get_image_size(), self.batch_size // len(self.devices),
+              len(self.devices), self.image_preprocessor.parse_and_preprocess,
+              self.cpu_device, self.params, self.raw_devices,
+              get_data_type(self.params), self.dataset)
+          all_input_data = multi_device_iterator.get_next()
+        else:
+          function_buffering_resources = (
+              data_utils.build_prefetch_image_processing(
+                  self.model.get_image_size(), self.model.get_image_size(),
+                  self.batch_size // len(self.devices), len(self.devices),
+                  self.image_preprocessor.parse_and_preprocess,
+                  self.cpu_device, self.params, self.devices,
+                  get_data_type(self.params), self.dataset))
 
       # Build the per-worker model replica.
       for rel_device_num in range(len(self.devices)):
         abs_device_num = task_num * len(self.devices) + rel_device_num
+        function_buffering_resource = None
+        input_data = None
         with self.variable_mgr.create_outer_variable_scope(
             abs_device_num), tf.name_scope(
                 'task_%i_tower_%i' % (task_num, rel_device_num)) as name_scope:
-          function_buffering_resource = (
-              function_buffering_resources[rel_device_num])
+          if function_buffering_resources:
+            function_buffering_resource = (
+                function_buffering_resources[rel_device_num])
+          if all_input_data:
+            input_data = all_input_data[rel_device_num]
           task_results = self.add_forward_pass_and_gradients(
               phase_train, rel_device_num, abs_device_num, None, None, None,
-              function_buffering_resource)
+              function_buffering_resource, input_data)
           if phase_train:
             losses.append(task_results['loss'])
             device_grads.append(task_results['gradvars'])
@@ -2545,21 +2585,40 @@ class BenchmarkCNN(object):
                                      image_producer_stage,
                                      gpu_compute_stage_ops,
                                      gpu_grad_stage_ops,
-                                     function_buffering_resource=None):
+                                     function_buffering_resource=None,
+                                     input_data=None):
     """Add ops for forward-pass and gradient computations."""
     nclass = self.dataset.num_classes
     data_type = get_data_type(self.params)
     image_size = self.model.get_image_size()
-    if self.datasets_use_prefetch and function_buffering_resource is not None:
-      with tf.device(self.raw_devices[rel_device_num]):
-        images, labels = data_utils.get_images_and_labels(
-            function_buffering_resource, data_type)
-        images = tf.reshape(
-            images,
-            shape=[
-                self.batch_size // self.num_gpus, image_size, image_size,
-                self.dataset.depth
-            ])
+    if self.datasets_use_prefetch:
+      # Exactly one of function_buffering_resource or input_data is not None.
+      # TODO(rohanj): Refactor and clean this up.
+      if function_buffering_resource is None and input_data is None:
+        raise ValueError('Both function_buffering_resource and input_data '
+                         'cannot be null if datasets_use_prefetch=True')
+      if function_buffering_resource is not None and input_data is not None:
+        raise ValueError('Both function_buffering_resource and input_data '
+                         'cannot be specified. Only one should be.')
+      if function_buffering_resource is not None:
+        with tf.device(self.raw_devices[rel_device_num]):
+          images, labels = data_utils.get_images_and_labels(
+              function_buffering_resource, data_type)
+          images = tf.reshape(
+              images,
+              shape=[
+                  self.batch_size // self.num_gpus, image_size, image_size,
+                  self.dataset.depth
+              ])
+      if input_data is not None:
+        with tf.device(self.raw_devices[rel_device_num]):
+          labels, images = input_data
+          images = tf.reshape(
+              images,
+              shape=[
+                  self.batch_size // self.num_gpus, image_size, image_size,
+                  self.dataset.depth
+              ])
     else:
       if not self.use_synthetic_gpu_images:
         with tf.device(self.cpu_device):

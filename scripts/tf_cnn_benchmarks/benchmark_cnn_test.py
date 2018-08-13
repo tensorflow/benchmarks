@@ -735,7 +735,8 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
                               'fake_tf_record_data'),
         job_name='worker',
         worker_hosts='w1,w2,w3,w4',
-        ps_hosts='p1')
+        ps_hosts='p1',
+        datasets_use_prefetch=False)
 
     bench = benchmark_cnn.BenchmarkCNN(params)
     with tf.Graph().as_default():
