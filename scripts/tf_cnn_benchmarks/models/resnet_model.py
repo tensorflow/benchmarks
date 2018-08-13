@@ -275,7 +275,7 @@ class ResnetModel(model_lib.CNNModel):
     for i in xrange(self.layer_counts[3]):
       stride = 2 if i == 0 else 1
       bottleneck_block(cnn, 2048, 512, stride, self.version)
-    if self.version:
+    if self.version == 'v2':
       cnn.batch_norm()
       cnn.top_layer = tf.nn.relu(cnn.top_layer)
     cnn.spatial_mean()
