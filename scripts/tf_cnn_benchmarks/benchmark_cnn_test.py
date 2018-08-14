@@ -23,7 +23,6 @@ import re
 
 import mock
 from mock import patch
-
 import numpy as np
 import tensorflow as tf
 from google.protobuf import text_format
