@@ -1,0 +1,34 @@
+# Distributed benchmark configs to run with continuous build.
+# For each benchmark, the following properties are supported:
+#
+# benchmark_name: (required) unique name of the benchmark to run
+# args: (optional) argument values to pass to the benchmark.
+# env_vars: (optional) environment variables to set for benchmark jobs.
+# worker_count: (required) number of worker jobs to run
+# ps_count: (required) number of ps jobs to run.
+# gpus_per_machine: (optional) number of required gpus per worker
+#   (currently only supporting <= 1).
+# docker_file: (required) docker file to build a docker image for.
+#   Path to the docker file should be relative to Jenkins build folder.
+#   'benchmarks' github repo will be cloned to 'benchmarks' folder.
+#
+# Example:
+# - benchmark_name: "benchmark_alexnet"
+#   args:
+#     data_format: "NHWC"
+#   worker_count: 1
+#   ps_count: 2
+#   docker_file: "benchmarks/models/Dockerfile.alexnet_distributed_test"
+#
+# Note that the result is not stored anywhere.
+# TODO(jiyang): add result_storage field when the test is stable.
+
+- benchmark_name: "tf_cnn_benchmark_resnet50"
+  args:
+    data_format: "NHWC"
+    model: "resnet50"
+    num_gpus: 8
+    local_parameter_device: "cpu"
+  worker_count: 2
+  ps_count: 2
+  gpus_per_machine: 8
