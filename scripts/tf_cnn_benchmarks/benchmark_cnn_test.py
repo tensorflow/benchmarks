@@ -1076,11 +1076,6 @@ class VariableUpdateTest(tf.test.TestCase):
     params = test_util.get_var_update_params()._replace(use_tf_layers=False)
     self._test_variable_updates(params)
 
-  def testLayoutOptimizer(self):
-    params = test_util.get_var_update_params()._replace(
-        enable_layout_optimizer=True)
-    self._test_variable_updates(params)
-
   def testVariousAllReduceSpecs(self):
     # We do not test xring, because it requires all Variables to have at least
     # two elements.

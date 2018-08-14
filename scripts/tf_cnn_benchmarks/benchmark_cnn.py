@@ -332,8 +332,8 @@ flags.DEFINE_boolean('fuse_decode_and_crop', True,
                      'Fuse decode_and_crop for image preprocessing.')
 flags.DEFINE_boolean('distort_color_in_yiq', True,
                      'Distort color of input images in YIQ space.')
-flags.DEFINE_boolean('enable_layout_optimizer', False,
-                     'whether to enable layout optimizer')
+flags.DEFINE_boolean('enable_optimizations', True,
+                     'Whether to enable grappler and other optimizations.')
 flags.DEFINE_string('rewriter_config', None,
                     'Config for graph optimizers, described as a '
                     'RewriterConfig proto buffer.')
@@ -626,13 +626,27 @@ def create_config_proto(params):
   if params.xla:
     config.graph_options.optimizer_options.global_jit_level = (
         tf.OptimizerOptions.ON_1)
-  if params.enable_layout_optimizer:
-    config.graph_options.rewrite_options.layout_optimizer = (
-        rewriter_config_pb2.RewriterConfig.ON)
   if params.rewriter_config:
     rewriter_config = rewriter_config_pb2.RewriterConfig()
     text_format.Merge(params.rewriter_config, rewriter_config)
     config.graph_options.rewrite_options.CopyFrom(rewriter_config)
+  elif not params.enable_optimizations:
+    off = rewriter_config_pb2.RewriterConfig.OFF
+    config.graph_options.optimizer_options.opt_level = tf.OptimizerOptions.L0
+    rewrite_options = config.graph_options.rewrite_options
+    rewrite_options.layout_optimizer = off
+    rewrite_options.constant_folding = off
+    rewrite_options.shape_optimization = off
+    rewrite_options.remapping = off
+    rewrite_options.arithmetic_optimization = off
+    rewrite_options.dependency_optimization = off
+    rewrite_options.loop_optimization = off
+    rewrite_options.function_optimization = off
+    rewrite_options.debug_stripper = off
+    rewrite_options.disable_model_pruning = True
+    rewrite_options.scoped_allocator_optimization = off
+    rewrite_options.memory_optimization = (
+        rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
   if params.variable_update == 'horovod':
     import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
     config.gpu_options.visible_device_list = str(hvd.local_rank())
@@ -1077,7 +1091,6 @@ class BenchmarkCNN(object):
                                                         self.dataset)
     self.trace_filename = self.params.trace_file
     self.data_format = self.params.data_format
-    self.enable_layout_optimizer = self.params.enable_layout_optimizer
     self.rewriter_config = self.params.rewriter_config
     autotune_threshold = self.params.autotune_threshold if (
         self.params.autotune_threshold) else 1
@@ -1386,7 +1399,6 @@ class BenchmarkCNN(object):
     log_fn('Num epochs:  %.2f' % self.num_epochs)
     log_fn('Devices:     %s' % benchmark_info['device_list'])
     log_fn('Data format: %s' % self.data_format)
-    log_fn('Layout optimizer: %s' % self.enable_layout_optimizer)
     if self.rewriter_config:
       log_fn('RewriterConfig: %s' % self.rewriter_config)
     log_fn('Optimizer:   %s' % self.params.optimizer)
@@ -1445,7 +1457,6 @@ class BenchmarkCNN(object):
           'num_batches': self.num_batches,
           'num_epochs': self.num_epochs,
           'data_format': self.data_format,
-          'layout_optimizer': self.enable_layout_optimizer,
           'rewrite_config': self.rewriter_config,
           'optimizer': self.params.optimizer,
       }
