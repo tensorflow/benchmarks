@@ -26,7 +26,8 @@ References:
 from models import model
 
 
-class OverfeatModel(model.Model):
+class OverfeatModel(model.CNNModel):
+  """OverfeatModel."""
 
   def __init__(self):
     super(OverfeatModel, self).__init__('overfeat', 231, 32, 0.005)

@@ -78,6 +78,54 @@ def bottleneck_block_v1(cnn, depth, depth_bottleneck, stride):
     cnn.top_size = depth
 
 
+def bottleneck_block_v1_5(cnn, depth, depth_bottleneck, stride):
+  """Bottleneck block with identity short-cut for ResNet v1.5.
+
+  ResNet v1.5 is the informal name for ResNet v1 where stride 2 is used in the
+  first 3x3 convolution of each block instead of the first 1x1 convolution.
+
+  First seen at https://github.com/facebook/fb.resnet.torch. Used in the paper
+  "Accurate, Large Minibatch SGD: Training ImageNet in 1 Hour"
+  (arXiv:1706.02677v2) and by fast.ai to train to accuracy in 45 epochs using
+  multiple image sizes.
+
+  Args:
+    cnn: the network to append bottleneck blocks.
+    depth: the number of output filters for this bottleneck block.
+    depth_bottleneck: the number of bottleneck filters for this block.
+    stride: Stride used in the first layer of the bottleneck block.
+  """
+  input_layer = cnn.top_layer
+  in_size = cnn.top_size
+  name_key = 'resnet_v1.5'
+  name = name_key + str(cnn.counts[name_key])
+  cnn.counts[name_key] += 1
+
+  with tf.variable_scope(name):
+    if depth == in_size:
+      if stride == 1:
+        shortcut = input_layer
+      else:
+        shortcut = cnn.apool(
+            1, 1, stride, stride, input_layer=input_layer,
+            num_channels_in=in_size)
+    else:
+      shortcut = cnn.conv(
+          depth, 1, 1, stride, stride, activation=None,
+          use_batch_norm=True, input_layer=input_layer,
+          num_channels_in=in_size, bias=None)
+    cnn.conv(depth_bottleneck, 1, 1, 1, 1,
+             input_layer=input_layer, num_channels_in=in_size,
+             use_batch_norm=True, bias=None)
+    cnn.conv(depth_bottleneck, 3, 3, stride, stride, mode='SAME_RESNET',
+             use_batch_norm=True, bias=None)
+    res = cnn.conv(depth, 1, 1, 1, 1, activation=None,
+                   use_batch_norm=True, bias=None)
+    output = tf.nn.relu(shortcut + res)
+    cnn.top_layer = output
+    cnn.top_size = depth
+
+
 def bottleneck_block_v2(cnn, depth, depth_bottleneck, stride):
   """Bottleneck block with identity short-cut for ResNet v2.
 
@@ -123,7 +171,7 @@ def bottleneck_block_v2(cnn, depth, depth_bottleneck, stride):
     cnn.top_size = depth
 
 
-def bottleneck_block(cnn, depth, depth_bottleneck, stride, pre_activation):
+def bottleneck_block(cnn, depth, depth_bottleneck, stride, version):
   """Bottleneck block with identity short-cut.
 
   Args:
@@ -131,23 +179,26 @@ def bottleneck_block(cnn, depth, depth_bottleneck, stride, pre_activation):
     depth: the number of output filters for this bottleneck block.
     depth_bottleneck: the number of bottleneck filters for this block.
     stride: Stride used in the first layer of the bottleneck block.
-    pre_activation: use pre_activation structure used in v2 or not.
+    version: version of ResNet to build.
   """
-  if pre_activation:
+  if version == 'v2':
     bottleneck_block_v2(cnn, depth, depth_bottleneck, stride)
+  elif version == 'v1.5':
+    bottleneck_block_v1_5(cnn, depth, depth_bottleneck, stride)
   else:
     bottleneck_block_v1(cnn, depth, depth_bottleneck, stride)
 
 
-def residual_block(cnn, depth, stride, pre_activation):
+def residual_block(cnn, depth, stride, version):
   """Residual block with identity short-cut.
 
   Args:
     cnn: the network to append residual blocks.
     depth: the number of output filters for this residual block.
     stride: Stride used in the first layer of the residual block.
-    pre_activation: use pre_activation structure or not.
+    version: version of ResNet to build.
   """
+  pre_activation = True if version == 'v2' else False
   input_layer = cnn.top_layer
   in_size = cnn.top_size
   if in_size != depth:
@@ -184,7 +235,7 @@ def residual_block(cnn, depth, stride, pre_activation):
   cnn.top_size = depth
 
 
-class ResnetModel(model_lib.Model):
+class ResnetModel(model_lib.CNNModel):
   """Resnet cnn network configuration."""
 
   def __init__(self, model, layer_counts):
@@ -192,6 +243,9 @@ class ResnetModel(model_lib.Model):
         'resnet50': 64,
         'resnet101': 32,
         'resnet152': 32,
+        'resnet50_v1.5': 64,
+        'resnet101_v1.5': 32,
+        'resnet152_v1.5': 32,
         'resnet50_v2': 64,
         'resnet101_v2': 32,
         'resnet152_v2': 32,
@@ -199,7 +253,12 @@ class ResnetModel(model_lib.Model):
     batch_size = default_batch_sizes.get(model, 32)
     super(ResnetModel, self).__init__(model, 224, batch_size, 0.004,
                                       layer_counts)
-    self.pre_activation = 'v2' in model
+    if 'v2' in model:
+      self.version = 'v2'
+    elif 'v1.5' in model:
+      self.version = 'v1.5'
+    else:
+      self.version = 'v1'
 
   def add_inference(self, cnn):
     if self.layer_counts is None:
@@ -209,17 +268,17 @@ class ResnetModel(model_lib.Model):
     cnn.conv(64, 7, 7, 2, 2, mode='SAME_RESNET', use_batch_norm=True)
     cnn.mpool(3, 3, 2, 2, mode='SAME')
     for _ in xrange(self.layer_counts[0]):
-      bottleneck_block(cnn, 256, 64, 1, self.pre_activation)
+      bottleneck_block(cnn, 256, 64, 1, self.version)
     for i in xrange(self.layer_counts[1]):
       stride = 2 if i == 0 else 1
-      bottleneck_block(cnn, 512, 128, stride, self.pre_activation)
+      bottleneck_block(cnn, 512, 128, stride, self.version)
     for i in xrange(self.layer_counts[2]):
       stride = 2 if i == 0 else 1
-      bottleneck_block(cnn, 1024, 256, stride, self.pre_activation)
+      bottleneck_block(cnn, 1024, 256, stride, self.version)
     for i in xrange(self.layer_counts[3]):
       stride = 2 if i == 0 else 1
-      bottleneck_block(cnn, 2048, 512, stride, self.pre_activation)
-    if self.pre_activation:
+      bottleneck_block(cnn, 2048, 512, stride, self.version)
+    if self.version == 'v2':
       cnn.batch_norm()
       cnn.top_layer = tf.nn.relu(cnn.top_layer)
     cnn.spatial_mean()
@@ -243,6 +302,10 @@ def create_resnet50_model():
   return ResnetModel('resnet50', (3, 4, 6, 3))
 
 
+def create_resnet50_v1_5_model():
+  return ResnetModel('resnet50_v1.5', (3, 4, 6, 3))
+
+
 def create_resnet50_v2_model():
   return ResnetModel('resnet50_v2', (3, 4, 6, 3))
 
@@ -263,7 +326,7 @@ def create_resnet152_v2_model():
   return ResnetModel('resnet152_v2', (3, 8, 36, 3))
 
 
-class ResnetCifar10Model(model_lib.Model):
+class ResnetCifar10Model(model_lib.CNNModel):
   """Resnet cnn network configuration for Cifar 10 dataset.
 
   V1 model architecture follows the one defined in the paper:
@@ -274,7 +337,10 @@ class ResnetCifar10Model(model_lib.Model):
   """
 
   def __init__(self, model, layer_counts):
-    self.pre_activation = 'v2' in model
+    if 'v2' in model:
+      self.version = 'v2'
+    else:
+      self.version = 'v1'
     super(ResnetCifar10Model, self).__init__(
         model, 32, 128, 0.1, layer_counts)
 
@@ -284,23 +350,23 @@ class ResnetCifar10Model(model_lib.Model):
 
     cnn.use_batch_norm = True
     cnn.batch_norm_config = {'decay': 0.9, 'epsilon': 1e-5, 'scale': True}
-    if self.pre_activation:
+    if self.version == 'v2':
       cnn.conv(16, 3, 3, 1, 1, use_batch_norm=True)
     else:
       cnn.conv(16, 3, 3, 1, 1, activation=None, use_batch_norm=True)
     for i in xrange(self.layer_counts[0]):
       # reshape to batch_size x 16 x 32 x 32
-      residual_block(cnn, 16, 1, self.pre_activation)
+      residual_block(cnn, 16, 1, self.version)
     for i in xrange(self.layer_counts[1]):
       # Subsampling is performed at the first convolution with a stride of 2
       stride = 2 if i == 0 else 1
       # reshape to batch_size x 32 x 16 x 16
-      residual_block(cnn, 32, stride, self.pre_activation)
+      residual_block(cnn, 32, stride, self.version)
     for i in xrange(self.layer_counts[2]):
       stride = 2 if i == 0 else 1
       # reshape to batch_size x 64 x 8 x 8
-      residual_block(cnn, 64, stride, self.pre_activation)
-    if self.pre_activation:
+      residual_block(cnn, 64, stride, self.version)
+    if self.version == 'v2':
       cnn.batch_norm()
       cnn.top_layer = tf.nn.relu(cnn.top_layer)
     cnn.spatial_mean()

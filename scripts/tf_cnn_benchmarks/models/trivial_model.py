@@ -17,7 +17,7 @@
 from models import model
 
 
-class TrivialModel(model.Model):
+class TrivialModel(model.CNNModel):
   """Trivial model configuration."""
 
   def __init__(self):
@@ -29,7 +29,7 @@ class TrivialModel(model.Model):
     cnn.affine(4096)
 
 
-class TrivialCifar10Model(model.Model):
+class TrivialCifar10Model(model.CNNModel):
   """Trivial cifar10 model configuration."""
 
   def __init__(self):

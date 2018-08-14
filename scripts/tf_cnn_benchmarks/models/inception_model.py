@@ -41,7 +41,8 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from models import model
 
 
-class Inceptionv3Model(model.Model):
+class Inceptionv3Model(model.CNNModel):
+  """InceptionV3."""
 
   def __init__(self, auxiliary=False):
     self._auxiliary = auxiliary
@@ -157,7 +158,8 @@ def inception_v4_rb(cnn):
   cnn.inception_module('incept_v4_rb', cols)
 
 
-class Inceptionv4Model(model.Model):
+class Inceptionv4Model(model.CNNModel):
+  """Inceptionv4."""
 
   def __init__(self):
     super(Inceptionv4Model, self).__init__('inception4', 299, 32, 0.005)

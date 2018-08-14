@@ -76,8 +76,8 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
     params = benchmark_cnn.make_params(
         model=self.get_model_name(),
         num_batches=1,
-        num_intra_threads=1,
-        num_inter_threads=12,
+        num_intra_threads=0,
+        num_inter_threads=0,
         distortions=False,
         batch_size=2,
         variable_update='replicated',
@@ -255,17 +255,15 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
       if params.variable_update == 'parameter_server':
         for v in all_vars:
           tf.logging.debug('var: %s' % v.name)
-          if v.name.startswith('v/'):
-            if v.name == 'v/tower_0/gpu_cached_images:0':
-              self.assertEquals(v.device, '/device:GPU:0')
-            else:
-              self.assertEquals(v.device,
-                                '/device:%s:0' % local_parameter_device)
-              self._assert_correct_var_type(v, params)
-          elif v.name.startswith('v_1/'):
-            self.assertEquals(v.name, 'v_1/tower_1/gpu_cached_images:0')
-            self.assertEquals(v.device, '/device:GPU:1')
-          elif v.name in ('images:0', 'labels:0', 'init_learning_rate:0',
+          match = re.match(r'tower_(\d+)/v/gpu_cached_images:0', v.name)
+          if match:
+            self.assertEquals(v.device, '/device:GPU:%s' % match.group(1))
+          elif v.name.startswith('v/'):
+            self.assertEquals(v.device,
+                              '/device:%s:0' % local_parameter_device)
+            self._assert_correct_var_type(v, params)
+          elif v.name in ('input_processing/images:0',
+                          'input_processing/labels:0', 'init_learning_rate:0',
                           'global_step:0', 'loss_scale:0',
                           'loss_scale_normal_steps:0'):
             self.assertEquals(v.device, '/device:CPU:0')
@@ -275,11 +273,11 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
         v0_count = 0
         v1_count = 0
         for v in all_vars:
-          if v.name.startswith('v/'):
-            self.assertEquals(v.name, 'v/tower_1/gpu_cached_images:0')
+          if v.name.startswith('tower_0/v0/'):
+            self.assertEquals(v.name, 'tower_0/v0/gpu_cached_images:0')
             self.assertEquals(v.device, '/device:GPU:0')
-          elif v.name.startswith('v_1/'):
-            self.assertEquals(v.name, 'v_1/tower_1/gpu_cached_images:0')
+          elif v.name.startswith('tower_1/v1/'):
+            self.assertEquals(v.name, 'tower_1/v1/gpu_cached_images:0')
             self.assertEquals(v.device, '/device:GPU:1')
           elif v.name.startswith('v0/'):
             v0_count += 1
@@ -289,7 +287,8 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
             v1_count += 1
             self.assertEquals(v.device, '/device:GPU:1')
             self._assert_correct_var_type(v, params)
-          elif v.name in ('images:0', 'labels:0', 'init_learning_rate:0',
+          elif v.name in ('input_processing/images:0',
+                          'input_processing/labels:0', 'init_learning_rate:0',
                           'global_step:0', 'loss_scale:0',
                           'loss_scale_normal_steps:0'):
             self.assertEquals(v.device, '/device:CPU:0')
@@ -553,6 +552,12 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     # Evaluation is not supported with --forward_only, so we set skip='eval'.
     self._train_and_eval_local(params, skip='eval')
 
+  def testForwardOnlyAndFreeze(self):
+    params = test_util.get_params('testForwardOnlyAndFreeze')._replace(
+        forward_only=True, freeze_when_forward_only=True, train_dir=None)
+    # Training is not supported with --freeze_when_forward_only.
+    self._train_and_eval_local(params, skip='eval_and_train_from_checkpoint')
+
   def testNoDistortions(self):
     params = test_util.get_params('testNoDistortions')._replace(
         distortions=False)
@@ -730,7 +735,8 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
                               'fake_tf_record_data'),
         job_name='worker',
         worker_hosts='w1,w2,w3,w4',
-        ps_hosts='p1')
+        ps_hosts='p1',
+        datasets_use_prefetch=False)
 
     bench = benchmark_cnn.BenchmarkCNN(params)
     with tf.Graph().as_default():
@@ -828,7 +834,7 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     with tf.Graph().as_default() as graph:
       bench._build_model()
       global_step = graph.get_tensor_by_name('global_step:0')
-      learning_rate = graph.get_tensor_by_name('learning_rate:0')
+      learning_rate = graph.get_tensor_by_name('learning_rate_tensor:0')
       with self.test_session(graph=graph, use_gpu=True) as sess:
         items = global_step_to_expected_learning_rate.items()
         for global_step_val, expected_learning_rate in items:
@@ -998,7 +1004,7 @@ class VariableUpdateTest(tf.test.TestCase):
   def _get_benchmark_cnn_losses(self, inputs, params):
     """Returns the losses of BenchmarkCNN on the given inputs and params."""
     logs = []
-    model = test_util.TestModel()
+    model = test_util.TestCNNModel()
     with test_util.monkey_patch(benchmark_cnn,
                                 log_fn=test_util.print_and_add_to_list(logs),
                                 LOSS_AND_ACCURACY_DIGITS_TO_SHOW=15):
@@ -1017,16 +1023,16 @@ class VariableUpdateTest(tf.test.TestCase):
   def _test_variable_update(self, params):
     """Tests variables are updated correctly when the given params are used.
 
-    A BenchmarkCNN is created with a TestModel, and is run with some scalar
+    A BenchmarkCNN is created with a TestCNNModel, and is run with some scalar
     images. The losses are then compared with the losses obtained with
-    TestModel().manually_compute_losses()
+    TestCNNModel().manually_compute_losses()
 
     Args:
       params: a Params tuple used to create BenchmarkCNN.
     """
     inputs = test_util.get_fake_var_update_inputs()
     actual_losses = self._get_benchmark_cnn_losses(inputs, params)
-    expected_losses, = test_util.TestModel().manually_compute_losses(
+    expected_losses, = test_util.TestCNNModel().manually_compute_losses(
         inputs, 1, params)
     rtol = 3e-2 if params.use_fp16 else 1e-5
     self.assertAllClose(actual_losses[:len(expected_losses)], expected_losses,
@@ -1068,11 +1074,6 @@ class VariableUpdateTest(tf.test.TestCase):
 
   def testNoLayers(self):
     params = test_util.get_var_update_params()._replace(use_tf_layers=False)
-    self._test_variable_updates(params)
-
-  def testLayoutOptimizer(self):
-    params = test_util.get_var_update_params()._replace(
-        enable_layout_optimizer=True)
     self._test_variable_updates(params)
 
   def testVariousAllReduceSpecs(self):

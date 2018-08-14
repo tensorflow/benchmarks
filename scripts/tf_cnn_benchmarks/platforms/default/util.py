@@ -75,3 +75,9 @@ def initialize(params, config_proto):
     return
   _is_initalized = True
   _initialize(params, config_proto)
+
+
+def maybe_compile(computation, params):
+  # No additional compilation implemented yet, just call computation().
+  del params
+  return computation()

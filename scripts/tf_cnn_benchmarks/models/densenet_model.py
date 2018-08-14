@@ -24,7 +24,7 @@ import tensorflow as tf
 from models import model as model_lib
 
 
-class DensenetCifar10Model(model_lib.Model):
+class DensenetCifar10Model(model_lib.CNNModel):
   """Densenet cnn network configuration."""
 
   def __init__(self, model, layer_counts, growth_rate):

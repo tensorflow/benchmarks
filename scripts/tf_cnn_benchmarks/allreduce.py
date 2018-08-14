@@ -77,6 +77,9 @@ def parse_all_reduce_spec(all_reduce_spec):
   Examples of supported all_reduce_spec strings, with semantics explained:
 
     'collective' == apply tf.collective_reduce operator to all tensors.
+    'collective#2' == apply tf.collective_reduce operator to all tensors,
+            requesting up to 2 simultaneous transfers at each node, if
+            feasible, by subdividing tensor by an additional factor of 2.
     'xring' == apply ring all-reduce to all tensors
     'xring#2' == apply ring all-reduce to all tensors, using two simultaneous
             transfer rings, each operating on 1/2 of each tensor.
@@ -256,7 +259,7 @@ def collective_group_key(devices):
   return rv
 
 
-def build_collective_reduce(input_tensors, num_workers,
+def build_collective_reduce(input_tensors, num_workers, num_shards,
                             red_op='Add', un_op='Id'):
   """Build a subgraph that does one full all-reduce, using the collective Op.
 
@@ -266,6 +269,8 @@ def build_collective_reduce(input_tensors, num_workers,
     num_workers: total number of workers with identical independent graphs that
       will be doing this same reduction.  The reduction will actually include
       the corresponding tensors at all these workers.
+    num_shards: number of shards into which to divide each per-tick chunk,
+      normally 1 but could be higher on multi-data-path architectures.
     red_op: string naming the reduction op
     un_op: string naming the unary final op
 
@@ -283,7 +288,15 @@ def build_collective_reduce(input_tensors, num_workers,
   group_key = collective_group_key(devices)
   instance_key = new_collective_instance_key()
   out_tensors = []
-  subdiv_offsets = [0]  # TODO(tucker): maybe support non-default subdiv spec
+  if num_shards == 1:
+    subdiv_offsets = [0]
+  elif num_shards == 2:
+    if num_devices > 1:
+      subdiv_offsets = [0, -(num_devices // 2)]
+    else:
+      subdiv_offsets = [0]
+  else:
+    raise ValueError('Unsupported num_shards %d' % num_shards)
   for d in range(num_devices):
     with ops.device(devices[d]):
       reduce_op = collective_ops.all_reduce(input_tensors[d],
@@ -316,7 +329,7 @@ def sum_grad_and_var_all_reduce(single_session,
   if alg == 'collective':
     assert not single_session
     summed_grads = build_collective_reduce(
-        scaled_grads, num_workers, 'Add', 'Id')
+        scaled_grads, num_workers, num_shards, 'Add', 'Id')
   else:
     with tf.name_scope('allreduce'):
       # Note that each grad_and_vars looks like the following:
@@ -416,8 +429,9 @@ def sum_gradients_all_reduce(single_session,
     ]
   else:
     aux_devices = ['/job:localhost/cpu:0']
-  aux_device_groups = group_device_names(aux_devices, num_shards
-                                         if alg_contains_shuffle else 1)
+  aux_device_groups = group_device_names(
+      aux_devices,
+      num_shards if (alg != 'collective' and alg_contains_shuffle) else 1)
   group_index = 0
   if agg_small_grads_max_bytes > 0 and agg_small_grads_max_group > 0:
     tower_grads, packing = pack_small_tensors(
@@ -428,8 +442,9 @@ def sum_gradients_all_reduce(single_session,
     packing = None
   reduced_gv_list = []
   gv = list(zip(*tower_grads))
-  chunked_gv = [gv[x:x + allreduce_merge_scope]
-                for x in xrange(0, len(gv), allreduce_merge_scope)]
+  merge_scope = allreduce_merge_scope if allreduce_merge_scope > 0 else 1
+  chunked_gv = [gv[x:x + merge_scope]
+                for x in xrange(0, len(gv), merge_scope)]
   for chunk in chunked_gv:
     with tf.name_scope('allreduce'):
       for grad_and_vars in chunk:

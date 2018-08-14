@@ -511,9 +511,10 @@ class RecordInputImagePreprocessor(BaseImagePreprocess):
       images = [[] for _ in range(self.num_splits)]
       labels = [[] for _ in range(self.num_splits)]
       if use_datasets:
-        ds_iterator = data_utils.create_iterator(
+        ds = data_utils.create_dataset(
             self.batch_size, self.num_splits, self.batch_size_per_split,
             self.parse_and_preprocess, dataset, subset, self.train, cache_data)
+        ds_iterator = data_utils.create_iterator(ds)
         for d in xrange(self.num_splits):
           labels[d], images[d] = ds_iterator.get_next()
 

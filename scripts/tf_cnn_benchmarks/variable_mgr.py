@@ -304,13 +304,15 @@ class VariableMgrLocalReplicated(VariableMgr):
     if self.benchmark_cnn.enable_auto_loss_scale:
       # Check for infs or nans
       is_finite_list = []
-      for tower_grads in reduced_grads:
-        with tf.colocate_with(tower_grads[0]):
-          # TODO(tanmingxing): Create fused op that takes in a list of tensors
-          # as input and returns scalar boolean True if there are any infs/nans.
-          is_finite_list.append(tf.reduce_all(
-              [tf.reduce_all(tf.is_finite(g)) for g in tower_grads]))
-      self.grad_has_inf_nan = tf.logical_not(tf.reduce_all(is_finite_list))
+      with tf.name_scope('check_for_inf_and_nan'):
+        for tower_grads in reduced_grads:
+          with tf.colocate_with(tower_grads[0]):
+            # TODO(tanmingxing): Create fused op that takes in a list of tensors
+            # as input and returns scalar boolean True if there are any
+            # infs/nans.
+            is_finite_list.append(tf.reduce_all(
+                [tf.reduce_all(tf.is_finite(g)) for g in tower_grads]))
+        self.grad_has_inf_nan = tf.logical_not(tf.reduce_all(is_finite_list))
     reduced_device_grads = [[
         (g, v) for g, (_, v) in zip(grads, grad_vars)
     ] for grads, grad_vars in zip(reduced_grads, device_grads)]
@@ -475,9 +477,21 @@ class VariableMgrCollectiveAllReduce(VariableMgr):
   def __init__(self, benchmark_cnn, all_reduce_spec,
                num_workers, num_gpus, task_id, allreduce_merge_scope):
     super(VariableMgrCollectiveAllReduce, self).__init__(benchmark_cnn)
-    if all_reduce_spec:
-      assert all_reduce_spec == 'collective'
-    self._all_reduce_spec = 'collective'
+    if not all_reduce_spec:
+      raise ValueError(
+          'collective_all_reduce requires a non-empty all_reduce_spec: %s'
+          % all_reduce_spec)
+    parsed_spec = allreduce.parse_all_reduce_spec(all_reduce_spec)
+    # So far we only support a length-1 all_reduce_spec
+    if len(parsed_spec) > 1 or parsed_spec[0].limit > 0:
+      raise ValueError(
+          'collective_all_reduce requires one single-range all_reduce_spec %s'
+          % parsed_spec)
+    self._all_reduce_spec = parsed_spec[0]
+    if self._all_reduce_spec.alg != 'collective':
+      raise ValueError(
+          'VariableMgrCollectiveAllReduce initialized with non-collective '
+          'all_reduce_spec %s' % self.all_reduce_spec)
     self._num_workers = num_workers
     self._num_gpus = num_gpus
     self._task_id = task_id
@@ -509,7 +523,7 @@ class VariableMgrCollectiveAllReduce(VariableMgr):
         device_grads,
         self._num_workers,
         'collective',
-        1,   # spec_tuple.shards,
+        self._all_reduce_spec.shards,
         self.benchmark_cnn.gpu_indices,
         allreduce_merge_scope=self._allreduce_merge_scope)
     assert len(reduced_grads) == len(device_grads)

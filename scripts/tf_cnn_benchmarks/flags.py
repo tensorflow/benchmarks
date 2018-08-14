@@ -69,8 +69,9 @@ def DEFINE_list(name, default, help):  # pylint: disable=invalid-name,redefined-
   param_specs[name] = ParamSpec('list', default, help, {})
 
 
-def define_flags():
+def define_flags(specs=None):
   """Define a command line flag for each ParamSpec in flags.param_specs."""
+  specs = specs or param_specs
   define_flag = {
       'boolean': absl_flags.DEFINE_boolean,
       'float': absl_flags.DEFINE_float,
@@ -79,7 +80,7 @@ def define_flags():
       'enum': absl_flags.DEFINE_enum,
       'list': absl_flags.DEFINE_list
   }
-  for name, param_spec in six.iteritems(param_specs):
+  for name, param_spec in six.iteritems(specs):
     if param_spec.flag_type not in define_flag:
       raise ValueError('Unknown flag_type %s' % param_spec.flag_type)
     else:

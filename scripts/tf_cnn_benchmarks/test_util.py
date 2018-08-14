@@ -245,17 +245,23 @@ def train_and_eval(testcase,
   for lines in initial_train_logs:
     initial_train_outputs = get_training_outputs_from_logs(
         lines, print_training_accuracy)
+    if params.cross_replica_sync and params.batch_group_size == 1:
+      testcase.assertEqual(len(initial_train_outputs), params.num_batches)
     if check_output_values:
       check_training_outputs_are_reasonable(testcase, initial_train_outputs,
                                             print_training_accuracy,
                                             max_final_loss=max_final_loss)
-  train_dir_entries = set(os.listdir(params.train_dir))
-  testcase.assertGreater(len(train_dir_entries), 0)
+  if params.train_dir is not None:
+    train_dir_entries = set(os.listdir(params.train_dir))
+    testcase.assertGreater(len(train_dir_entries), 0)
+  else:
+    train_dir_entries = None
 
   if skip == 'eval_and_train_from_checkpoint':
     return
 
   # Part 2: Train from the loaded checkpoint.
+  testcase.assertIsNotNone(train_dir_entries)
   tf.logging.info('Training model from loaded checkpoint')
   # Run for same number of batches as before.
   params = params._replace(num_batches=params.num_batches * 2)
@@ -264,8 +270,9 @@ def train_and_eval(testcase,
   for lines in train_logs_from_ckpt:
     train_outputs_from_ckpt = get_training_outputs_from_logs(
         lines, print_training_accuracy)
-    # TODO(b/64480147): Once the bug is fixed, verify it here by asserting that
-    # the model was trained for the correct number of batches.
+    if params.cross_replica_sync and params.batch_group_size == 1:
+      testcase.assertEqual(len(train_outputs_from_ckpt),
+                           params.num_batches // 2 - params.num_warmup_batches)
     if check_output_values:
       check_training_outputs_are_reasonable(
           testcase, train_outputs_from_ckpt, print_training_accuracy,
@@ -426,7 +433,7 @@ def manually_compute_losses(numpy_inputs, inputs_placeholder, loss, num_workers,
   return losses
 
 
-class TestModel(model.Model):
+class TestCNNModel(model.CNNModel):
   """A simple model used for testing.
 
   The input is a 1-channel 1x1 image, consisting of a single number. The model
@@ -437,8 +444,8 @@ class TestModel(model.Model):
   """
 
   def __init__(self):
-    super(TestModel, self).__init__('test_model', image_size=1, batch_size=1,
-                                    learning_rate=1)
+    super(TestCNNModel, self).__init__(
+        'test_cnn_model', image_size=1, batch_size=1, learning_rate=1)
 
   VAR_A_INITIAL_VALUE = 1.
   VAR_B_INITIAL_VALUE = 2.

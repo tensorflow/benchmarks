@@ -434,7 +434,7 @@ class DistributedVariableUpdateTest(tf.test.TestCase):
       actual_losses.append([x.loss for x in outputs])
 
     inputs = test_util.get_fake_var_update_inputs()
-    expected_losses = test_util.TestModel().manually_compute_losses(
+    expected_losses = test_util.TestCNNModel().manually_compute_losses(
         inputs, num_workers, params)
     if params.variable_update == 'distributed_all_reduce':
       # In distributed all reduce, each step, the controller outputs the average

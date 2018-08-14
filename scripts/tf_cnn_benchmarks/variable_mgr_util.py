@@ -133,6 +133,7 @@ def append_gradients_with_loss_scale(training_ops, get_apply_gradients_ops_func,
         grad_has_inf_nan,
         update_op_if_nan_or_inf,
         update_op_if_no_nan_or_inf,
+        name='cond_if_grad_has_inf_nan'
     )
     training_ops.append(update_op)
 
@@ -510,7 +511,8 @@ def aggregate_single_gradient_using_copy(grad_and_vars, use_mean,
 
   v = grad_and_vars[0][1]
   if check_inf_nan:
-    has_nan_or_inf = tf.logical_not(tf.reduce_all(tf.is_finite(grads)))
+    with tf.name_scope('check_for_inf_and_nan'):
+      has_nan_or_inf = tf.logical_not(tf.reduce_all(tf.is_finite(grads)))
     return (grad, v), has_nan_or_inf
   else:
     return (grad, v), None

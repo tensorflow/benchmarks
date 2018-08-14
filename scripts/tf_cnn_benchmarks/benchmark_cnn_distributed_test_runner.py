@@ -91,7 +91,7 @@ def run_with_real_model(params):
 
 def run_with_test_model(params):
   """Runs tf_cnn_benchmarks with a test model."""
-  model = test_util.TestModel()
+  model = test_util.TestCNNModel()
   inputs = test_util.get_fake_var_update_inputs()
   with test_util.monkey_patch(benchmark_cnn,
                               LOSS_AND_ACCURACY_DIGITS_TO_SHOW=15):
