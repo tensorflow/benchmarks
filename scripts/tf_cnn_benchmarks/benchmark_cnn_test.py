@@ -671,7 +671,7 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     self._run_benchmark_cnn_with_black_and_white_images(params)
 
   @mock.patch('tensorflow.train.Saver')
-  @mock.patch(benchmark_cnn.._get_checkpoint_to_load')
+  @mock.patch('benchmark_cnn._get_checkpoint_to_load')
   def testLoadCheckpoint(self, mock_checkpoint_to_load, mock_saver):
     """Tests load checkpoint with full path to checkpoint."""
     expected_checkpoint = '/path/to/checkpoints/model.ckpt-1243'
@@ -726,17 +726,6 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
         'testImagenetPreprocessorVerboseSummary')._replace(
             data_dir=imagenet_dir, data_name='imagenet', distortions=False,
             summary_verbosity=2)
-    self._train_and_eval_local(params, use_test_preprocessor=False)
-
-  def testOfficialImagenetPreprocessorFp16(self):
-    imagenet_dir = os.path.join(platforms_util.get_test_data_dir(),
-                                'fake_tf_record_data')
-    params = test_util.get_params(
-        'testOfficialImagenetPreprocessorFp16')._replace(
-            data_dir=imagenet_dir,
-            data_name='imagenet',
-            input_preprocessor='official_models_imagenet',
-            use_fp16=True)
     self._train_and_eval_local(params, use_test_preprocessor=False)
 
   def testCifar10SyntheticData(self):
