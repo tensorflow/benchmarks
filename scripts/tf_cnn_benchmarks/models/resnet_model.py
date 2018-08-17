@@ -389,7 +389,7 @@ def create_resnet20_v2_cifar_model():
 
 
 def create_resnet32_cifar_model():
-  return ResnetCifar10Model('resnet32_v2', (5, 5, 5))
+  return ResnetCifar10Model('resnet32', (5, 5, 5))
 
 
 def create_resnet32_v2_cifar_model():
