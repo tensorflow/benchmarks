@@ -27,6 +27,7 @@ import os
 import re
 import threading
 import time
+import sys
 
 from absl import flags as absl_flags
 import numpy as np
@@ -356,7 +357,7 @@ flags.DEFINE_boolean('use_resource_vars', False,
                      'for debugging their performance.')
 # Performance tuning specific to MKL.
 flags.DEFINE_boolean('mkl', False, 'If true, set MKL environment variables.')
-flags.DEFINE_integer('kmp_blocktime', 30,
+flags.DEFINE_integer('kmp_blocktime', 0,
                      'The time, in milliseconds, that a thread should wait, '
                      'after completing the execution of a parallel region, '
                      'before sleeping')
@@ -3002,12 +3003,17 @@ def setup(params):
       formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
   # Sets environment variables for MKL
+  # Will set to defaults only if either cmd line arguments are missing or
+  # OS ENV variables are missing. 
   if params.mkl:
-    os.environ['KMP_BLOCKTIME'] = str(params.kmp_blocktime)
-    os.environ['KMP_SETTINGS'] = str(params.kmp_settings)
-    os.environ['KMP_AFFINITY'] = params.kmp_affinity
-    if params.num_intra_threads > 0:
-      os.environ['OMP_NUM_THREADS'] = str(params.num_intra_threads)
+    if '-kmp_blocktime' in str(sys.argv) or 'KMP_BLOCKTIME' not in os.environ:
+        os.environ['KMP_BLOCKTIME'] = str(params.kmp_blocktime)
+    if '-kmp_settings' in str(sys.argv) or 'KMP_SETTINGS' not in os.environ:
+        os.environ['KMP_SETTINGS'] = str(params.kmp_settings)
+    if '-kmp_affinity' in str(sys.argv) or 'KMP_AFFINITY' not in os.environ:
+        os.environ['KMP_AFFINITY'] = params.kmp_affinity
+    if params.num_intra_threads > 0 or 'OMP_NUM_THREADS' not in os.environ:
+        os.environ['OMP_NUM_THREADS'] = str(params.num_intra_threads)
 
   # Sets GPU thread settings
   if params.device.lower() == 'gpu':
