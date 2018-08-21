@@ -3003,16 +3003,25 @@ def setup(params):
       formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
   # Sets environment variables for MKL
-  # Will set to defaults only if either cmd line arguments are missing or
-  # OS ENV variables are missing. 
+  # If OS ENV variables are overridden, a warning msg is printed.
   if params.mkl:
-    if '-kmp_blocktime' in str(sys.argv) or 'KMP_BLOCKTIME' not in os.environ:
-        os.environ['KMP_BLOCKTIME'] = str(params.kmp_blocktime)
-    if '-kmp_settings' in str(sys.argv) or 'KMP_SETTINGS' not in os.environ:
-        os.environ['KMP_SETTINGS'] = str(params.kmp_settings)
-    if '-kmp_affinity' in str(sys.argv) or 'KMP_AFFINITY' not in os.environ:
-        os.environ['KMP_AFFINITY'] = params.kmp_affinity
-    if params.num_intra_threads > 0 or 'OMP_NUM_THREADS' not in os.environ:
+    if '-kmp_blocktime' not in str(sys.argv) and 'KMP_BLOCKTIME' in os.environ:
+      tf.logging.warn("OS ENV variable KMP_BLOCKTIME is ignored and " +
+                    " script default is used. Use --kmp_blocktime to override.")
+    os.environ['KMP_BLOCKTIME'] = str(params.kmp_blocktime)
+    if '-kmp_settings' not in str(sys.argv) and 'KMP_SETTINGS' in os.environ:
+      tf.logging.warn("OS ENV variable KMP_SETTINGS is ignored and" +
+                     " script default is used. Use --kmp_settings to override.")
+    os.environ['KMP_SETTINGS'] = str(params.kmp_settings)
+    if '-kmp_affinity' not in str(sys.argv) and 'KMP_AFFINITY' in os.environ:
+      tf.logging.warn("OS ENV variable KMP_AFFINITY is ignored and " +
+                    " script default is used. Use --kmp_affinity to override.")
+    os.environ['KMP_AFFINITY'] = params.kmp_affinity
+    if ('-num_intra_threads' not in str(sys.argv) 
+      and 'OMP_NUM_THREADS' in os.environ):
+      tf.logging.warn("OS ENV variable OMP_NUM_THREADS is ignored and " +
+                " script default is used. Use --num_intra_threads to override.")
+    if params.num_intra_threads > 0:
         os.environ['OMP_NUM_THREADS'] = str(params.num_intra_threads)
 
   # Sets GPU thread settings
