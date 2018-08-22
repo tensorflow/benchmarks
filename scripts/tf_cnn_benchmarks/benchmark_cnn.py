@@ -27,7 +27,6 @@ import os
 import re
 import threading
 import time
-import sys
 
 from absl import flags as absl_flags
 import numpy as np
@@ -2976,6 +2975,17 @@ class BenchmarkNMT(BenchmarkCNN):
   def _build_model_single_session_with_dataset_prefetching(self):
     pass
 
+def _is_mkl_flag_absent(mkl_flag):
+  return not(absl_flags.FLAGS.is_parsed() and mkl_flag in absl_flags.FLAGS
+             and absl_flags.FLAGS[mkl_flag].present)
+
+def _print_os_env_ignored_warning(mkl_flag, flag_default_val):
+  os_env_var = mkl_flag.upper()
+  if mkl_flag == 'num_intra_threads':
+    os_env_var = 'OMP_NUM_THREADS'
+  tf.logging.warn(("OS ENV variable %s=%s is ignored and script default: " +
+                   "%s is used. Use --%s to override.") % (os_env_var,
+                   os.environ[os_env_var], flag_default_val, mkl_flag))
 
 def setup(params):
   """Sets up the environment that BenchmarkCNN should run in.
@@ -3003,26 +3013,20 @@ def setup(params):
       formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
   # Sets environment variables for MKL
-  # If OS ENV variables are overridden, a warning msg is printed.
+  # If OS ENV vars are overridden by script defaults, a warning msg is printed.
   if params.mkl:
-    if '-kmp_blocktime' not in str(sys.argv) and 'KMP_BLOCKTIME' in os.environ:
-      tf.logging.warn("OS ENV variable KMP_BLOCKTIME is ignored and " +
-                    " script default is used. Use --kmp_blocktime to override.")
-    os.environ['KMP_BLOCKTIME'] = str(params.kmp_blocktime)
-    if '-kmp_settings' not in str(sys.argv) and 'KMP_SETTINGS' in os.environ:
-      tf.logging.warn("OS ENV variable KMP_SETTINGS is ignored and" +
-                     " script default is used. Use --kmp_settings to override.")
-    os.environ['KMP_SETTINGS'] = str(params.kmp_settings)
-    if '-kmp_affinity' not in str(sys.argv) and 'KMP_AFFINITY' in os.environ:
-      tf.logging.warn("OS ENV variable KMP_AFFINITY is ignored and " +
-                    " script default is used. Use --kmp_affinity to override.")
-    os.environ['KMP_AFFINITY'] = params.kmp_affinity
-    if ('-num_intra_threads' not in str(sys.argv) 
-      and 'OMP_NUM_THREADS' in os.environ):
-      tf.logging.warn("OS ENV variable OMP_NUM_THREADS is ignored and " +
-                " script default is used. Use --num_intra_threads to override.")
-    if params.num_intra_threads > 0:
-        os.environ['OMP_NUM_THREADS'] = str(params.num_intra_threads)
+    mkl_flags = ['kmp_blocktime', 'kmp_settings', 'kmp_affinity',
+                 'num_intra_threads']
+    for mkl_flag in mkl_flags:
+      os_env_var = mkl_flag.upper()
+      if mkl_flag == 'num_intra_threads':
+        os_env_var = 'OMP_NUM_THREADS'
+      flag_val = str(params.__getattribute__(mkl_flag))
+      if _is_mkl_flag_absent(mkl_flag) and os_env_var in os.environ:
+        _print_os_env_ignored_warning(mkl_flag, flag_val)
+      os.environ[os_env_var] = flag_val
+      if mkl_flag == 'num_intra_threads' and params.num_intra_threads < 1:
+        os.environ[os_env_var] = 'None'
 
   # Sets GPU thread settings
   if params.device.lower() == 'gpu':
