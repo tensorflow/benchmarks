@@ -3025,7 +3025,7 @@ def setup(params):
       if _is_mkl_flag_absent(mkl_flag) and os_env_var in os.environ:
         _print_os_env_ignored_warning(mkl_flag, flag_val)
       os.environ[os_env_var] = flag_val
-      if mkl_flag == 'num_intra_threads' and params.num_intra_threads > 0:
+      if mkl_flag == 'num_intra_threads' and params.num_intra_threads < 1:
         os.environ[os_env_var] = 'None'
 
   # Sets GPU thread settings
