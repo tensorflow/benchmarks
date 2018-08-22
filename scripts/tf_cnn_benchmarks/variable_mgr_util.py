@@ -23,6 +23,7 @@ import tensorflow as tf
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gradients_impl
 
 
 PS_SHADOW_VAR_PREFIX = 'ps_var'
@@ -504,10 +505,14 @@ def aggregate_single_gradient_using_copy(grad_and_vars, use_mean,
       the first tower. The has_nan_or_inf indicates the grads has nan or inf.
   """
   grads = [g for g, _ in grad_and_vars]
-  grad = tf.add_n(grads)
+  if any(isinstance(g, tf.IndexedSlices) for g in grads):
+    # TODO(reedwm): All-reduce IndexedSlices more effectively.
+    grad = gradients_impl._AggregateIndexedSlicesGradients(grads)  # pylint: disable=protected-access
+  else:
+    grad = tf.add_n(grads)
 
   if use_mean and len(grads) > 1:
-    grad = tf.multiply(grad, 1.0 / len(grads))
+    grad = tf.scalar_mul(1.0 / len(grads), grad)
 
   v = grad_and_vars[0][1]
   if check_inf_nan:

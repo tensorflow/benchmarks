@@ -50,13 +50,43 @@ class Model(object):
     del batch_size
     return self.learning_rate
 
-  def add_inference(self, unused_cnn):
-    raise ValueError('Must be implemented in derived classes')
+  def build_network(self, images, phase_train=True, nclass=1001, image_depth=3,
+                    data_type=tf.float32, data_format='NCHW',
+                    use_tf_layers=True, fp16_vars=False):
+    """Builds the forward pass of the model.
 
-  def build_network(self, inputs, **kwargs):
-    del inputs
-    del kwargs
-    raise ValueError('Must be implemented in derived classes')
+    Args:
+      images: The images, in NHWC format.
+      phase_train: True during training. False during evaluation.
+      nclass: Number of classes that the images can belong to.
+      image_depth: The channel dimension of `images`. Should be
+        `images.shape[3]`.
+      data_type: The dtype to run the model in: tf.float32 or tf.float16. The
+        variable dtype is controlled by a separate parameter: fp16_vars.
+      data_format: What data format to run the model in: NHWC or NCHW.
+      use_tf_layers: If True, build the model using tf.layers.
+      fp16_vars: If True, the variables will be created in float16.
+
+    Returns:
+      logits: The logits of the model.
+      aux_logits: The auxiliary logits of the model (see Inception for an
+        example), or None if the model does not have auxiliary logits
+    """
+    raise NotImplementedError('Must be implemented in derived classes')
+
+  def loss_function(self, logits, labels, aux_logits):
+    """Loss function for this model."""
+    with tf.name_scope('xentropy'):
+      cross_entropy = tf.losses.sparse_softmax_cross_entropy(
+          logits=logits, labels=labels)
+      loss = tf.reduce_mean(cross_entropy, name='xentropy_mean')
+    if aux_logits is not None:
+      with tf.name_scope('aux_xentropy'):
+        aux_cross_entropy = tf.losses.sparse_softmax_cross_entropy(
+            logits=aux_logits, labels=labels)
+        aux_loss = 0.4 * tf.reduce_mean(aux_cross_entropy, name='aux_loss')
+        loss = tf.add_n([loss, aux_loss])
+    return loss
 
 
 class CNNModel(Model):
@@ -91,6 +121,21 @@ class CNNModel(Model):
     """
     return False
 
+  def add_inference(self, cnn):
+    """Adds the core layers of the CNN's forward pass.
+
+    This should build the forward pass layers, except for the initial transpose
+    of the images and the final Dense layer producing the logits. The layers
+    should be build with the ConvNetBuilder `cnn`, so that when this function
+    returns, `cnn.top_layer` and `cnn.top_size` refer to the last layer and the
+    number of units of the layer layer, respectively.
+
+    Args:
+      cnn: A ConvNetBuilder to build the forward pass layers with.
+    """
+    del cnn
+    raise NotImplementedError('Must be implemented in derived classes')
+
   def build_network(self, images, phase_train=True, nclass=1001, image_depth=3,
                     data_type=tf.float32, data_format='NCHW',
                     use_tf_layers=True, fp16_vars=False):
@@ -120,8 +165,3 @@ class CNNModel(Model):
       if aux_logits is not None:
         aux_logits = tf.cast(aux_logits, tf.float32)
     return logits, aux_logits
-
-  # Subclasses can override this to define their own loss function. By default,
-  # benchmark_cnn.py defines its own loss function. If overridden, it must have
-  # the same signature as benchmark_cnn.loss_function.
-  loss_function = None

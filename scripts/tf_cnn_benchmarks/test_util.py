@@ -40,12 +40,13 @@ def monkey_patch(obj, **kwargs):
   The attributes are patched back to their original value when the context
   manager exits.
 
-  For example, to replace cnn_util.loss_function with an identity function, do:
+  For example, to replace benchmark_cnn.get_data_type with an identity function,
+  do:
 
   ```
-  with monkey_patch(benchmark_cnn, loss_function=lambda x: x)
+  with monkey_patch(benchmark_cnn, get_data_type=lambda x: x)
     loss1 = benchmark_cnn.loss_function(1)  # loss1 will be 1
-  loss2 = benchmark_cnn.loss_function(2)  # Call the original function
+  loss2 = benchmark_cnn.loss_function(params)  # Call the original function
   ```
 
   Args:

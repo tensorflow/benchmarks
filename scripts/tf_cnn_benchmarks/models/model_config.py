@@ -28,6 +28,7 @@ from models import overfeat_model
 from models import resnet_model
 from models import trivial_model
 from models import vgg_model
+from models.experimental import official_ncf_model
 
 
 _model_name_to_imagenet_model = {
@@ -75,6 +76,7 @@ _model_name_to_imagenet_model = {
     'nasnet': nasnet_model.NasnetModel,
     'nasnetlarge': nasnet_model.NasnetLargeModel,
     'mobilenet': mobilenet_v2.MobilenetModel,
+    'ncf': official_ncf_model.NcfModel,
 
 }
 

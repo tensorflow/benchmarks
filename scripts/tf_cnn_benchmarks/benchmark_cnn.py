@@ -587,23 +587,6 @@ def get_data_type(params):
   return tf.float16 if params.use_fp16 else tf.float32
 
 
-# Note that we monkey patch this function in the unit tests. So if this is
-# inlined or renamed, the unit tests must be updated.
-def loss_function(logits, labels, aux_logits):
-  """Loss function."""
-  with tf.name_scope('xentropy'):
-    cross_entropy = tf.losses.sparse_softmax_cross_entropy(
-        logits=logits, labels=labels)
-    loss = tf.reduce_mean(cross_entropy, name='xentropy_mean')
-  if aux_logits is not None:
-    with tf.name_scope('aux_xentropy'):
-      aux_cross_entropy = tf.losses.sparse_softmax_cross_entropy(
-          logits=aux_logits, labels=labels)
-      aux_loss = 0.4 * tf.reduce_mean(aux_cross_entropy, name='aux_loss')
-      loss = tf.add_n([loss, aux_loss])
-  return loss
-
-
 def create_config_proto(params):
   """Returns session config proto.
 
@@ -2735,8 +2718,8 @@ class BenchmarkCNN(object):
       if not phase_train:
         return [logits]
 
-      loss_func = self.model.loss_function or loss_function
-      base_loss = loss_func(logits, labels, aux_logits=aux_logits)
+      base_loss = self.model.loss_function(logits, labels,
+                                           aux_logits=aux_logits)
       params = self.variable_mgr.trainable_variables_on_device(
           rel_device_num, abs_device_num)
       l2_loss = None
