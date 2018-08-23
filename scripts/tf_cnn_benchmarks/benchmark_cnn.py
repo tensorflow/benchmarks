@@ -2976,13 +2976,10 @@ class BenchmarkNMT(BenchmarkCNN):
     pass
 
 def _is_mkl_flag_absent(mkl_flag):
-  return not(absl_flags.FLAGS.is_parsed() and mkl_flag in absl_flags.FLAGS
-             and absl_flags.FLAGS[mkl_flag].present)
+  return not (absl_flags.FLAGS.is_parsed() and mkl_flag in absl_flags.FLAGS
+              and absl_flags.FLAGS[mkl_flag].present)
 
-def _print_os_env_ignored_warning(mkl_flag, flag_default_val):
-  os_env_var = mkl_flag.upper()
-  if mkl_flag == 'num_intra_threads':
-    os_env_var = 'OMP_NUM_THREADS'
+def _print_os_env_ignored_warning(mkl_flag, flag_default_val, os_env_var):
   tf.logging.warn(("OS ENV variable %s=%s is ignored and script default: " +
                    "%s is used. Use --%s to override.") % (os_env_var,
                    os.environ[os_env_var], flag_default_val, mkl_flag))
@@ -3021,12 +3018,12 @@ def setup(params):
       os_env_var = mkl_flag.upper()
       if mkl_flag == 'num_intra_threads':
         os_env_var = 'OMP_NUM_THREADS'
-      flag_val = str(params.__getattribute__(mkl_flag))
+      flag_val = str(getattr(params, mkl_flag))
       if _is_mkl_flag_absent(mkl_flag) and os_env_var in os.environ:
-        _print_os_env_ignored_warning(mkl_flag, flag_val)
+        _print_os_env_ignored_warning(mkl_flag, flag_val, os_env_var)
       os.environ[os_env_var] = flag_val
-      if mkl_flag == 'num_intra_threads' and params.num_intra_threads < 1:
-        os.environ[os_env_var] = 'None'
+      if mkl_flag == 'num_intra_threads' and not params.num_intra_threads:
+        os.environ.pop(os_env_var, None)
 
   # Sets GPU thread settings
   if params.device.lower() == 'gpu':
