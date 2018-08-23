@@ -328,7 +328,7 @@ flags.DEFINE_boolean('force_gpu_compatible', False,
                      'whether to enable force_gpu_compatible in GPU_Options')
 flags.DEFINE_boolean('allow_growth', None,
                      'whether to enable allow_growth in GPU_Options')
-flags.DEFINE_boolean('xla', False, 'whether to enable XLA')
+flags.DEFINE_boolean('xla', False, 'whether to enable XLA auto-jit compilation')
 flags.DEFINE_boolean('fuse_decode_and_crop', True,
                      'Fuse decode_and_crop for image preprocessing.')
 flags.DEFINE_boolean('distort_color_in_yiq', True,
