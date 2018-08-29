@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Benchmark dataset utilities.
 """
 
@@ -34,13 +33,12 @@ IMAGENET_NUM_VAL_IMAGES = 50000
 class Dataset(object):
   """Abstract class for cnn benchmarks dataset."""
 
-  def __init__(self, name, height=None, width=None, depth=None, data_dir=None,
-               queue_runner_required=False, num_classes=1001):
+  def __init__(self,
+               name,
+               data_dir=None,
+               queue_runner_required=False,
+               num_classes=None):
     self.name = name
-    self.height = height
-    self.width = width
-    self.depth = depth or 3
-
     self.data_dir = data_dir
     self._queue_runner_required = queue_runner_required
     self._num_classes = num_classes
@@ -66,23 +64,44 @@ class Dataset(object):
   def __str__(self):
     return self.name
 
-  def get_image_preprocessor(self, input_preprocessor='default'):
-    if self.use_synthetic_gpu_images():
+  def get_input_preprocessor(self, input_preprocessor='default'):
+    if self.use_synthetic_gpu_inputs():
+      # TODO(laigd): it seems this path will never get executed, consider
+      # removing it.
       return preprocessing.SyntheticImagePreprocessor
     return _SUPPORTED_INPUT_PREPROCESSORS[self.name][input_preprocessor]
 
   def queue_runner_required(self):
     return self._queue_runner_required
 
-  def use_synthetic_gpu_images(self):
+  def use_synthetic_gpu_inputs(self):
     return not self.data_dir
 
 
-class ImagenetData(Dataset):
+class ImageDataset(Dataset):
+  """Abstract class for image datasets."""
+
+  def __init__(self,
+               name,
+               height,
+               width,
+               depth=None,
+               data_dir=None,
+               queue_runner_required=False,
+               num_classes=1001):
+    super(ImageDataset, self).__init__(name, data_dir, queue_runner_required,
+                                       num_classes)
+    self.height = height
+    self.width = width
+    self.depth = depth or 3
+
+
+class ImagenetDataset(ImageDataset):
   """Configuration for Imagenet dataset."""
 
   def __init__(self, data_dir=None):
-    super(ImagenetData, self).__init__('imagenet', 300, 300, data_dir=data_dir)
+    super(ImagenetDataset, self).__init__(
+        'imagenet', 300, 300, data_dir=data_dir)
 
   def num_examples_per_epoch(self, subset='train'):
     if subset == 'train':
@@ -93,24 +112,30 @@ class ImagenetData(Dataset):
       raise ValueError('Invalid data subset "%s"' % subset)
 
 
-class Cifar10Data(Dataset):
+class Cifar10Dataset(ImageDataset):
   """Configuration for cifar 10 dataset.
 
   It will mount all the input images to memory.
   """
 
   def __init__(self, data_dir=None):
-    super(Cifar10Data, self).__init__('cifar10', 32, 32, data_dir=data_dir,
-                                      queue_runner_required=True,
-                                      num_classes=11)
+    super(Cifar10Dataset, self).__init__(
+        'cifar10',
+        32,
+        32,
+        data_dir=data_dir,
+        queue_runner_required=True,
+        num_classes=11)
 
   def read_data_files(self, subset='train'):
     """Reads from data file and returns images and labels in a numpy array."""
     assert self.data_dir, ('Cannot call `read_data_files` when using synthetic '
                            'data')
     if subset == 'train':
-      filenames = [os.path.join(self.data_dir, 'data_batch_%d' % i)
-                   for i in xrange(1, 6)]
+      filenames = [
+          os.path.join(self.data_dir, 'data_batch_%d' % i)
+          for i in xrange(1, 6)
+      ]
     elif subset == 'validation':
       filenames = [os.path.join(self.data_dir, 'test_batch')]
     else:
@@ -124,8 +149,7 @@ class Cifar10Data(Dataset):
     # input format.
     all_images = np.concatenate(
         [each_input['data'] for each_input in inputs]).astype(np.float32)
-    all_labels = np.concatenate(
-        [each_input['labels'] for each_input in inputs])
+    all_labels = np.concatenate([each_input['labels'] for each_input in inputs])
     return all_images, all_labels
 
   def num_examples_per_epoch(self, subset='train'):
@@ -138,8 +162,8 @@ class Cifar10Data(Dataset):
 
 
 _SUPPORTED_DATASETS = {
-    'imagenet': ImagenetData,
-    'cifar10': Cifar10Data,
+    'imagenet': ImagenetDataset,
+    'cifar10': Cifar10Dataset,
 }
 
 _SUPPORTED_INPUT_PREPROCESSORS = {
@@ -149,7 +173,7 @@ _SUPPORTED_INPUT_PREPROCESSORS = {
     },
     'cifar10': {
         'default': preprocessing.Cifar10ImagePreprocessor
-    }
+    },
 }
 
 
@@ -169,7 +193,7 @@ def create_dataset(data_dir, data_name):
       raise ValueError('Could not identify name of dataset. '
                        'Please specify with --data_name option.')
   if data_name not in _SUPPORTED_DATASETS:
-    raise ValueError('Unknown dataset. Must be one of %s', ', '.join(
+    raise ValueError('Unknown dataset. Must be one of %s' % ', '.join(
         [key for key in sorted(_SUPPORTED_DATASETS.keys())]))
 
   return _SUPPORTED_DATASETS[data_name](data_dir)

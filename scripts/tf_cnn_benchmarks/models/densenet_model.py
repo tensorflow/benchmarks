@@ -27,10 +27,10 @@ from models import model as model_lib
 class DensenetCifar10Model(model_lib.CNNModel):
   """Densenet cnn network configuration."""
 
-  def __init__(self, model, layer_counts, growth_rate):
+  def __init__(self, model, layer_counts, growth_rate, params=None):
     self.growth_rate = growth_rate
-    super(DensenetCifar10Model, self).__init__(model, 32, 64, 0.1,
-                                               layer_counts=layer_counts)
+    super(DensenetCifar10Model, self).__init__(
+        model, 32, 64, 0.1, layer_counts=layer_counts, params=params)
     self.batch_norm_config = {'decay': 0.9, 'epsilon': 1e-5, 'scale': True}
 
   def dense_block(self, cnn, growth_rate):

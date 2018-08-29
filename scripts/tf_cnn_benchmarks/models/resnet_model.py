@@ -238,7 +238,7 @@ def residual_block(cnn, depth, stride, version):
 class ResnetModel(model_lib.CNNModel):
   """Resnet cnn network configuration."""
 
-  def __init__(self, model, layer_counts):
+  def __init__(self, model, layer_counts, params=None):
     default_batch_sizes = {
         'resnet50': 64,
         'resnet101': 32,
@@ -252,7 +252,7 @@ class ResnetModel(model_lib.CNNModel):
     }
     batch_size = default_batch_sizes.get(model, 32)
     super(ResnetModel, self).__init__(model, 224, batch_size, 0.004,
-                                      layer_counts)
+                                      layer_counts, params=params)
     if 'v2' in model:
       self.version = 'v2'
     elif 'v1.5' in model:
@@ -298,32 +298,32 @@ class ResnetModel(model_lib.CNNModel):
     return tf.cond(global_step < warmup_steps, lambda: warmup_lr, lambda: lr)
 
 
-def create_resnet50_model():
-  return ResnetModel('resnet50', (3, 4, 6, 3))
+def create_resnet50_model(params):
+  return ResnetModel('resnet50', (3, 4, 6, 3), params=params)
 
 
-def create_resnet50_v1_5_model():
-  return ResnetModel('resnet50_v1.5', (3, 4, 6, 3))
+def create_resnet50_v1_5_model(params):
+  return ResnetModel('resnet50_v1.5', (3, 4, 6, 3), params=params)
 
 
-def create_resnet50_v2_model():
-  return ResnetModel('resnet50_v2', (3, 4, 6, 3))
+def create_resnet50_v2_model(params):
+  return ResnetModel('resnet50_v2', (3, 4, 6, 3), params=params)
 
 
-def create_resnet101_model():
-  return ResnetModel('resnet101', (3, 4, 23, 3))
+def create_resnet101_model(params):
+  return ResnetModel('resnet101', (3, 4, 23, 3), params=params)
 
 
-def create_resnet101_v2_model():
-  return ResnetModel('resnet101_v2', (3, 4, 23, 3))
+def create_resnet101_v2_model(params):
+  return ResnetModel('resnet101_v2', (3, 4, 23, 3), params=params)
 
 
-def create_resnet152_model():
-  return ResnetModel('resnet152', (3, 8, 36, 3))
+def create_resnet152_model(params):
+  return ResnetModel('resnet152', (3, 8, 36, 3), params=params)
 
 
-def create_resnet152_v2_model():
-  return ResnetModel('resnet152_v2', (3, 8, 36, 3))
+def create_resnet152_v2_model(params):
+  return ResnetModel('resnet152_v2', (3, 8, 36, 3), params=params)
 
 
 class ResnetCifar10Model(model_lib.CNNModel):
@@ -336,13 +336,13 @@ class ResnetCifar10Model(model_lib.CNNModel):
   https://arxiv.org/pdf/1603.05027.pdf.
   """
 
-  def __init__(self, model, layer_counts):
+  def __init__(self, model, layer_counts, params=None):
     if 'v2' in model:
       self.version = 'v2'
     else:
       self.version = 'v1'
     super(ResnetCifar10Model, self).__init__(
-        model, 32, 128, 0.1, layer_counts)
+        model, 32, 128, 0.1, layer_counts, params=params)
 
   def add_inference(self, cnn):
     if self.layer_counts is None:
@@ -380,41 +380,41 @@ class ResnetCifar10Model(model_lib.CNNModel):
     return tf.train.piecewise_constant(global_step, boundaries, values)
 
 
-def create_resnet20_cifar_model():
-  return ResnetCifar10Model('resnet20', (3, 3, 3))
+def create_resnet20_cifar_model(params):
+  return ResnetCifar10Model('resnet20', (3, 3, 3), params=params)
 
 
-def create_resnet20_v2_cifar_model():
-  return ResnetCifar10Model('resnet20_v2', (3, 3, 3))
+def create_resnet20_v2_cifar_model(params):
+  return ResnetCifar10Model('resnet20_v2', (3, 3, 3), params=params)
 
 
-def create_resnet32_cifar_model():
-  return ResnetCifar10Model('resnet32', (5, 5, 5))
+def create_resnet32_cifar_model(params):
+  return ResnetCifar10Model('resnet32', (5, 5, 5), params=params)
 
 
-def create_resnet32_v2_cifar_model():
-  return ResnetCifar10Model('resnet32_v2', (5, 5, 5))
+def create_resnet32_v2_cifar_model(params):
+  return ResnetCifar10Model('resnet32_v2', (5, 5, 5), params=params)
 
 
-def create_resnet44_cifar_model():
-  return ResnetCifar10Model('resnet44', (7, 7, 7))
+def create_resnet44_cifar_model(params):
+  return ResnetCifar10Model('resnet44', (7, 7, 7), params=params)
 
 
-def create_resnet44_v2_cifar_model():
-  return ResnetCifar10Model('resnet44_v2', (7, 7, 7))
+def create_resnet44_v2_cifar_model(params):
+  return ResnetCifar10Model('resnet44_v2', (7, 7, 7), params=params)
 
 
-def create_resnet56_cifar_model():
-  return ResnetCifar10Model('resnet56', (9, 9, 9))
+def create_resnet56_cifar_model(params):
+  return ResnetCifar10Model('resnet56', (9, 9, 9), params=params)
 
 
-def create_resnet56_v2_cifar_model():
-  return ResnetCifar10Model('resnet56_v2', (9, 9, 9))
+def create_resnet56_v2_cifar_model(params):
+  return ResnetCifar10Model('resnet56_v2', (9, 9, 9), params=params)
 
 
-def create_resnet110_cifar_model():
-  return ResnetCifar10Model('resnet110', (18, 18, 18))
+def create_resnet110_cifar_model(params):
+  return ResnetCifar10Model('resnet110', (18, 18, 18), params=params)
 
 
-def create_resnet110_v2_cifar_model():
-  return ResnetCifar10Model('resnet110_v2', (18, 18, 18))
+def create_resnet110_v2_cifar_model(params):
+  return ResnetCifar10Model('resnet110_v2', (18, 18, 18), params=params)

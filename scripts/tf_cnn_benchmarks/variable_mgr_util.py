@@ -146,6 +146,18 @@ class OverrideCachingDevice(object):
   Variables smaller than a certain threshold are cached on a single specific
   device, as specified in the constructor. All other variables are load balanced
   across a pool of devices, by caching each variable on the least loaded device.
+
+  Note that variable creation only happen when building the model graph on the
+  first device (see how it sets the 'reuse' parameter in
+  VariableMgr.*.create_outer_variable_scope()). That means, for all other
+  devices, the variable scope will reuse the variables created before, which
+  requires that we set the caching_device correctly as otherwise it may not be
+  able to find the previously created variable and will create a new one. This
+  requires when building the model graph on different devices, variables with
+  the same name should have same size.
+
+  TODO(laigd): consider adding tests or verification logic to enforce this, or
+  refactor it.
   """
 
   def __init__(self, devices, device_for_small_variables,

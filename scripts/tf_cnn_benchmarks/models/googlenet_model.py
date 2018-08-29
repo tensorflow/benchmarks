@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Googlenet model configuration.
 
 References:
@@ -28,10 +27,12 @@ from models import model
 class GooglenetModel(model.CNNModel):
   """GoogLeNet."""
 
-  def __init__(self):
-    super(GooglenetModel, self).__init__('googlenet', 224, 32, 0.005)
+  def __init__(self, params=None):
+    super(GooglenetModel, self).__init__(
+        'googlenet', 224, 32, 0.005, params=params)
 
   def add_inference(self, cnn):
+
     def inception_v1(cnn, k, l, m, n, p, q):
       cols = [[('conv', k, 1, 1)], [('conv', l, 1, 1), ('conv', m, 3, 3)],
               [('conv', n, 1, 1), ('conv', p, 5, 5)],

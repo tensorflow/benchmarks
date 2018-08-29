@@ -20,8 +20,9 @@ from models import model
 class TrivialModel(model.CNNModel):
   """Trivial model configuration."""
 
-  def __init__(self):
-    super(TrivialModel, self).__init__('trivial', 224 + 3, 32, 0.005)
+  def __init__(self, params=None):
+    super(TrivialModel, self).__init__(
+        'trivial', 224 + 3, 32, 0.005, params=params)
 
   def add_inference(self, cnn):
     cnn.reshape([-1, 227 * 227 * 3])
@@ -32,8 +33,9 @@ class TrivialModel(model.CNNModel):
 class TrivialCifar10Model(model.CNNModel):
   """Trivial cifar10 model configuration."""
 
-  def __init__(self):
-    super(TrivialCifar10Model, self).__init__('trivial', 32, 32, 0.005)
+  def __init__(self, params=None):
+    super(TrivialCifar10Model, self).__init__(
+        'trivial', 32, 32, 0.005, params=params)
 
   def add_inference(self, cnn):
     cnn.reshape([-1, 32 * 32 * 3])

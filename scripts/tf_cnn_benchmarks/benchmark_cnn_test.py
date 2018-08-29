@@ -200,7 +200,7 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
                           fp16_vars=True)
 
   def _assert_correct_var_type(self, var, params):
-    if 'gpu_cached_images' not in var.name:
+    if 'gpu_cached_inputs' not in var.name:
       if params.use_fp16 and params.fp16_vars and 'batchnorm' not in var.name:
         expected_type = tf.float16
       else:
@@ -256,7 +256,7 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
       if params.variable_update == 'parameter_server':
         for v in all_vars:
           tf.logging.debug('var: %s' % v.name)
-          match = re.match(r'tower_(\d+)/v/gpu_cached_images:0', v.name)
+          match = re.match(r'tower_(\d+)/v/gpu_cached_inputs:0', v.name)
           if match:
             self.assertEquals(v.device, '/device:GPU:%s' % match.group(1))
           elif v.name.startswith('v/'):
@@ -275,10 +275,10 @@ class TfCnnBenchmarksModelTest(tf.test.TestCase):
         v1_count = 0
         for v in all_vars:
           if v.name.startswith('tower_0/v0/'):
-            self.assertEquals(v.name, 'tower_0/v0/gpu_cached_images:0')
+            self.assertEquals(v.name, 'tower_0/v0/gpu_cached_inputs:0')
             self.assertEquals(v.device, '/device:GPU:0')
           elif v.name.startswith('tower_1/v1/'):
-            self.assertEquals(v.name, 'tower_1/v1/gpu_cached_images:0')
+            self.assertEquals(v.name, 'tower_1/v1/gpu_cached_inputs:0')
             self.assertEquals(v.device, '/device:GPU:1')
           elif v.name.startswith('v0/'):
             v0_count += 1
@@ -442,12 +442,12 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     logs = []
     benchmark_cnn.log_fn = test_util.print_and_add_to_list(logs)
     bench = benchmark_cnn.BenchmarkCNN(params)
-    bench.image_preprocessor = preprocessing.TestImagePreprocessor(
-        227, 227, params.batch_size * params.num_gpus, params.num_gpus,
+    bench.input_preprocessor = preprocessing.TestImagePreprocessor(
+        params.batch_size * params.num_gpus, [227, 227, 3], params.num_gpus,
         benchmark_cnn.get_data_type(params))
     bench.dataset._queue_runner_required = True
-    bench.image_preprocessor.set_fake_data(images, labels)
-    bench.image_preprocessor.expected_subset = ('validation'
+    bench.input_preprocessor.set_fake_data(images, labels)
+    bench.input_preprocessor.expected_subset = ('validation'
                                                 if params.eval else 'train')
     bench.run()
     return logs
@@ -744,10 +744,10 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
         ps_hosts='p1',
         task_index=0)
     self.assertEqual(
-        benchmark_cnn.BenchmarkCNN(params).image_preprocessor.shift_ratio, 0.0)
+        benchmark_cnn.BenchmarkCNN(params).input_preprocessor.shift_ratio, 0.0)
     params = params._replace(task_index=3)
     self.assertEqual(
-        benchmark_cnn.BenchmarkCNN(params).image_preprocessor.shift_ratio, 0.75)
+        benchmark_cnn.BenchmarkCNN(params).input_preprocessor.shift_ratio, 0.75)
 
   def testDistributedReplicatedSavableVars(self):
     test_util.monkey_patch_base_cluster_manager()
@@ -1037,7 +1037,7 @@ class VariableUpdateTest(tf.test.TestCase):
       # The test model does not use labels when computing loss, so the label
       # values do not matter as long as it's the right shape.
       labels = np.array([1] * inputs.shape[0])
-      bench.image_preprocessor.set_fake_data(inputs, labels)
+      bench.input_preprocessor.set_fake_data(inputs, labels)
       bench.run()
 
     outputs = test_util.get_training_outputs_from_logs(

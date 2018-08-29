@@ -26,12 +26,13 @@ from models import model as model_lib
 class ImagenetResnetModel(model_lib.CNNModel):
   """Official resnet models."""
 
-  def __init__(self, resnet_size, version=2):
+  def __init__(self, resnet_size, version=2, params=None):
     """These are the parameters that work for Imagenet data.
 
     Args:
       resnet_size: The number of convolutional layers needed in the model.
       version: 1 or 2 for v1 or v2, respectively.
+      params: params passed by BenchmarkCNN.
     """
     default_batch_sizes = {
         50: 128,
@@ -42,7 +43,7 @@ class ImagenetResnetModel(model_lib.CNNModel):
     default_learning_rate = 0.0125 * batch_size / 32
     model_name = 'official_resnet_{}_v{}'.format(resnet_size, version)
     super(ImagenetResnetModel, self).__init__(
-        model_name, 224, batch_size, default_learning_rate)
+        model_name, 224, batch_size, default_learning_rate, params=params)
     self.resnet_size = resnet_size
     self.version = version
 
@@ -56,12 +57,8 @@ class ImagenetResnetModel(model_lib.CNNModel):
     values = [v * adjusted_learning_rate for v in values]
     return tf.train.piecewise_constant(global_step, boundaries, values)
 
-  def build_network(self, images, phase_train=True, nclass=1001, image_depth=3,
-                    data_type=tf.float32, data_format='NCHW',
-                    use_tf_layers=True, fp16_vars=False):
-    del image_depth
-    del data_format
-    del use_tf_layers
+  def build_network(self, images, phase_train=True, nclass=1001,
+                    data_type=tf.float32):
     # pylint: disable=g-import-not-at-top
     try:
       from official.resnet.imagenet_main import ImagenetModel
@@ -77,4 +74,4 @@ class ImagenetResnetModel(model_lib.CNNModel):
                                 dtype=data_type)
     logits = model_class(images, phase_train)
     logits = tf.cast(logits, tf.float32)
-    return logits, None
+    return model_lib.BuildNetworkResult(logits=logits, extra_info=None)

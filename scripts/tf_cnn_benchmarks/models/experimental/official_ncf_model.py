@@ -45,14 +45,13 @@ _NUM_ITEMS_20M = 26744
 class NcfModel(model.Model):
   """A model.Model wrapper around the official NCF recommendation model."""
 
-  def __init__(self):
+  def __init__(self, params=None):
     super(NcfModel, self).__init__(
         'official_ncf', batch_size=2048, learning_rate=0.0005,
-        fp16_loss_scale=128)
+        fp16_loss_scale=128, params=params)
 
-  def build_network(self, images, phase_train=True, nclass=1001, image_depth=3,
-                    data_type=tf.float32, data_format='NCHW',
-                    use_tf_layers=True, fp16_vars=False):
+  def build_network(self, images, phase_train=True, nclass=1001,
+                    data_type=tf.float32):
     try:
       from official.recommendation import neumf_model  # pylint: disable=g-import-not-at-top
     except ImportError:
@@ -89,9 +88,10 @@ class NcfModel(model.Model):
         'mlp_reg_layers': (0, 0, 0, 0),
     }
     logits = neumf_model.construct_model(users, items, params)
-    return logits, None
+    return model.BuildNetworkResult(logits=logits, extra_info=None)
 
-  def loss_function(self, logits, labels, aux_logits):
+  def loss_function(self, build_network_result, labels):
+    logits = build_network_result.logits
     batch_size = int(logits.shape[0])
 
     # Softmax with the first column of ones is equivalent to sigmoid.
@@ -114,6 +114,5 @@ class NcfModel(model.Model):
         logits=logits
     )
 
-  # Required for tf_cnn_benchmarks to not crash.
-  def get_image_size(self):
-    return 1   # This value is arbitrary, since this model does not use images.
+  def get_input_shape(self):
+    return []
