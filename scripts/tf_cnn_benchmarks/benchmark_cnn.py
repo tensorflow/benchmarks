@@ -256,8 +256,8 @@ flags.DEFINE_string('partitioned_graph_file_prefix', None,
                     'If specified, after the graph has been partitioned and '
                     'optimized, write out each partitioned graph to a file '
                     'with the given prefix.')
-flags.DEFINE_enum('optimizer', 'sgd', ('momentum', 'sgd', 'rmsprop'),
-                  'Optimizer to use: momentum or sgd or rmsprop')
+flags.DEFINE_enum('optimizer', 'sgd', ('momentum', 'sgd', 'rmsprop', 'adam'),
+                  'Optimizer to use')
 flags.DEFINE_float('init_learning_rate', None,
                    'Initial learning rate for training.')
 flags.DEFINE_string('piecewise_learning_rate_schedule', None,
@@ -288,6 +288,9 @@ flags.DEFINE_float('momentum', 0.9, 'Momentum for training.')
 flags.DEFINE_float('rmsprop_decay', 0.9, 'Decay term for RMSProp.')
 flags.DEFINE_float('rmsprop_momentum', 0.9, 'Momentum in RMSProp.')
 flags.DEFINE_float('rmsprop_epsilon', 1.0, 'Epsilon term for RMSProp.')
+flags.DEFINE_float('adam_beta1', 0.9, 'Beta2 term for the Adam optimizer')
+flags.DEFINE_float('adam_beta2', 0.999, 'Beta2 term for the Adam optimizer')
+flags.DEFINE_float('adam_epsilon', 1e-8, 'Epsilon term for the Adam optimizer')
 flags.DEFINE_float('gradient_clip', None,
                    'Gradient clipping magnitude. Disabled by default.')
 flags.DEFINE_float('weight_decay', 0.00004,
@@ -1079,6 +1082,9 @@ def get_optimizer(params, learning_rate):
         params.rmsprop_decay,
         momentum=params.rmsprop_momentum,
         epsilon=params.rmsprop_epsilon)
+  elif params.optimizer == 'adam':
+    opt = tf.train.AdamOptimizer(learning_rate, params.adam_beta1,
+                                 params.adam_beta2, params.adam_epsilon)
   else:
     raise ValueError('Optimizer "%s" was not recognized',
                      params.optimizer)
@@ -1370,12 +1376,15 @@ class BenchmarkCNN(object):
     else:
       self.global_step_device = self.cpu_device
 
-    self.input_preprocessor = self.get_input_preprocessor()
+    self.input_preprocessor = None
+    if not self.dataset.use_synthetic_gpu_inputs():
+      self.input_preprocessor = self.get_input_preprocessor()
     self.datasets_use_prefetch = (
         self.params.datasets_use_prefetch and
         # TODO(rohanj): Figure out why --datasets_use_prefetch freezes on the
         # CPU.
         self.params.device.lower() != 'cpu' and
+        self.input_preprocessor and
         self.input_preprocessor.supports_datasets())
     self.init_global_step = 0
 

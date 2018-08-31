@@ -50,7 +50,7 @@ class NcfModel(model.Model):
         'official_ncf', batch_size=2048, learning_rate=0.0005,
         fp16_loss_scale=128, params=params)
 
-  def build_network(self, images, phase_train=True, nclass=1001,
+  def build_network(self, inputs, phase_train=True, nclass=1001,
                     data_type=tf.float32):
     try:
       from official.recommendation import neumf_model  # pylint: disable=g-import-not-at-top
@@ -61,24 +61,8 @@ class NcfModel(model.Model):
     del nclass
     if data_type != tf.float32:
       raise ValueError('NCF model only supports float32 for now.')
-    batch_size = int(images.shape[0])
 
-    # Create synthetic users and items. tf_cnn_benchmarks only passes images to
-    # this function, which we cannot use in the NCF model. We use functions as
-    # initializers for XLA compatibility.
-    def users_init_val():
-      return tf.random_uniform((batch_size,), minval=0, maxval=_NUM_USERS_20M,
-                               dtype=tf.int32)
-    users = tf.Variable(users_init_val, dtype=tf.int32, trainable=False,
-                        collections=[tf.GraphKeys.LOCAL_VARIABLES],
-                        name='synthetic_users')
-    def items_init_val():
-      return tf.random_uniform((batch_size,), minval=0, maxval=_NUM_ITEMS_20M,
-                               dtype=tf.int32)
-    items = tf.Variable(items_init_val, dtype=tf.int32, trainable=False,
-                        collections=[tf.GraphKeys.LOCAL_VARIABLES],
-                        name='synthetic_items')
-
+    users, items = inputs
     params = {
         'num_users': _NUM_USERS_20M,
         'num_items': _NUM_ITEMS_20M,
@@ -92,7 +76,6 @@ class NcfModel(model.Model):
 
   def loss_function(self, build_network_result, labels):
     logits = build_network_result.logits
-    batch_size = int(logits.shape[0])
 
     # Softmax with the first column of ones is equivalent to sigmoid.
     # TODO(reedwm): Actually, the first column should be zeros to be equivalent
@@ -100,19 +83,34 @@ class NcfModel(model.Model):
     logits = tf.concat([tf.ones(logits.shape, dtype=logits.dtype), logits],
                        axis=1)
 
-    # Create our own synthetic labels, to ensure they have the right
-    # distribution and dtype.
-    def labels_init_val():
-      return tf.random_uniform((batch_size,), minval=0, maxval=2,
-                               dtype=tf.int32)
-    labels = tf.Variable(labels_init_val, dtype=tf.int32, trainable=False,
-                         collections=[tf.GraphKeys.LOCAL_VARIABLES],
-                         name='synthetic_items')
-
     return tf.losses.sparse_softmax_cross_entropy(
         labels=labels,
         logits=logits
     )
+
+  def get_synthetic_inputs_and_labels(self, input_name, data_type, nclass):
+    """Returns the ops to generate synthetic inputs and labels."""
+    def users_init_val():
+      return tf.random_uniform((self.batch_size,), minval=0,
+                               maxval=_NUM_USERS_20M, dtype=tf.int32)
+    users = tf.Variable(users_init_val, dtype=tf.int32, trainable=False,
+                        collections=[tf.GraphKeys.LOCAL_VARIABLES],
+                        name='synthetic_users')
+    def items_init_val():
+      return tf.random_uniform((self.batch_size,), minval=0,
+                               maxval=_NUM_ITEMS_20M, dtype=tf.int32)
+    items = tf.Variable(items_init_val, dtype=tf.int32, trainable=False,
+                        collections=[tf.GraphKeys.LOCAL_VARIABLES],
+                        name='synthetic_items')
+
+    def labels_init_val():
+      return tf.random_uniform((self.batch_size,), minval=0, maxval=2,
+                               dtype=tf.int32)
+    labels = tf.Variable(labels_init_val, dtype=tf.int32, trainable=False,
+                         collections=[tf.GraphKeys.LOCAL_VARIABLES],
+                         name='synthetic_labels')
+
+    return (users, items), labels
 
   def get_input_shape(self):
     return []
