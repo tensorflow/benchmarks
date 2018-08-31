@@ -189,7 +189,7 @@ def bottleneck_block(cnn, depth, depth_bottleneck, stride, version):
     bottleneck_block_v1(cnn, depth, depth_bottleneck, stride)
 
 
-def residual_block(cnn, depth, stride, version):
+def residual_block(cnn, depth, stride, version, projection_shortcut=False):
   """Residual block with identity short-cut.
 
   Args:
@@ -197,11 +197,19 @@ def residual_block(cnn, depth, stride, version):
     depth: the number of output filters for this residual block.
     stride: Stride used in the first layer of the residual block.
     version: version of ResNet to build.
+    projection_shortcut: indicator of using projection shortcut, even if top
+      size and depth are equal
   """
   pre_activation = True if version == 'v2' else False
   input_layer = cnn.top_layer
   in_size = cnn.top_size
-  if in_size != depth:
+
+  if projection_shortcut:
+    shortcut = cnn.conv(
+        depth, 1, 1, stride, stride, activation=None,
+        use_batch_norm=True, input_layer=input_layer,
+        num_channels_in=in_size, bias=None)
+  elif in_size != depth:
     # Plan A of shortcut.
     shortcut = cnn.apool(1, 1, stride, stride,
                          input_layer=input_layer,
