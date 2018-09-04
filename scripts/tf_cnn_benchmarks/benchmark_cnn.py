@@ -382,7 +382,7 @@ flags.DEFINE_boolean('use_resource_vars', False,
                      'for debugging their performance.')
 # Performance tuning specific to MKL.
 flags.DEFINE_boolean('mkl', False, 'If true, set MKL environment variables.')
-flags.DEFINE_integer('kmp_blocktime', 30,
+flags.DEFINE_integer('kmp_blocktime', 0,
                      'The time, in milliseconds, that a thread should wait, '
                      'after completing the execution of a parallel region, '
                      'before sleeping')
@@ -2778,6 +2778,18 @@ class BenchmarkCNN(object):
       return tf.group(*queue_ops)
 
 
+def _is_mkl_flag_absent(mkl_flag):
+  return not (absl_flags.FLAGS.is_parsed() and mkl_flag in absl_flags.FLAGS
+              and absl_flags.FLAGS[mkl_flag].present)
+
+
+def _print_os_env_ignored_warning(mkl_flag, flag_default_val, os_env_var):
+  tf.logging.warn(
+      ('OS ENV variable %s=%s is ignored and script default: '
+       '%s is used. Use --%s to override.') %
+      (os_env_var, os.environ[os_env_var], flag_default_val, mkl_flag))
+
+
 def setup(params):
   """Sets up the environment that BenchmarkCNN should run in.
 
@@ -2804,12 +2816,20 @@ def setup(params):
       formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
   # Sets environment variables for MKL
+  # If OS ENV vars are overridden by script defaults, a warning msg is printed.
   if params.mkl:
-    os.environ['KMP_BLOCKTIME'] = str(params.kmp_blocktime)
-    os.environ['KMP_SETTINGS'] = str(params.kmp_settings)
-    os.environ['KMP_AFFINITY'] = params.kmp_affinity
-    if params.num_intra_threads > 0:
-      os.environ['OMP_NUM_THREADS'] = str(params.num_intra_threads)
+    mkl_flags = ['kmp_blocktime', 'kmp_settings', 'kmp_affinity',
+                 'num_intra_threads']
+    for mkl_flag in mkl_flags:
+      os_env_var = mkl_flag.upper()
+      if mkl_flag == 'num_intra_threads':
+        os_env_var = 'OMP_NUM_THREADS'
+      flag_val = str(getattr(params, mkl_flag))
+      if _is_mkl_flag_absent(mkl_flag) and os_env_var in os.environ:
+        _print_os_env_ignored_warning(mkl_flag, flag_val, os_env_var)
+      os.environ[os_env_var] = flag_val
+      if mkl_flag == 'num_intra_threads' and not params.num_intra_threads:
+        os.environ.pop(os_env_var, None)
 
   # Sets GPU thread settings
   if params.device.lower() == 'gpu':
