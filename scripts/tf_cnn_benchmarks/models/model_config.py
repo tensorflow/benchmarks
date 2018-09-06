@@ -30,6 +30,7 @@ from models import overfeat_model
 from models import resnet_model
 from models import trivial_model
 from models import vgg_model
+from models.experimental import deepspeech
 from models.experimental import official_ncf_model
 
 
@@ -103,10 +104,12 @@ _model_name_to_cifar_model = {
 
 
 def _get_model_map(dataset_name):
-  if 'cifar10' == dataset_name:
+  if dataset_name == 'cifar10':
     return _model_name_to_cifar_model
   elif dataset_name in ('imagenet', 'synthetic'):
     return _model_name_to_imagenet_model
+  elif dataset_name == 'librispeech':
+    return {'deepspeech2': deepspeech.DeepSpeech2Model}
   else:
     raise ValueError('Invalid dataset name: %s' % dataset_name)
 

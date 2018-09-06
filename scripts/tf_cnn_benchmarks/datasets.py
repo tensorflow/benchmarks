@@ -78,6 +78,17 @@ class Dataset(object):
     return not self.data_dir
 
 
+class LibrispeechDataset(Dataset):
+
+  def __init__(self, data_dir=None):
+    super(LibrispeechDataset, self).__init__(
+        'librispeech', data_dir, num_classes=29)
+
+  def num_examples_per_epoch(self, subset='train'):
+    del subset
+    return 2  # TODO(laigd): currently this is an arbitrary number.
+
+
 class ImageDataset(Dataset):
   """Abstract class for image datasets."""
 
@@ -164,6 +175,7 @@ class Cifar10Dataset(ImageDataset):
 _SUPPORTED_DATASETS = {
     'imagenet': ImagenetDataset,
     'cifar10': Cifar10Dataset,
+    'librispeech': LibrispeechDataset,
 }
 
 _SUPPORTED_INPUT_PREPROCESSORS = {
@@ -174,6 +186,10 @@ _SUPPORTED_INPUT_PREPROCESSORS = {
     'cifar10': {
         'default': preprocessing.Cifar10ImagePreprocessor
     },
+    'librispeech': {
+        # TODO(laigd): add preprocessor for librispeech dataset.
+        # 'default': preprocessing.LibrispeechPreprocessor
+    }
 }
 
 
