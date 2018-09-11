@@ -15,6 +15,11 @@
 
 """Image pre-processing utilities.
 """
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import math
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -22,8 +27,11 @@ import tensorflow as tf
 from tensorflow.contrib.image.python.ops import distort_image_ops
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.platform import gfile
+from object_detection.data_decoders import tf_example_decoder
 import cnn_util
 import data_utils
+import ssd_dataloader
 
 
 def parse_example_proto(example_serialized):
@@ -669,6 +677,30 @@ class Cifar10ImagePreprocessor(BaseImagePreprocessor):
       for split_index in xrange(self.num_splits):
         images[split_index] = tf.parallel_stack(images[split_index])
         labels[split_index] = tf.parallel_stack(labels[split_index])
+      return images, labels
+
+
+class COCOPreprocessor(BaseImagePreprocessor):
+  """Preprocessor for COCO dataset input images, boxes, and labels."""
+
+  def minibatch(self, dataset, subset, use_datasets, cache_data,
+                shift_ratio=-1):
+    if shift_ratio < 0:
+      shift_ratio = self.shift_ratio
+    self.example_decoder = tf_example_decoder.TfExampleDecoder()
+
+    with tf.name_scope('batch_processing'):
+      images = [[] for _ in range(self.num_splits)]
+      labels = [[] for _ in range(self.num_splits)]
+
+      glob_pattern = dataset.tf_record_pattern(subset)
+      filenames = gfile.Glob(glob_pattern)
+      ssd_input = ssd_dataloader.SSDInputReader(filenames, subset == 'train')
+      ds = ssd_input({'batch_size': self.batch_size})
+      ds_iterator = data_utils.create_iterator(ds)
+      for d in range(self.num_splits):
+        images[d], labels[d] = ds_iterator.get_next()
+
       return images, labels
 
 

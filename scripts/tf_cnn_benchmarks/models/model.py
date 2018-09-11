@@ -143,6 +143,22 @@ class CNNModel(Model):
     """
     return False
 
+  def load_backbone_model(self, sess, backbone_model_path):
+    """Loads variable values from a pre-trained backbone model.
+
+    This should be used at the beginning of the training process for transfer
+    learning models using checkpoints of base models. A tf.train.Saver must be
+    created and saved in self.backbone_saver before calling this method, with
+    correct variable name mapping to load variables from checkpoint correctly
+    into the current model.
+
+    Args:
+      sess: session to train the model.
+      backbone_model_path: path to backbone model checkpoint file.
+    """
+    del sess, backbone_model_path
+    raise NotImplementedError(self.getName() + ' does not have backbone model.')
+
   def add_inference(self, cnn):
     """Adds the core layers of the CNN's forward pass.
 

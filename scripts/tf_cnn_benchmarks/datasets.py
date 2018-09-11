@@ -15,6 +15,10 @@
 """Benchmark dataset utilities.
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from abc import abstractmethod
 import os
 
@@ -28,6 +32,9 @@ import preprocessing
 
 IMAGENET_NUM_TRAIN_IMAGES = 1281167
 IMAGENET_NUM_VAL_IMAGES = 50000
+
+COCO_NUM_TRAIN_IMAGES = 118287
+COCO_NUM_VAL_IMAGES = 5000
 
 
 class Dataset(object):
@@ -172,10 +179,27 @@ class Cifar10Dataset(ImageDataset):
       raise ValueError('Invalid data subset "%s"' % subset)
 
 
+class COCODataset(ImageDataset):
+  """COnfiguration for COCO dataset."""
+
+  def __init__(self, data_dir=None, image_size=300):
+    super(COCODataset, self).__init__(
+        'coco', image_size, image_size, data_dir=data_dir, num_classes=81)
+
+  def num_examples_per_epoch(self, subset='train'):
+    if subset == 'train':
+      return COCO_NUM_TRAIN_IMAGES
+    elif subset == 'validation':
+      return COCO_NUM_VAL_IMAGES
+    else:
+      raise ValueError('Invalid data subset "%s"' % subset)
+
+
 _SUPPORTED_DATASETS = {
     'imagenet': ImagenetDataset,
     'cifar10': Cifar10Dataset,
     'librispeech': LibrispeechDataset,
+    'coco': COCODataset,
 }
 
 _SUPPORTED_INPUT_PREPROCESSORS = {
@@ -189,7 +213,10 @@ _SUPPORTED_INPUT_PREPROCESSORS = {
     'librispeech': {
         # TODO(laigd): add preprocessor for librispeech dataset.
         # 'default': preprocessing.LibrispeechPreprocessor
-    }
+    },
+    'coco': {
+        'default': preprocessing.COCOPreprocessor
+    },
 }
 
 

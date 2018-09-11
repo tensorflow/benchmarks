@@ -533,6 +533,9 @@ flags.DEFINE_string('train_dir', None,
                     'checkpoint at the end.')
 flags.DEFINE_string('eval_dir', '/tmp/tf_cnn_benchmarks/eval',
                     'Directory where to write eval event logs.')
+flags.DEFINE_string('backbone_model_path', None,
+                    'Path to pretrained backbone model checkpoint. Pass None '
+                    'if not using a backbone model.')
 
 # Benchmark logging for model garden metric
 flags.DEFINE_string('benchmark_log_dir', None,
@@ -1849,6 +1852,8 @@ class BenchmarkCNN(object):
         master=target,
         config=create_config_proto(self.params),
         start_standard_services=start_standard_services) as sess:
+      if self.params.backbone_model_path is not None:
+        self.model.load_backbone_model(sess, self.params.backbone_model_path)
       if bcast_global_variables_op:
         sess.run(bcast_global_variables_op)
 

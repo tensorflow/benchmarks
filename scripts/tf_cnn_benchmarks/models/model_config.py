@@ -28,6 +28,7 @@ from models import nasnet_model
 from models import official_resnet_model
 from models import overfeat_model
 from models import resnet_model
+from models import ssd_model
 from models import trivial_model
 from models import vgg_model
 from models.experimental import deepspeech
@@ -103,13 +104,21 @@ _model_name_to_cifar_model = {
 }
 
 
+_model_name_to_object_detection_model = {
+    'ssd300': ssd_model.SSD300Model
+}
+
+
 def _get_model_map(dataset_name):
+  """Get name to model map for specified dataset."""
   if dataset_name == 'cifar10':
     return _model_name_to_cifar_model
   elif dataset_name in ('imagenet', 'synthetic'):
     return _model_name_to_imagenet_model
   elif dataset_name == 'librispeech':
     return {'deepspeech2': deepspeech.DeepSpeech2Model}
+  elif dataset_name == 'coco':
+    return _model_name_to_object_detection_model
   else:
     raise ValueError('Invalid dataset name: %s' % dataset_name)
 
