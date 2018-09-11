@@ -62,6 +62,8 @@ class SSD300Model(model_lib.CNNModel):
     #   38x38x4, 19x19x6, 10x10x6, 5x5x6, 3x3x4, 1x1x4
     self.num_dboxes = [4, 6, 6, 6, 4, 4]
 
+    self.backbone_saver = None
+
   def skip_final_affine_layer(self):
     return True
 
@@ -113,8 +115,9 @@ class SSD300Model(model_lib.CNNModel):
 
     # Create saver with mapping from variable names in checkpoint of backbone
     # model to variables in SSD model
-    backbone_var_list = self._collect_backbone_vars()
-    self.backbone_saver = tf.train.Saver(backbone_var_list)
+    if not self.backbone_saver:
+      backbone_var_list = self._collect_backbone_vars()
+      self.backbone_saver = tf.train.Saver(backbone_var_list)
 
     # --------------------------------------------------------------------------
     # SSD additional layers
@@ -167,12 +170,12 @@ class SSD300Model(model_lib.CNNModel):
                    kernel_initializer=tf.contrib.layers.xavier_initializer()),
           [ac.get_shape()[0], self.label_num, -1]))
 
-    # Shape of locs: [batch_size, 4, 8732]
-    # Shape of confs: [batch_size, label_num, 8732]
+    # Shape of locs: [batch_size, 4, NUM_SSD_BOXES]
+    # Shape of confs: [batch_size, label_num, NUM_SSD_BOXES]
     locs, confs = tf.concat(self.loc, 2), tf.concat(self.conf, 2)
 
     # Pack location and confidence outputs into a single output layer
-    # Shape of logits: [batch_size, 4+label_num, 8732]
+    # Shape of logits: [batch_size, 4+label_num, NUM_SSD_BOXES]
     logits = tf.concat([locs, confs], 1)
 
     cnn.top_layer = logits
@@ -233,8 +236,8 @@ class SSD300Model(model_lib.CNNModel):
   def loss_function(self, build_network_result, labels):
     logits = build_network_result.logits
     # Unpack model output back to locations and confidence scores of predictions
-    # Shape of pred_loc: [batch_size, 4, 8732]
-    # Shape of pred_label: [batch_size, label_num, 8732]
+    # Shape of pred_loc: [batch_size, 4, NUM_SSD_BOXES]
+    # Shape of pred_label: [batch_size, label_num, NUM_SSD_BOXES]
     pred_loc, pred_label = tf.split(logits, [4, self.label_num], 1)
 
     # Unpack ground truth labels to number of boxes, locations, and classes
@@ -246,8 +249,8 @@ class SSD300Model(model_lib.CNNModel):
     # Shape of num_gt: [batch_size]
     num_gt = tf.squeeze(tf.cast(num_gt[:, :, 0], tf.int32))
 
-    # Shape of gt_loc: [batch_size, 8732, 4]
-    # Shape of gt_label: [batch_size, 8732, 1]
+    # Shape of gt_loc: [batch_size, NUM_SSD_BOXES, 4]
+    # Shape of gt_label: [batch_size, NUM_SSD_BOXES, 1]
     gt_loc, gt_label = tf.split(labels, [4, 1], 2)
     gt_label = tf.cast(gt_label, tf.int32)
 
@@ -268,10 +271,10 @@ class SSD300Model(model_lib.CNNModel):
     #     [pred_loc, pred_label, gt_loc, default_boxes]
     # ]
 
-    # Shape of gt_loc: [batch_size, 4, 8732]
+    # Shape of gt_loc: [batch_size, 4, NUM_SSD_BOXES]
     gt_loc = tf.transpose(gt_loc, [0, 2, 1])
 
-    # Shape of default_boxes: [batch_size, 4, 8732]
+    # Shape of default_boxes: [batch_size, 4, NUM_SSD_BOXES]
     default_boxes = tf.transpose(default_boxes, [0, 2, 1])
 
     mask = tf.greater(gt_label, 0)

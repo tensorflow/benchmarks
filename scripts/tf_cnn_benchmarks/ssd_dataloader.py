@@ -24,6 +24,7 @@ import math
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.contrib.data.python.ops import batching
 from object_detection.box_coders import faster_rcnn_box_coder
 from object_detection.core import box_list
 from object_detection.core import preprocessor
@@ -281,10 +282,11 @@ class SSDInputReader(object):
           # TODO(someone in object detection): Color Jitter
           image = normalize_image(image)
 
-          encoded_classes, _, encoded_boxes, _, _ = encode_labels(boxes, classes)
+          encoded_classes, _, encoded_boxes, _, _ = encode_labels(boxes,
+                                                                  classes)
 
           # TODO(taylorrobie): Check that this cast is valid.
-          encoded_classes = tf.cast(encoded_classes, tf.int32)
+          # encoded_classes = tf.cast(encoded_classes, tf.int32)
           # labels = {
           #     ssd_constants.NUM_BOXES: tf.shape(boxes)[0],
           #     ssd_constants.BOXES: encoded_boxes,
@@ -296,8 +298,7 @@ class SSDInputReader(object):
           # staging area in data input pipeline.
           # Step 1: pack box coordinates and classes together
           #     [nboxes, 4] concat [nboxes, 1] ==> [nboxes, 5]
-          labels = tf.concat(
-              [encoded_boxes, tf.cast(encoded_classes, tf.float32)], 1)
+          labels = tf.concat([encoded_boxes, encoded_classes], 1)
           # Step 2 (HACK): repeat number of boxes (a scalar tensor) five times,
           #                and pack result from Step 1 with it.
           #     [nboxes, 5] concat [1, 5] ==> [nboxes + 1, 5]
@@ -314,15 +315,15 @@ class SSDInputReader(object):
               size=(ssd_constants.IMAGE_SIZE, ssd_constants.IMAGE_SIZE)
           )[0, :, :, :]
 
-          def trim_and_pad(inp_tensor, dim_1):
+          def trim_and_pad(inp_tensor):
             """Limit the number of boxes, and pad if necessary."""
             inp_tensor = inp_tensor[:ssd_constants.MAX_NUM_EVAL_BOXES]
             num_pad = ssd_constants.MAX_NUM_EVAL_BOXES - tf.shape(inp_tensor)[0]
             inp_tensor = tf.pad(inp_tensor, [[0, num_pad], [0, 0]])
-            return tf.reshape(
-                inp_tensor, [ssd_constants.MAX_NUM_EVAL_BOXES, dim_1])
+            return tf.reshape(inp_tensor, [ssd_constants.MAX_NUM_EVAL_BOXES,
+                                           inp_tensor.get_shape()[1]])
 
-          boxes, classes = trim_and_pad(boxes, 4), trim_and_pad(classes, 1)
+          boxes, classes = trim_and_pad(boxes), trim_and_pad(classes)
           return {
               ssd_constants.IMAGE: image,
               ssd_constants.BOXES: boxes,
@@ -330,7 +331,8 @@ class SSDInputReader(object):
               ssd_constants.SOURCE_ID: source_id,
           }
 
-    batch_size = params['batch_size']
+    batch_size_per_split = params['batch_size_per_split']
+    num_splits = params['num_splits']
     dataset = tf.data.Dataset.list_files(
         self._file_pattern, shuffle=self._is_training)
     if self._is_training:
@@ -338,7 +340,7 @@ class SSDInputReader(object):
 
     # Prefetch data from files.
     def _prefetch_dataset(filename):
-      dataset = tf.data.TFRecordDataset(filename).prefetch(batch_size)
+      dataset = tf.data.TFRecordDataset(filename).prefetch(batch_size_per_split)
       return dataset
     dataset = dataset.apply(
         tf.contrib.data.parallel_interleave(
@@ -353,10 +355,10 @@ class SSDInputReader(object):
     # TODO(taylorrobie): Confirm that this is MLPerf rules compliant.
     dataset = dataset.filter(
         lambda data: tf.greater(tf.shape(data['groundtruth_boxes'])[0], 0))
-    dataset = dataset.map(_parse_example, num_parallel_calls=64)
-
-    dataset = dataset.prefetch(batch_size)
-    dataset = dataset.batch(batch_size, drop_remainder=True)
-    dataset = dataset.prefetch(tf.contrib.data.AUTOTUNE)
-
+    dataset = dataset.apply(batching.map_and_batch(
+        map_func=_parse_example,
+        batch_size=batch_size_per_split,
+        num_parallel_batches=num_splits,
+        drop_remainder=True))
+    dataset = dataset.prefetch(buffer_size=num_splits)
     return dataset

@@ -31,6 +31,7 @@ from tensorflow.python.platform import gfile
 from object_detection.data_decoders import tf_example_decoder
 import cnn_util
 import data_utils
+import ssd_constants
 import ssd_dataloader
 
 
@@ -696,11 +697,31 @@ class COCOPreprocessor(BaseImagePreprocessor):
       glob_pattern = dataset.tf_record_pattern(subset)
       filenames = gfile.Glob(glob_pattern)
       ssd_input = ssd_dataloader.SSDInputReader(filenames, subset == 'train')
-      ds = ssd_input({'batch_size': self.batch_size})
+      ds = ssd_input({'batch_size_per_split': self.batch_size_per_split,
+                      'num_splits': self.num_splits})
       ds_iterator = data_utils.create_iterator(ds)
       for d in range(self.num_splits):
         images[d], labels[d] = ds_iterator.get_next()
-
+      for split_index in xrange(self.num_splits):
+        images[split_index] = tf.reshape(
+            images[split_index],
+            shape=[self.batch_size_per_split, self.height, self.width,
+                   self.depth])
+        labels[split_index] = tf.reshape(
+            labels[split_index],
+            # Encoded tensor with object category, number of bounding boxes and
+            # their locations. The 0th dimension is batch size, and for each
+            # item in batch the tensor looks like this ((x, y, w, h) is the
+            # cordinates and size of a bounding box, c is class):
+            #
+            # [[x,      y,      w,      h,      c     ],       ^
+            #  [x,      y,      w,      h,      c     ],       |
+            #  [...,    ...,    ...,    ...,    ...   ],  NUM_SSD_BOXES+1
+            #  [x,      y,      w,      h,      c     ],       |
+            #  [nboxes, nboxes, nboxes, nboxes, nboxes]]       v
+            #
+            # |<---------- 4 cordinates + 1 ---------->|
+            shape=[self.batch_size_per_split, ssd_constants.NUM_SSD_BOXES+1, 5])
       return images, labels
 
 
