@@ -35,7 +35,6 @@ import re
 import tensorflow as tf
 
 import ssd_constants
-import ssd_dataloader
 from models import model as model_lib
 from models import resnet_model
 
@@ -234,6 +233,17 @@ class SSD300Model(model_lib.CNNModel):
     return vname_in_ckpt
 
   def loss_function(self, build_network_result, labels):
+    try:
+      import ssd_dataloader  # pylint: disable=g-import-not-at-top
+    except ImportError:
+      raise ImportError('To use the COCO dataset, you must clone the '
+                        'repo https://github.com/tensorflow/models and add '
+                        'tensorflow/models and tensorflow/models/research to '
+                        'the PYTHONPATH, and compile the protobufs by '
+                        'following https://github.com/tensorflow/models/blob/'
+                        'master/research/object_detection/g3doc/installation.md'
+                        '#protobuf-compilation')
+
     logits = build_network_result.logits
     # Unpack model output back to locations and confidence scores of predictions
     # Shape of pred_loc: [batch_size, 4, NUM_SSD_BOXES]

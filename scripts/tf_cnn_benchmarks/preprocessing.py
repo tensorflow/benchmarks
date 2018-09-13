@@ -28,11 +28,9 @@ from tensorflow.contrib.image.python.ops import distort_image_ops
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import gfile
-from object_detection.data_decoders import tf_example_decoder
 import cnn_util
 import data_utils
 import ssd_constants
-import ssd_dataloader
 
 
 def parse_example_proto(example_serialized):
@@ -686,6 +684,18 @@ class COCOPreprocessor(BaseImagePreprocessor):
 
   def minibatch(self, dataset, subset, use_datasets, cache_data,
                 shift_ratio=-1):
+    try:
+      from object_detection.data_decoders import tf_example_decoder  # pylint: disable=g-import-not-at-top
+      import ssd_dataloader  # pylint: disable=g-import-not-at-top
+    except ImportError:
+      raise ImportError('To use the COCO dataset, you must clone the '
+                        'repo https://github.com/tensorflow/models and add '
+                        'tensorflow/models and tensorflow/models/research to '
+                        'the PYTHONPATH, and compile the protobufs by '
+                        'following https://github.com/tensorflow/models/blob/'
+                        'master/research/object_detection/g3doc/installation.md'
+                        '#protobuf-compilation')
+
     if shift_ratio < 0:
       shift_ratio = self.shift_ratio
     self.example_decoder = tf_example_decoder.TfExampleDecoder()
