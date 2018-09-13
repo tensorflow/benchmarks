@@ -1511,6 +1511,7 @@ class BenchmarkCNN(object):
           'data_format': self.params.data_format,
           'rewrite_config': self.rewriter_config,
           'optimizer': self.params.optimizer,
+          'session_config': create_config_proto(self.params),
       }
       # TODO(scottzhu): tf_cnn_benchmark might execute several times with
       # different param setting on the same box. This will cause the run file to
