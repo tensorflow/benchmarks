@@ -23,6 +23,7 @@ from abc import abstractmethod
 import os
 
 import numpy as np
+import six
 from six.moves import cPickle
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -161,13 +162,16 @@ class Cifar10Dataset(ImageDataset):
 
     inputs = []
     for filename in filenames:
-      with gfile.Open(filename, 'r') as f:
-        inputs.append(cPickle.load(f))
+      with gfile.Open(filename, 'rb') as f:
+        # python2 does not have the encoding parameter
+        encoding = {} if six.PY2 else {'encoding': 'bytes'}
+        inputs.append(cPickle.load(f, **encoding))
     # See http://www.cs.toronto.edu/~kriz/cifar.html for a description of the
     # input format.
     all_images = np.concatenate(
-        [each_input['data'] for each_input in inputs]).astype(np.float32)
-    all_labels = np.concatenate([each_input['labels'] for each_input in inputs])
+        [each_input[b'data'] for each_input in inputs]).astype(np.float32)
+    all_labels = np.concatenate(
+        [each_input[b'labels'] for each_input in inputs])
     return all_images, all_labels
 
   def num_examples_per_epoch(self, subset='train'):
