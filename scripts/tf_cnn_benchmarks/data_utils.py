@@ -26,7 +26,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.platform import gfile
 
 
-def build_prefetch_image_processing(height, width, batch_size, num_splits,
+def build_prefetch_input_processing(batch_size, data_point_shape, num_splits,
                                     preprocess_fn, cpu_device, params,
                                     gpu_devices, data_type, dataset):
   """"Returns FunctionBufferingResources that do image pre(processing)."""
@@ -38,9 +38,8 @@ def build_prefetch_image_processing(height, width, batch_size, num_splits,
 
     function_buffering_resources = []
     remote_fn, args = minibatch_fn(
-        height=height,
-        width=width,
         batch_size=batch_size,
+        data_point_shape=data_point_shape,
         num_splits=num_splits,
         preprocess_fn=preprocess_fn,
         dataset=dataset,
@@ -91,7 +90,7 @@ def build_multi_device_iterator(batch_size, num_splits, preprocess_fn,
     return multi_device_iterator
 
 
-def get_images_and_labels(function_buffering_resource, data_type):
+def get_inputs_and_labels(function_buffering_resource, data_type):
   """Given a FunctionBufferingResource obtains images and labels from it."""
   return prefetching_ops.function_buffering_resource_get_next(
       function_buffer_resource=function_buffering_resource,
@@ -146,8 +145,8 @@ def create_iterator(ds):
   return ds_iterator
 
 
-def minibatch_fn(height, width, batch_size, num_splits, preprocess_fn, dataset,
-                 subset, train, cache_data, num_threads):
+def minibatch_fn(batch_size, data_point_shape, num_splits, preprocess_fn,
+                 dataset, subset, train, cache_data, num_threads):
   """Returns a function and list of args for the fn to create a minibatch."""
   batch_size_per_split = batch_size // num_splits
   with tf.name_scope('batch_processing'):
@@ -160,13 +159,12 @@ def minibatch_fn(height, width, batch_size, num_splits, preprocess_fn, dataset,
 
     @function.Defun(tf.string)
     def _fn(h):
-      depth = 3
       remote_iterator = tf.data.Iterator.from_string_handle(
           h, ds_iterator.output_types, ds_iterator.output_shapes)
-      labels, images = remote_iterator.get_next()
-      images = tf.reshape(
-          images, shape=[batch_size_per_split, height, width, depth])
+      labels, inputs = remote_iterator.get_next()
+      inputs = tf.reshape(
+          inputs, shape=[batch_size_per_split] + data_point_shape)
       labels = tf.reshape(labels, [batch_size_per_split])
-      return images, labels
+      return inputs, labels
 
     return _fn, [ds_iterator_string_handle]

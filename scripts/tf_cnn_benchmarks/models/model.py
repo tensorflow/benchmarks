@@ -13,16 +13,33 @@
 # limitations under the License.
 # ==============================================================================
 """Base model configuration for CNN benchmarks."""
+
+from collections import namedtuple
+
 import tensorflow as tf
 
 import convnet_builder
+
+# BuildNetworkResult encapsulate the result (e.g. logits) of a
+# Model.build_network() call.
+BuildNetworkResult = namedtuple(
+    'BuildNetworkResult',
+    [
+        'logits',  # logits of the network
+        'extra_info',  # Model specific extra information
+    ])
 
 
 class Model(object):
   """Base model config for DNN benchmarks."""
 
-  def __init__(self, model_name, batch_size, learning_rate, fp16_loss_scale):
-    self.model = model_name
+  def __init__(self,
+               model_name,
+               batch_size,
+               learning_rate,
+               fp16_loss_scale,
+               params=None):
+    self.model_name = model_name
     self.batch_size = batch_size
     self.default_batch_size = batch_size
     self.learning_rate = learning_rate
@@ -30,8 +47,17 @@ class Model(object):
     # default of 128.
     self.fp16_loss_scale = fp16_loss_scale
 
-  def get_model(self):
-    return self.model
+    # use_tf_layers specifies whether to build the model using tf.layers.
+    # fp16_vars specifies whether to create the variables in float16.
+    if params:
+      self.use_tf_layers = params.use_tf_layers
+      self.fp16_vars = params.fp16_vars
+    else:
+      self.use_tf_layers = True
+      self.fp16_vars = False
+
+  def get_model_name(self):
+    return self.model_name
 
   def get_batch_size(self):
     return self.batch_size
@@ -50,62 +76,58 @@ class Model(object):
     del batch_size
     return self.learning_rate
 
-  def build_network(self, images, phase_train=True, nclass=1001, image_depth=3,
-                    data_type=tf.float32, data_format='NCHW',
-                    use_tf_layers=True, fp16_vars=False):
+  def get_input_shape(self):
+    """Returns the expected shape of the input to this model."""
+    raise NotImplementedError('Must be implemented in derived classes')
+
+  def get_synthetic_inputs_and_labels(self, input_name, data_type, nclass):
+    """Returns the ops to generate synthetic inputs and labels."""
+    raise NotImplementedError('Must be implemented in derived classes')
+
+  def build_network(self, inputs, phase_train, nclass, data_type=tf.float32):
     """Builds the forward pass of the model.
 
     Args:
-      images: The images, in NHWC format.
+      inputs: The inputs
       phase_train: True during training. False during evaluation.
-      nclass: Number of classes that the images can belong to.
-      image_depth: The channel dimension of `images`. Should be
-        `images.shape[3]`.
+      nclass: Number of classes that the inputs can belong to.
       data_type: The dtype to run the model in: tf.float32 or tf.float16. The
-        variable dtype is controlled by a separate parameter: fp16_vars.
-      data_format: What data format to run the model in: NHWC or NCHW.
-      use_tf_layers: If True, build the model using tf.layers.
-      fp16_vars: If True, the variables will be created in float16.
+        variable dtype is controlled by a separate parameter: self.fp16_vars.
 
     Returns:
-      logits: The logits of the model.
-      aux_logits: The auxiliary logits of the model (see Inception for an
-        example), or None if the model does not have auxiliary logits
+      A BuildNetworkResult which contains the logits and model-specific extra
+        information.
     """
     raise NotImplementedError('Must be implemented in derived classes')
 
-  def loss_function(self, logits, labels, aux_logits):
-    """Loss function for this model."""
-    with tf.name_scope('xentropy'):
-      cross_entropy = tf.losses.sparse_softmax_cross_entropy(
-          logits=logits, labels=labels)
-      loss = tf.reduce_mean(cross_entropy, name='xentropy_mean')
-    if aux_logits is not None:
-      with tf.name_scope('aux_xentropy'):
-        aux_cross_entropy = tf.losses.sparse_softmax_cross_entropy(
-            logits=aux_logits, labels=labels)
-        aux_loss = 0.4 * tf.reduce_mean(aux_cross_entropy, name='aux_loss')
-        loss = tf.add_n([loss, aux_loss])
-    return loss
+  def loss_function(self, build_network_result, labels):
+    """Returns the op to measure the loss of the model."""
+    raise NotImplementedError('Must be implemented in derived classes')
+
+  def accuracy_function(self, logits, labels, data_type):
+    """Returns the ops to measure the accuracy of the model."""
+    raise NotImplementedError('Must be implemented in derived classes')
 
 
 class CNNModel(Model):
   """Base model configuration for CNN benchmarks."""
 
+  # TODO(laigd): reduce the number of parameters and read everything from
+  # params.
   def __init__(self,
                model,
                image_size,
                batch_size,
                learning_rate,
                layer_counts=None,
-               fp16_loss_scale=128):
-    super(CNNModel, self).__init__(model, batch_size, learning_rate,
-                                   fp16_loss_scale)
+               fp16_loss_scale=128,
+               params=None):
+    super(CNNModel, self).__init__(
+        model, batch_size, learning_rate, fp16_loss_scale, params=params)
     self.image_size = image_size
     self.layer_counts = layer_counts
-
-  def get_image_size(self):
-    return self.image_size
+    self.depth = 3
+    self.data_format = params.data_format if params else 'NCHW'
 
   def get_layer_counts(self):
     return self.layer_counts
@@ -120,6 +142,22 @@ class CNNModel(Model):
     This is useful for tests.
     """
     return False
+
+  def load_backbone_model(self, sess, backbone_model_path):
+    """Loads variable values from a pre-trained backbone model.
+
+    This should be used at the beginning of the training process for transfer
+    learning models using checkpoints of base models. A tf.train.Saver must be
+    created and saved in self.backbone_saver before calling this method, with
+    correct variable name mapping to load variables from checkpoint correctly
+    into the current model.
+
+    Args:
+      sess: session to train the model.
+      backbone_model_path: path to backbone model checkpoint file.
+    """
+    del sess, backbone_model_path
+    raise NotImplementedError(self.getName() + ' does not have backbone model.')
 
   def add_inference(self, cnn):
     """Adds the core layers of the CNN's forward pass.
@@ -136,32 +174,94 @@ class CNNModel(Model):
     del cnn
     raise NotImplementedError('Must be implemented in derived classes')
 
-  def build_network(self, images, phase_train=True, nclass=1001, image_depth=3,
-                    data_type=tf.float32, data_format='NCHW',
-                    use_tf_layers=True, fp16_vars=False):
-    """Returns logits and aux_logits from images."""
-    if data_format == 'NCHW':
-      images = tf.transpose(images, [0, 3, 1, 2])
+  def get_input_shape(self):
+    # (height, width, depth)
+    return [self.image_size, self.image_size, self.depth]
+
+  def get_synthetic_inputs_and_labels(self, input_name, data_type, nclass):
+    # Synthetic input should be within [0, 255].
+    inputs = tf.truncated_normal(
+        [self.batch_size] + self.get_input_shape(),
+        dtype=data_type,
+        mean=127,
+        stddev=60,
+        name=self.model_name + '_synthetic_inputs')
+    inputs = tf.contrib.framework.local_variable(inputs, name=input_name)
+    labels = tf.random_uniform(
+        [self.batch_size],
+        minval=0,
+        maxval=nclass - 1,
+        dtype=tf.int32,
+        name=self.model_name + '_synthetic_labels')
+    return (inputs, labels)
+
+  def build_network(self,
+                    inputs,
+                    phase_train=True,
+                    nclass=1001,
+                    data_type=tf.float32):
+    """Returns logits from input images.
+
+    Args:
+      inputs: The input images
+      phase_train: True during training. False during evaluation.
+      nclass: Number of classes that the images can belong to.
+      data_type: The dtype to run the model in: tf.float32 or tf.float16. The
+        variable dtype is controlled by a separate parameter: self.fp16_vars.
+
+    Returns:
+      A BuildNetworkResult which contains the logits and model-specific extra
+        information.
+    """
+    if self.data_format == 'NCHW':
+      inputs = tf.transpose(inputs, [0, 3, 1, 2])
     var_type = tf.float32
-    if data_type == tf.float16 and fp16_vars:
+    if data_type == tf.float16 and self.fp16_vars:
       var_type = tf.float16
     network = convnet_builder.ConvNetBuilder(
-        images, image_depth, phase_train, use_tf_layers,
-        data_format, data_type, var_type)
+        inputs, self.depth, phase_train, self.use_tf_layers, self.data_format,
+        data_type, var_type)
     with tf.variable_scope('cg', custom_getter=network.get_custom_getter()):
       self.add_inference(network)
       # Add the final fully-connected class layer
-      logits = (network.affine(nclass, activation='linear')
-                if not self.skip_final_affine_layer()
-                else network.top_layer)
+      logits = (
+          network.affine(nclass, activation='linear')
+          if not self.skip_final_affine_layer() else network.top_layer)
       aux_logits = None
       if network.aux_top_layer is not None:
         with network.switch_to_aux_top_layer():
-          aux_logits = network.affine(
-              nclass, activation='linear', stddev=0.001)
+          aux_logits = network.affine(nclass, activation='linear', stddev=0.001)
     if data_type == tf.float16:
       # TODO(reedwm): Determine if we should do this cast here.
       logits = tf.cast(logits, tf.float32)
       if aux_logits is not None:
         aux_logits = tf.cast(aux_logits, tf.float32)
-    return logits, aux_logits
+    return BuildNetworkResult(
+        logits=logits, extra_info=None if aux_logits is None else aux_logits)
+
+  def loss_function(self, build_network_result, labels):
+    """Returns the op to measure the loss of the model."""
+    logits = build_network_result.logits
+    # TODO(laigd): consider putting the aux logit logic in the Inception model,
+    # which could call super.loss_function twice, once with the normal logits
+    # and once with the aux logits.
+    aux_logits = build_network_result.extra_info
+    with tf.name_scope('xentropy'):
+      cross_entropy = tf.losses.sparse_softmax_cross_entropy(
+          logits=logits, labels=labels)
+      loss = tf.reduce_mean(cross_entropy, name='xentropy_mean')
+    if aux_logits is not None:
+      with tf.name_scope('aux_xentropy'):
+        aux_cross_entropy = tf.losses.sparse_softmax_cross_entropy(
+            logits=aux_logits, labels=labels)
+        aux_loss = 0.4 * tf.reduce_mean(aux_cross_entropy, name='aux_loss')
+        loss = tf.add_n([loss, aux_loss])
+    return loss
+
+  def accuracy_function(self, logits, labels, data_type):
+    """Returns the ops to measure the accuracy of the model."""
+    top_1_op = tf.reduce_sum(
+        tf.cast(tf.nn.in_top_k(logits, labels, 1), data_type))
+    top_5_op = tf.reduce_sum(
+        tf.cast(tf.nn.in_top_k(logits, labels, 5), data_type))
+    return {'top_1_accuracy': top_1_op, 'top_5_accuracy': top_5_op}

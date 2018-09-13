@@ -15,6 +15,11 @@
 
 """Image pre-processing utilities.
 """
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import math
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -22,8 +27,12 @@ import tensorflow as tf
 from tensorflow.contrib.image.python.ops import distort_image_ops
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.platform import gfile
+from object_detection.data_decoders import tf_example_decoder
 import cnn_util
 import data_utils
+import ssd_constants
+import ssd_dataloader
 
 
 def parse_example_proto(example_serialized):
@@ -425,13 +434,20 @@ def distort_color(image, batch_position=0, distort_color_in_yiq=False,
     return image
 
 
-class BaseImagePreprocess(object):
-  """Base class for all image preprocessors."""
+class InputPreprocessor(object):
+  """Base class for all model preprocessors."""
+
+  def __init__(self, batch_size, output_shape):
+    self.batch_size = batch_size
+    self.output_shape = output_shape
+
+
+class BaseImagePreprocessor(InputPreprocessor):
+  """Base class for all image model preprocessors."""
 
   def __init__(self,
-               height,
-               width,
                batch_size,
+               output_shape,
                num_splits,
                dtype,
                train,
@@ -440,11 +456,12 @@ class BaseImagePreprocess(object):
                shift_ratio=-1,
                summary_verbosity=0,
                distort_color_in_yiq=True,
-               fuse_decode_and_crop=True,
-               depth=3):
-    self.height = height
-    self.width = width
-    self.batch_size = batch_size
+               fuse_decode_and_crop=True):
+    super(BaseImagePreprocessor, self).__init__(batch_size, output_shape)
+    # output_shape is in form (height, width, depth)
+    self.height = output_shape[0]
+    self.width = output_shape[1]
+    self.depth = output_shape[2]
     self.num_splits = num_splits
     self.dtype = dtype
     self.train = train
@@ -460,7 +477,6 @@ class BaseImagePreprocess(object):
           (self.batch_size, self.num_splits))
     self.batch_size_per_split = self.batch_size // self.num_splits
     self.summary_verbosity = summary_verbosity
-    self.depth = depth
 
   def preprocess(self, image_buffer, bbox, batch_position):
     raise NotImplementedError('Must be implemented by subclass.')
@@ -473,7 +489,7 @@ class BaseImagePreprocess(object):
     return False
 
 
-class RecordInputImagePreprocessor(BaseImagePreprocess):
+class RecordInputImagePreprocessor(BaseImagePreprocessor):
   """Preprocessor for images with RecordInput format."""
 
   def preprocess(self, image_buffer, bbox, batch_position):
@@ -573,7 +589,7 @@ class ImagenetPreprocessor(RecordInputImagePreprocessor):
     return tf.cast(image, self.dtype)
 
 
-class Cifar10ImagePreprocessor(BaseImagePreprocess):
+class Cifar10ImagePreprocessor(BaseImagePreprocessor):
   """Preprocessor for Cifar10 input images."""
 
   def _distort_image(self, image):
@@ -665,40 +681,62 @@ class Cifar10ImagePreprocessor(BaseImagePreprocess):
       return images, labels
 
 
-class SyntheticImagePreprocessor(BaseImagePreprocess):
+class COCOPreprocessor(BaseImagePreprocessor):
+  """Preprocessor for COCO dataset input images, boxes, and labels."""
+
+  def minibatch(self, dataset, subset, use_datasets, cache_data,
+                shift_ratio=-1):
+    if shift_ratio < 0:
+      shift_ratio = self.shift_ratio
+    self.example_decoder = tf_example_decoder.TfExampleDecoder()
+
+    with tf.name_scope('batch_processing'):
+      images = [[] for _ in range(self.num_splits)]
+      labels = [[] for _ in range(self.num_splits)]
+
+      glob_pattern = dataset.tf_record_pattern(subset)
+      filenames = gfile.Glob(glob_pattern)
+      ssd_input = ssd_dataloader.SSDInputReader(filenames, subset == 'train')
+      ds = ssd_input({'batch_size_per_split': self.batch_size_per_split,
+                      'num_splits': self.num_splits})
+      ds_iterator = data_utils.create_iterator(ds)
+      for d in range(self.num_splits):
+        images[d], labels[d] = ds_iterator.get_next()
+      for split_index in xrange(self.num_splits):
+        images[split_index] = tf.reshape(
+            images[split_index],
+            shape=[self.batch_size_per_split, self.height, self.width,
+                   self.depth])
+        labels[split_index] = tf.reshape(
+            labels[split_index],
+            # Encoded tensor with object category, number of bounding boxes and
+            # their locations. The 0th dimension is batch size, and for each
+            # item in batch the tensor looks like this ((x, y, w, h) is the
+            # cordinates and size of a bounding box, c is class):
+            #
+            # [[x,      y,      w,      h,      c     ],       ^
+            #  [x,      y,      w,      h,      c     ],       |
+            #  [...,    ...,    ...,    ...,    ...   ],  NUM_SSD_BOXES+1
+            #  [x,      y,      w,      h,      c     ],       |
+            #  [nboxes, nboxes, nboxes, nboxes, nboxes]]       v
+            #
+            # |<---------- 4 cordinates + 1 ---------->|
+            shape=[self.batch_size_per_split, ssd_constants.NUM_SSD_BOXES+1, 5])
+      return images, labels
+
+
+class SyntheticImagePreprocessor(BaseImagePreprocessor):
   """Preprocessor used for images and labels."""
 
   def minibatch(self, dataset, subset, use_datasets, cache_data,
                 shift_ratio=-1):
-    """Get synthetic image batches."""
-    del subset, use_datasets, cache_data, shift_ratio
-    input_shape = [self.batch_size, self.height, self.width, self.depth]
-    images = tf.truncated_normal(
-        input_shape,
-        dtype=self.dtype,
-        stddev=1e-1,
-        name='synthetic_images')
-    labels = tf.random_uniform(
-        [self.batch_size],
-        minval=0,
-        maxval=dataset.num_classes - 1,
-        dtype=tf.int32,
-        name='synthetic_labels')
-    # Note: This results in a H2D copy, but no computation
-    # Note: This avoids recomputation of the random values, but still
-    #         results in a H2D copy.
-    images = tf.contrib.framework.local_variable(images, name='images')
-    labels = tf.contrib.framework.local_variable(labels, name='labels')
-    if self.num_splits == 1:
-      images_splits = [images]
-      labels_splits = [labels]
-    else:
-      images_splits = tf.split(images, self.num_splits, 0)
-      labels_splits = tf.split(labels, self.num_splits, 0)
-    return images_splits, labels_splits
+    """Get synthetic cpu image batches."""
+    raise NotImplementedError(
+        'The SyntheticImagePreprocessor does not support getting images with '
+        'minibatch().')
 
 
-class TestImagePreprocessor(BaseImagePreprocess):
+class TestImagePreprocessor(BaseImagePreprocessor):
   """Preprocessor used for testing.
 
   set_fake_data() sets which images and labels will be output by minibatch(),
@@ -709,9 +747,8 @@ class TestImagePreprocessor(BaseImagePreprocess):
   """
 
   def __init__(self,
-               height,
-               width,
                batch_size,
+               output_shape,
                num_splits,
                dtype,
                train=None,
@@ -722,7 +759,7 @@ class TestImagePreprocessor(BaseImagePreprocess):
                distort_color_in_yiq=False,
                fuse_decode_and_crop=False):
     super(TestImagePreprocessor, self).__init__(
-        height, width, batch_size, num_splits, dtype, train, distortions,
+        batch_size, output_shape, num_splits, dtype, train, distortions,
         resize_method, shift_ratio, summary_verbosity=summary_verbosity,
         distort_color_in_yiq=distort_color_in_yiq,
         fuse_decode_and_crop=fuse_decode_and_crop)

@@ -470,9 +470,9 @@ class TestCNNModel(model.CNNModel):
   def skip_final_affine_layer(self):
     return True
 
-  def loss_function(self, logits, labels, aux_logits):
-    del labels, aux_logits
-    return tf.reduce_mean(logits)
+  def loss_function(self, build_network_result, labels):
+    del labels
+    return tf.reduce_mean(build_network_result.logits)
 
   def manually_compute_losses(self, inputs, num_workers, params):
     with tf.Graph().as_default(), tf.device('/cpu:0'):
@@ -482,12 +482,15 @@ class TestCNNModel(model.CNNModel):
                                           (None, 1, 1, 1),
                                           name='inputs_placeholder')
       inputs_reshaped = tf.reshape(inputs_placeholder, (-1, 1))
-      loss = self.loss_function(inputs_reshaped * a * b, None, None)
+      loss = self.loss_function(
+          model.BuildNetworkResult(logits=inputs_reshaped * a * b,
+                                   extra_info=None),
+          None)
       return manually_compute_losses(inputs, inputs_placeholder, loss,
                                      num_workers, params)
 
 
-class TestDataSet(datasets.Dataset):
+class TestDataSet(datasets.ImageDataset):
   """A Dataset consisting of 1x1 images with a depth of 1."""
 
   def __init__(self, height=1, width=1, depth=1):
@@ -499,8 +502,8 @@ class TestDataSet(datasets.Dataset):
     del subset
     return 1
 
-  def get_image_preprocessor(self, input_preprocessor='default'):
+  def get_input_preprocessor(self, input_preprocessor='default'):
     return preprocessing.TestImagePreprocessor
 
-  def use_synthetic_gpu_images(self):
+  def use_synthetic_gpu_inputs(self):
     return False
