@@ -330,3 +330,7 @@ class SSD300Model(model_lib.CNNModel):
   def load_backbone_model(self, sess, backbone_model_path):
     self.backbone_saver.restore(sess, backbone_model_path)
     return
+
+  def get_labels_shape(self):
+    """See ssd_dataloader.py for shape details."""
+    return [self.get_batch_size(), ssd_constants.NUM_SSD_BOXES+1, 5]
