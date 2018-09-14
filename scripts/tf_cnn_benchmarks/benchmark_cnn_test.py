@@ -854,6 +854,7 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
                   fuse_decode_and_crop)
 
   def _test_learning_rate(self, params, global_step_to_expected_learning_rate):
+    self.longMessage = True  # pylint: disable=invalid-name
     bench = benchmark_cnn.BenchmarkCNN(params)
     with tf.Graph().as_default() as graph:
       bench._build_model()
@@ -864,27 +865,40 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
         for global_step_val, expected_learning_rate in items:
           self.assertAlmostEqual(sess.run(learning_rate,
                                           {global_step: global_step_val}),
-                                 expected_learning_rate)
+                                 expected_learning_rate,
+                                 msg='at global_step:{}'.
+                                 format(global_step_val))
 
-  def testLearningRate(self):
-    params = benchmark_cnn.make_params(model='resnet50', batch_size=256)
+  def testLearningRateModelSpecificResNet(self):
+    params = benchmark_cnn.make_params(model='resnet50',
+                                       batch_size=256,
+                                       variable_update='parameter_server',
+                                       num_gpus=1)
     self._test_learning_rate(params, {
         0: 0,
-        150136: 0.016,
-        150137: 0.0016,
-        300273: 0.0016,
-        300274: 0.00016,
-        10000000: 0.0000016
+        150136: 0.128,
+        150137: 0.0128,
+        300273: 0.0128,
+        300274: 0.00128,
+        10000000: 0.0000128
     })
 
-    params = params._replace(init_learning_rate=1.)
+  def testLearningRateUserProvidedInitLr(self):
+    params = benchmark_cnn.make_params(model='resnet50',
+                                       batch_size=256,
+                                       variable_update='replicated',
+                                       init_learning_rate=1.)
     self._test_learning_rate(params, {
         0: 1.,
         10000000: 1.
     })
 
-    params = params._replace(init_learning_rate=1.,
-                             num_learning_rate_warmup_epochs=5)
+  def testLearningRateUserProvidedInitLrAndWarmup(self):
+    params = benchmark_cnn.make_params(model='resnet50',
+                                       batch_size=256,
+                                       variable_update='replicated',
+                                       init_learning_rate=1.,
+                                       num_learning_rate_warmup_epochs=5)
     self._test_learning_rate(params, {
         0: 0.,
         12511: 0.5,
@@ -892,12 +906,13 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
         10000000: 1.
     })
 
-    params = params._replace(
-        num_learning_rate_warmup_epochs=0,
-        learning_rate_decay_factor=0.5,
-        num_epochs_per_decay=2,
-        minimum_learning_rate=0.3750,
-        batch_size=32)
+  def testLearningRateUserProvidedDecayInfo(self):
+    params = benchmark_cnn.make_params(model='resnet50',
+                                       init_learning_rate=1.,
+                                       learning_rate_decay_factor=0.5,
+                                       num_epochs_per_decay=2,
+                                       minimum_learning_rate=0.3750,
+                                       batch_size=32)
     self._test_learning_rate(params, {
         0: 1.,
         80071: 1.,
@@ -907,13 +922,20 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
         10000000: 0.375
     })
 
-    params = params._replace(num_epochs_per_decay=0.)
+  def testLearningRateUserProvidedZeroDecay(self):
+    params = benchmark_cnn.make_params(model='resnet50',
+                                       num_learning_rate_warmup_epochs=0,
+                                       learning_rate_decay_factor=0.5,
+                                       num_epochs_per_decay=0,
+                                       minimum_learning_rate=0.3750,
+                                       batch_size=32)
     with self.assertRaises(ValueError):
       with tf.Graph().as_default():
         # This will fail because params.learning_rate_decay_factor cannot be
         # nonzero if params.num_epochs_per_decay is zero.
         benchmark_cnn.BenchmarkCNN(params)._build_model()
 
+  def testLearningRateUserProvidedSchedule(self):
     params = benchmark_cnn.make_params(
         model='trivial',
         batch_size=32,

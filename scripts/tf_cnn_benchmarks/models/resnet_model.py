@@ -30,6 +30,7 @@ References:
   Atrous Convolution, and Fully Connected CRFs
   arXiv:1606.00915 (2016)
 """
+from __future__ import division
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -259,7 +260,9 @@ class ResnetModel(model_lib.CNNModel):
         'resnet152_v2': 32,
     }
     batch_size = default_batch_sizes.get(model, 32)
-    super(ResnetModel, self).__init__(model, 224, batch_size, 0.004,
+    # The ResNet paper uses a starting lr of .1 at bs=256.
+    self.base_lr_batch_size = 256
+    super(ResnetModel, self).__init__(model, 224, batch_size, .128,
                                       layer_counts, params=params)
     if 'v2' in model:
       self.version = 'v2'
@@ -292,10 +295,10 @@ class ResnetModel(model_lib.CNNModel):
     cnn.spatial_mean()
 
   def get_learning_rate(self, global_step, batch_size):
+    rescaled_lr = self.get_scaled_base_learning_rate(batch_size)
     num_batches_per_epoch = (
         float(datasets.IMAGENET_NUM_TRAIN_IMAGES) / batch_size)
     boundaries = [int(num_batches_per_epoch * x) for x in [30, 60, 80, 90]]
-    rescaled_lr = self.learning_rate / self.default_batch_size * batch_size
     values = [1, 0.1, 0.01, 0.001, 0.0001]
     values = [rescaled_lr * v for v in values]
     lr = tf.train.piecewise_constant(global_step, boundaries, values)
@@ -304,6 +307,25 @@ class ResnetModel(model_lib.CNNModel):
         rescaled_lr * tf.cast(global_step, tf.float32) / tf.cast(
             warmup_steps, tf.float32))
     return tf.cond(global_step < warmup_steps, lambda: warmup_lr, lambda: lr)
+
+  def get_scaled_base_learning_rate(self, batch_size):
+    """Calculates base learning rate for creating lr schedule.
+
+    In replicated mode, gradients are summed rather than averaged which, with
+    the sgd and momentum optimizers, increases the effective learning rate by
+    lr * num_gpus. Dividing the base lr by num_gpus negates the increase.
+
+    Args:
+      batch_size: Total batch-size.
+
+    Returns:
+      Base learning rate to use to create lr schedule.
+    """
+    base_lr = self.learning_rate
+    if self.params.variable_update == 'replicated':
+      base_lr = self.learning_rate / self.params.num_gpus
+    scaled_lr = base_lr * (batch_size / self.base_lr_batch_size)
+    return scaled_lr
 
 
 def create_resnet50_model(params):

@@ -131,6 +131,7 @@ class CNNModel(Model):
     self.image_size = image_size
     self.layer_counts = layer_counts
     self.depth = 3
+    self.params = params
     self.data_format = params.data_format if params else 'NCHW'
 
   def get_labels_shape(self):
