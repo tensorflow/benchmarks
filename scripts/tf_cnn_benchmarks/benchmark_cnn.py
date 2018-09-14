@@ -2237,6 +2237,10 @@ class BenchmarkCNN(object):
         results = self.add_forward_pass_and_gradients(
             phase_train, device_num, device_num, input_processing_info,
             gpu_compute_stage_ops, gpu_grad_stage_ops)
+
+        if self.params.backbone_model_path:
+          self.model.add_backbone_saver()
+
         if phase_train:
           losses.append(results['loss'])
           device_grads.append(results['gradvars'])
@@ -2445,6 +2449,10 @@ class BenchmarkCNN(object):
           task_results = self.add_forward_pass_and_gradients(
               phase_train, rel_device_num, abs_device_num,
               input_processing_info, gpu_compute_stage_ops, gpu_grad_stage_ops)
+
+          if self.params.backbone_model_path:
+            self.model.add_backbone_saver()
+
           if phase_train:
             losses.append(task_results['loss'])
             device_grads.append(task_results['gradvars'])

@@ -150,14 +150,20 @@ class CNNModel(Model):
     """
     return False
 
+  def add_backbone_saver(self):
+    """Creates a tf.train.Saver as self.backbone_saver for loading backbone.
+
+    A tf.train.Saver must be created and saved in self.backbone_saver before
+    calling load_backbone_model, with correct variable name mapping to load
+    variables from checkpoint correctly into the current model.
+    """
+    raise NotImplementedError(self.getName() + ' does not have backbone model.')
+
   def load_backbone_model(self, sess, backbone_model_path):
     """Loads variable values from a pre-trained backbone model.
 
     This should be used at the beginning of the training process for transfer
-    learning models using checkpoints of base models. A tf.train.Saver must be
-    created and saved in self.backbone_saver before calling this method, with
-    correct variable name mapping to load variables from checkpoint correctly
-    into the current model.
+    learning models using checkpoints of base models.
 
     Args:
       sess: session to train the model.

@@ -38,6 +38,8 @@ import ssd_constants
 from models import model as model_lib
 from models import resnet_model
 
+BACKBONE_MODEL_SCOPE_NAME = 'resnet34_backbone'
+
 
 class SSD300Model(model_lib.CNNModel):
   """Single Shot Multibox Detection (SSD) model for 300x300 image datasets."""
@@ -45,8 +47,8 @@ class SSD300Model(model_lib.CNNModel):
   def __init__(self, label_num=ssd_constants.NUM_CLASSES, batch_size=32,
                learning_rate=1e-3, backbone='resnet34', params=None):
     super(SSD300Model, self).__init__('ssd300', 300, batch_size, learning_rate)
-     # For COCO dataset, 80 categories + 1 background = 81 labels
-     # however in dataset there are labels up to 90...
+    # For COCO dataset, 80 categories + 1 background = 81 labels
+    # however in dataset there are labels up to 90...
     self.label_num = label_num
 
     # Currently only support ResNet-34 as backbone model
@@ -66,11 +68,7 @@ class SSD300Model(model_lib.CNNModel):
   def skip_final_affine_layer(self):
     return True
 
-  def add_inference(self, cnn):
-    # TODO(haoyuzhang): check batch norm params for resnet34 in reference model?
-    cnn.use_batch_norm = True
-    cnn.batch_norm_config = {'decay': 0.9, 'epsilon': 1e-5, 'scale': True}
-
+  def add_backbone_model(self, cnn):
     # --------------------------------------------------------------------------
     # Resnet-34 backbone model -- modified for SSD
     # --------------------------------------------------------------------------
@@ -112,11 +110,13 @@ class SSD300Model(model_lib.CNNModel):
     #   stride = 2 if i == 0 else 1
     #   resnet_model.residual_block(cnn, 512, stride, version, i == 0)
 
-    # Create saver with mapping from variable names in checkpoint of backbone
-    # model to variables in SSD model
-    if not self.backbone_saver:
-      backbone_var_list = self._collect_backbone_vars()
-      self.backbone_saver = tf.train.Saver(backbone_var_list)
+  def add_inference(self, cnn):
+    # TODO(haoyuzhang): check batch norm params for resnet34 in reference model?
+    cnn.use_batch_norm = True
+    cnn.batch_norm_config = {'decay': 0.9, 'epsilon': 1e-5, 'scale': True}
+
+    with tf.variable_scope(BACKBONE_MODEL_SCOPE_NAME):
+      self.add_backbone_model(cnn)
 
     # --------------------------------------------------------------------------
     # SSD additional layers
@@ -188,10 +188,8 @@ class SSD300Model(model_lib.CNNModel):
     return tf.train.piecewise_constant(global_step, boundaries, learning_rates)
 
   def _collect_backbone_vars(self):
-    # Function should be called after creating the backbone model and before
-    # adding SSD model layers. Calling tf.get_collection retrieves all variables
-    # belonging to the backbone model.
-    backbone_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
+    backbone_vars = tf.get_collection(
+        tf.GraphKeys.GLOBAL_VARIABLES, scope='.*'+ BACKBONE_MODEL_SCOPE_NAME)
     var_list = {}
 
     # Assume variables in the checkpoint are following the naming convention of
@@ -326,6 +324,13 @@ class SSD300Model(model_lib.CNNModel):
     box_loss = tf.reduce_mean(box_loss / tf.cast(num_gt, tf.float32))
 
     return class_loss + box_loss
+
+  def add_backbone_saver(self):
+    # Create saver with mapping from variable names in checkpoint of backbone
+    # model to variables in SSD model
+    if not self.backbone_saver:
+      backbone_var_list = self._collect_backbone_vars()
+      self.backbone_saver = tf.train.Saver(backbone_var_list)
 
   def load_backbone_model(self, sess, backbone_model_path):
     self.backbone_saver.restore(sess, backbone_model_path)
