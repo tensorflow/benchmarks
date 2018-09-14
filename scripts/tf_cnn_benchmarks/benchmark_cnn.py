@@ -2182,17 +2182,17 @@ class BenchmarkCNN(object):
     if self.params.use_fp16:
       init_loss_scale_val = float(self.params.fp16_loss_scale or
                                   self.model.get_fp16_loss_scale())
+      self.loss_scale = None
+      self.loss_scale_normal_steps = None
       if self.enable_auto_loss_scale or init_loss_scale_val != 1:
         self.loss_scale = tf.get_variable(
             name='loss_scale',
             initializer=init_loss_scale_val,
             dtype=tf.float32,
             trainable=False)
+      if self.enable_auto_loss_scale:
         self.loss_scale_normal_steps = tf.get_variable(
             name='loss_scale_normal_steps', initializer=0, trainable=False)
-      else:
-        self.loss_scale = None
-        self.loss_scale_normal_steps = None
 
   def _build_model(self):
     """Build the TensorFlow graph."""
@@ -2359,6 +2359,7 @@ class BenchmarkCNN(object):
         tf.summary.scalar(self.params.loss_type_to_report, average_loss)
         if self.loss_scale is not None:
           tf.summary.scalar('loss_scale', self.loss_scale)
+        if self.loss_scale_normal_steps:
           tf.summary.scalar('loss_scale_normal_steps',
                             self.loss_scale_normal_steps)
 
