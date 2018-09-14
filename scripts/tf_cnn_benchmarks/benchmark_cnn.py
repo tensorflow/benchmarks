@@ -2553,6 +2553,10 @@ class BenchmarkCNN(object):
           inputs, labels = self.model.get_synthetic_inputs_and_labels(
               BenchmarkCNN.GPU_CACHED_INPUT_VARIABLE_NAME, data_type, nclass)
 
+    labels_shape = self.model.get_labels_shape()
+    if labels_shape:
+      labels = tf.reshape(labels, shape=labels_shape)
+
     def forward_pass_and_gradients():
       """Builds forward pass and gradient computation network.
 

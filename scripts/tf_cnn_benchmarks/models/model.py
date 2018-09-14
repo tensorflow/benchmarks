@@ -76,6 +76,10 @@ class Model(object):
     del batch_size
     return self.learning_rate
 
+  def get_labels_shape(self):
+    """Returns the expected shape of labels to this model."""
+    return None
+
   def get_input_shape(self):
     """Returns the expected shape of the input to this model."""
     raise NotImplementedError('Must be implemented in derived classes')
@@ -128,6 +132,9 @@ class CNNModel(Model):
     self.layer_counts = layer_counts
     self.depth = 3
     self.data_format = params.data_format if params else 'NCHW'
+
+  def get_labels_shape(self):
+    return [self.get_batch_size()]
 
   def get_layer_counts(self):
     return self.layer_counts
