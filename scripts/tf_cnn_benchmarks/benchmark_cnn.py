@@ -37,7 +37,6 @@ import tensorflow as tf
 
 from google.protobuf import text_format
 
-from tensorflow.contrib.compiler import xla
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import debug as tf_debug
 from tensorflow.python.client import timeline
@@ -356,9 +355,6 @@ flags.DEFINE_boolean('force_gpu_compatible', False,
 flags.DEFINE_boolean('allow_growth', None,
                      'whether to enable allow_growth in GPU_Options')
 flags.DEFINE_boolean('xla', False, 'whether to enable XLA auto-jit compilation')
-flags.DEFINE_boolean('xla_compile', False,
-                     'Enable xla to compile the graph. Uncompilable ops will '
-                     'result in fatal errors.')
 flags.DEFINE_boolean('fuse_decode_and_crop', True,
                      'Fuse decode_and_crop for image preprocessing.')
 flags.DEFINE_boolean('distort_color_in_yiq', True,
@@ -2731,7 +2727,8 @@ class BenchmarkCNN(object):
       return results
 
     with tf.device(self.devices[rel_device_num]):
-      outputs = maybe_compile(forward_pass_and_gradients, self.params)
+      outputs = platforms_util.maybe_compile(forward_pass_and_gradients,
+                                             self.params)
       logits, loss, grads = unpack_forward_pass_and_gradients_output(outputs)
       return make_results(logits, loss, grads)
 
@@ -2898,10 +2895,3 @@ def setup(params):
   platforms_util.initialize(params, create_config_proto(params))
 
   return params
-
-
-def maybe_compile(computation, params):
-  if params and params.xla_compile:
-    return xla.compile(computation)
-  else:
-    return computation()
