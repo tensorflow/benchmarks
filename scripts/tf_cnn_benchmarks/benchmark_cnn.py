@@ -529,7 +529,12 @@ flags.DEFINE_integer('save_summaries_steps', 0,
                      'to disable summaries.')
 flags.DEFINE_integer('save_model_secs', 0,
                      'How often to save trained models. Pass 0 to disable '
-                     'checkpoints.')
+                     'saving checkpoints every N seconds. A checkpoint is '
+                     'saved after training completes regardless of this '
+                     'option.')
+flags.DEFINE_integer('save_model_steps', None,
+                     'How often to save trained models. If specified, '
+                     'save_model_secs must not be specified.')
 flags.DEFINE_integer('max_ckpts_to_keep', 5,
                      'Max number of checkpoints to keep.')
 flags.DEFINE_string('train_dir', None,
@@ -1211,6 +1216,10 @@ class BenchmarkCNN(object):
       raise ValueError('--hierarchical_copy requires --num_gpus to be greater '
                        'than 1')
 
+    if params.save_model_secs and params.save_model_steps:
+      raise ValueError('At most one of --save_model_secs and '
+                       '--save_model_steps can be specified')
+
     if self.params.forward_only and self.params.freeze_when_forward_only:
       if self.params.train_dir is not None:
         raise ValueError('In forward_only mode, when --freeze_when_forward_only'
@@ -1850,7 +1859,7 @@ class BenchmarkCNN(object):
 
     step_train_times = []
     start_standard_services = (
-        self.params.summary_verbosity >= 1 or
+        self.params.train_dir or
         self.dataset.queue_runner_required())
     target = self.cluster_manager.get_target() if self.cluster_manager else ''
     with sv.managed_session(
@@ -1958,6 +1967,11 @@ class BenchmarkCNN(object):
         if summary_str is not None and is_chief:
           sv.summary_computed(sess, summary_str)
         local_step += 1
+        if (self.params.save_model_steps and
+            local_step % self.params.save_model_steps == 0 and
+            local_step > 0 and
+            is_chief):
+          sv.saver.save(sess, sv.save_path, sv.global_step)
       loop_end_time = time.time()
       # Waits for the global step to be done, regardless of done_fn.
       if global_step_watcher:

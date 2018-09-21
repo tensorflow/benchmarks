@@ -18,6 +18,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+import glob
 import os
 import re
 
@@ -611,6 +612,23 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
   def testNoLayers(self):
     params = test_util.get_params('testNoLayers')._replace(use_tf_layers=False)
     self._train_and_eval_local(params)
+
+  def testSaveModelSteps(self):
+    params = test_util.get_params('testSaveModelSteps')._replace(
+        save_model_steps=2, num_warmup_batches=0, num_batches=10,
+        max_ckpts_to_keep=3)
+    self._train_and_eval_local(params)
+    for i in range(1, 20 + 1):
+      # We train for 20 steps, since self._train_and_eval_local() does two
+      # training runs of 10 steps each. We save a checkpoint every 2 steps and
+      # keep the last 3 checkpoints, so at the end, we should have checkpoints
+      # for steps 16, 18, and 20.
+      matches = glob.glob(os.path.join(params.train_dir,
+                                       'model.ckpt-{}.*'.format(i)))
+      if i in (16, 18, 20):
+        self.assertTrue(matches)
+      else:
+        self.assertFalse(matches)
 
   def testFp16WithFp32Vars(self):
     params = test_util.get_params('testFp16WithFp32Vars')._replace(
