@@ -329,7 +329,7 @@ flags.DEFINE_integer('datasets_num_private_threads', None,
                      'appropriate number. If set to 0, we use the default '
                      'tf-Compute threads for dataset operations.')
 flags.DEFINE_boolean(
-    'use_multi_device_iterator', False,
+    'use_multi_device_iterator', True,
     'If true, we use the MultiDeviceIterator for prefetching, '
     'which deterministically prefetches the data onto the '
     'various GPUs')
@@ -2880,7 +2880,13 @@ def setup(params):
           params.per_gpu_thread_count)
     # Default to two threads. One for the device compute and the other for
     # memory copies.
-    per_gpu_thread_count = params.per_gpu_thread_count or 2
+    default_per_gpu_thread_count = 2
+    if params.use_multi_device_iterator:
+      # In case we use multi device iterator, we need another thread for running
+      # remote function calls.
+      default_per_gpu_thread_count += 1
+    per_gpu_thread_count = (params.per_gpu_thread_count or
+                            default_per_gpu_thread_count)
     total_gpu_thread_count = per_gpu_thread_count * params.num_gpus
 
     if params.gpu_thread_mode == 'gpu_private':
