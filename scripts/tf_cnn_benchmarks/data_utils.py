@@ -22,6 +22,7 @@ from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import interleave_ops
 from tensorflow.contrib.data.python.ops import prefetching_ops
 from tensorflow.contrib.data.python.ops import threadpool
+from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.framework import function
 from tensorflow.python.platform import gfile
 
@@ -80,7 +81,7 @@ def build_multi_device_iterator(batch_size, num_splits, preprocess_fn,
         train=(not params.eval),
         cache_data=params.cache_data,
         num_threads=params.datasets_num_private_threads)
-    multi_device_iterator = prefetching_ops.MultiDeviceIterator(
+    multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
         ds,
         gpu_devices,
         source_device=cpu_device,
