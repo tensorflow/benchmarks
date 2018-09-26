@@ -73,10 +73,7 @@ class Dataset(object):
     return self.name
 
   def get_input_preprocessor(self, input_preprocessor='default'):
-    if self.use_synthetic_gpu_inputs():
-      # TODO(laigd): it seems this path will never get executed, consider
-      # removing it.
-      return preprocessing.SyntheticImagePreprocessor
+    assert not self.use_synthetic_gpu_inputs()
     return _SUPPORTED_INPUT_PREPROCESSORS[self.name][input_preprocessor]
 
   def queue_runner_required(self):

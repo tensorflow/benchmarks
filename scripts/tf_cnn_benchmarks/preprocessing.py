@@ -717,17 +717,6 @@ class COCOPreprocessor(BaseImagePreprocessor):
       return images, labels
 
 
-class SyntheticImagePreprocessor(BaseImagePreprocessor):
-  """Preprocessor used for images and labels."""
-
-  def minibatch(self, dataset, subset, use_datasets, cache_data,
-                shift_ratio=-1):
-    """Get synthetic cpu image batches."""
-    raise NotImplementedError(
-        'The SyntheticImagePreprocessor does not support getting images with '
-        'minibatch().')
-
-
 class TestImagePreprocessor(BaseImagePreprocessor):
   """Preprocessor used for testing.
 
