@@ -2880,13 +2880,7 @@ def setup(params):
           params.per_gpu_thread_count)
     # Default to two threads. One for the device compute and the other for
     # memory copies.
-    default_per_gpu_thread_count = 2
-    if params.use_multi_device_iterator:
-      # In case we use multi device iterator, we need another thread for running
-      # remote function calls.
-      default_per_gpu_thread_count += 1
-    per_gpu_thread_count = (params.per_gpu_thread_count or
-                            default_per_gpu_thread_count)
+    per_gpu_thread_count = params.per_gpu_thread_count or 2
     total_gpu_thread_count = per_gpu_thread_count * params.num_gpus
 
     if params.gpu_thread_mode == 'gpu_private':
