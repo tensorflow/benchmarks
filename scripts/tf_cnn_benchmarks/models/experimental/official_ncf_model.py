@@ -54,7 +54,9 @@ class NcfModel(model.Model):
                     data_type=tf.float32):
     try:
       from official.recommendation import neumf_model  # pylint: disable=g-import-not-at-top
-    except ImportError:
+    except ImportError as e:
+      if 'neumf_model' not in e.message:
+        raise
       raise ImportError('To use the experimental NCF model, you must clone the '
                         'repo https://github.com/tensorflow/models and add '
                         'tensorflow/models to the PYTHONPATH.')
