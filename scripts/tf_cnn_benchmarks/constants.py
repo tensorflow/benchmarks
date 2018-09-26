@@ -2,6 +2,13 @@
 
 from enum import Enum
 
+# Results fetched with this prefix will not be reduced. Instead, they will be
+# passed as matrices to model's postprocess function.
+UNREDUCED_ACCURACY_OP_PREFIX = "tensor:"
+
+# Eval result values with this name prefix will be included in summary.
+SIMPLE_VALUE_RESULT_PREFIX = "simple_value:"
+
 
 class NetworkTopology(str, Enum):
   """Network topology describes how multiple GPUs are inter-connected.

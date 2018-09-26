@@ -26,7 +26,18 @@ IMAGE_SIZE = 300
 # TODO(taylorrobie): MLPerf uses 80, but COCO documents 90. (RetinaNet uses 90)
 # Update(taylorrobie): Labels > 81 show up in the pipeline. This will need to
 #                      be resolved.
-NUM_CLASSES = 91  # Including "no class"
+NUM_CLASSES = 81  # Including "no class". Not all COCO classes are used.
+
+# Note: Zero is special. (Background class) CLASS_INV_MAP[0] must be zero.
+CLASS_INV_MAP = (
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+    22, 23, 24, 25, 27, 28, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
+    44, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+    64, 65, 67, 70, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 84, 85, 86, 87,
+    88, 89, 90)
+_MAP = {j: i for i, j in enumerate(CLASS_INV_MAP)}
+CLASS_MAP = tuple(_MAP.get(i, -1) for i in range(max(CLASS_INV_MAP) + 1))
+
 NUM_SSD_BOXES = 8732
 
 RESNET_DEPTH = 34
@@ -60,6 +71,10 @@ P_NO_CROP_PER_PASS = 1 / (len(CROP_MIN_IOU_CHOICES) + 1)
 # Hard example mining
 NEGS_PER_POSITIVE = 3
 
+# Batch normalization
+BATCH_NORM_DECAY = 0.997
+BATCH_NORM_EPSILON = 1e-4
+
 
 # ==============================================================================
 # == Optimizer =================================================================
@@ -70,6 +85,7 @@ LEARNING_RATE_SCHEDULE = (
     (200000, 1e-5),
 )
 MOMENTUM = 0.9
+WEIGHT_DECAY = 5e-4
 
 
 # ==============================================================================
@@ -77,9 +93,12 @@ MOMENTUM = 0.9
 # ==============================================================================
 BOXES = "boxes"
 CLASSES = "classes"
-NUM_BOXES = "num_boxes"
+NUM_MATCHED_BOXES = "num_matched_boxes"
 IMAGE = "image"
 SOURCE_ID = "source_id"
+RAW_SHAPE = "raw_shape"
+PRED_BOXES = "pred_boxes"
+PRED_SCORES = "pred_scores"
 
 
 # ==============================================================================
@@ -90,3 +109,9 @@ SOURCE_ID = "source_id"
 #   https://github.com/mlperf/reference/blob/master/single_stage_detector/ssd/train.py#L21-L37
 CHECKPOINT_FREQUENCY = 20000
 MAX_NUM_EVAL_BOXES = 200
+OVERLAP_CRITERIA = 0.5  # Used for nonmax supression
+MIN_SCORE = 0.05  # Minimum score to be considered during evaluation.
+DUMMY_SCORE = -1e5  # If no boxes are matched.
+
+ANNOTATION_FILE = "annotations/instances_val2017.json"
+COCO_NUM_VAL_IMAGES = 4952

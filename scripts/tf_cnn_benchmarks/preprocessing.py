@@ -30,7 +30,6 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import gfile
 import cnn_util
 import data_utils
-import ssd_constants
 
 
 def parse_example_proto(example_serialized):
@@ -685,7 +684,6 @@ class COCOPreprocessor(BaseImagePreprocessor):
   def minibatch(self, dataset, subset, use_datasets, cache_data,
                 shift_ratio=-1):
     try:
-      from object_detection.data_decoders import tf_example_decoder  # pylint: disable=g-import-not-at-top
       import ssd_dataloader  # pylint: disable=g-import-not-at-top
     except ImportError:
       raise ImportError('To use the COCO dataset, you must clone the '
@@ -698,7 +696,6 @@ class COCOPreprocessor(BaseImagePreprocessor):
 
     if shift_ratio < 0:
       shift_ratio = self.shift_ratio
-    self.example_decoder = tf_example_decoder.TfExampleDecoder()
 
     with tf.name_scope('batch_processing'):
       images = [[] for _ in range(self.num_splits)]
@@ -717,21 +714,6 @@ class COCOPreprocessor(BaseImagePreprocessor):
             images[split_index],
             shape=[self.batch_size_per_split, self.height, self.width,
                    self.depth])
-        labels[split_index] = tf.reshape(
-            labels[split_index],
-            # Encoded tensor with object category, number of bounding boxes and
-            # their locations. The 0th dimension is batch size, and for each
-            # item in batch the tensor looks like this ((x, y, w, h) is the
-            # cordinates and size of a bounding box, c is class):
-            #
-            # [[x,      y,      w,      h,      c     ],       ^
-            #  [x,      y,      w,      h,      c     ],       |
-            #  [...,    ...,    ...,    ...,    ...   ],  NUM_SSD_BOXES+1
-            #  [x,      y,      w,      h,      c     ],       |
-            #  [nboxes, nboxes, nboxes, nboxes, nboxes]]       v
-            #
-            # |<---------- 4 cordinates + 1 ---------->|
-            shape=[self.batch_size_per_split, ssd_constants.NUM_SSD_BOXES+1, 5])
       return images, labels
 
 

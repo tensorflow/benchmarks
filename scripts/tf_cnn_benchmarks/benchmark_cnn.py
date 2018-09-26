@@ -1634,6 +1634,7 @@ class BenchmarkCNN(object):
           summary_writer.add_summary(summary_str)
         else:
           results = sess.run(fetches)
+        results = self.model.postprocess(results)
         top_1_accuracy_sum += results['top_1_accuracy']
         top_5_accuracy_sum += results['top_5_accuracy']
         if (step + 1) % self.params.display_every == 0:
@@ -1652,6 +1653,11 @@ class BenchmarkCNN(object):
       summary = tf.Summary()
       summary.value.add(tag='eval/Accuracy@1', simple_value=accuracy_at_1)
       summary.value.add(tag='eval/Accuracy@5', simple_value=accuracy_at_5)
+      for result_key, result_value in results.items():
+        if result_key.startswith(constants.SIMPLE_VALUE_RESULT_PREFIX):
+          prefix_len = len(constants.SIMPLE_VALUE_RESULT_PREFIX)
+          summary.value.add(tag='eval/' + result_key[prefix_len:],
+                            simple_value=result_value)
       summary_writer.add_summary(summary, global_step)
       log_fn('Accuracy @ 1 = %.4f Accuracy @ 5 = %.4f [%d examples]' %
              (accuracy_at_1, accuracy_at_5, total_eval_count))
@@ -2314,9 +2320,14 @@ class BenchmarkCNN(object):
     if enqueue_ops:
       fetches['enqueue_ops'] = enqueue_ops
     for name, ops in all_accuracy_ops.items():
-      fetches[name] = tf.reduce_sum(ops) / self.batch_size
-      if self.task_index == 0 and self.params.summary_verbosity >= 1:
-        tf.summary.scalar(name, fetches[name])
+      # For fetches that starts with 'tensor:', keep dimension and skip reducing
+      # them to scalars.
+      if name.startswith(constants.UNREDUCED_ACCURACY_OP_PREFIX):
+        fetches[name[len(constants.UNREDUCED_ACCURACY_OP_PREFIX):]] = ops[0]
+      else:
+        fetches[name] = tf.reduce_sum(ops) / self.batch_size
+        if self.task_index == 0 and self.params.summary_verbosity >= 1:
+          tf.summary.scalar(name, fetches[name])
 
     if not phase_train:
       if self.params.forward_only:

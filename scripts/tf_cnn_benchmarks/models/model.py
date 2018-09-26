@@ -112,6 +112,10 @@ class Model(object):
     """Returns the ops to measure the accuracy of the model."""
     raise NotImplementedError('Must be implemented in derived classes')
 
+  def postprocess(self, results):
+    """Postprocess results returned from model in Python."""
+    return results
+
 
 class CNNModel(Model):
   """Base model configuration for CNN benchmarks."""

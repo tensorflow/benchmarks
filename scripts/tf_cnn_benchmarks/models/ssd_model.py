@@ -31,10 +31,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import re
 import tensorflow as tf
 
+import constants
 import ssd_constants
+from cnn_util import log_fn
 from models import model as model_lib
 from models import resnet_model
 
@@ -46,9 +49,9 @@ class SSD300Model(model_lib.CNNModel):
 
   def __init__(self, label_num=ssd_constants.NUM_CLASSES, batch_size=32,
                learning_rate=1e-3, backbone='resnet34', params=None):
-    super(SSD300Model, self).__init__('ssd300', 300, batch_size, learning_rate)
+    super(SSD300Model, self).__init__('ssd300', 300, batch_size, learning_rate,
+                                      params=params)
     # For COCO dataset, 80 categories + 1 background = 81 labels
-    # however in dataset there are labels up to 90...
     self.label_num = label_num
 
     # Currently only support ResNet-34 as backbone model
@@ -64,6 +67,14 @@ class SSD300Model(model_lib.CNNModel):
     self.num_dboxes = [4, 6, 6, 6, 4, 4]
 
     self.backbone_saver = None
+
+    # Collected predictions for eval stage. It maps each image id in eval
+    # dataset to a dict containing the following information:
+    #   source_id: raw ID of image
+    #   raw_shape: raw shape of image
+    #   pred_box: encoded box coordinates of prediction
+    #   pred_scores: scores of classes in prediction
+    self.predictions = {}
 
   def skip_final_affine_layer(self):
     return True
@@ -337,5 +348,135 @@ class SSD300Model(model_lib.CNNModel):
     return
 
   def get_labels_shape(self):
-    """See ssd_dataloader.py for shape details."""
-    return [self.get_batch_size(), ssd_constants.NUM_SSD_BOXES+1, 5]
+    """Return encoded tensor shapes for train and eval data respectively."""
+    if self.params.eval:
+      # Validation data:
+      # Encoded tensor with object category, number of bounding boxes and
+      # their locations. The 0th dimension is batch size, and for each
+      # item in batch the tensor looks like this:
+      #
+      # [[cord1,  cord2,  cord3,  cord4,  cat   ],       ^
+      #  [cord1,  cord2,  cord3,  cord4,  cat   ],       |
+      #  [...,    ...,    ...,    ...,    ...   ],  MAX_NUM_EVAL_BOXES+1
+      #  [cord1,  cord2,  cord3,  cord4,  cat   ],       |
+      #  [id,     shape,  shape,  shape,  0     ]]       v
+      #
+      # |<---------- 4 cordinates + 1 ---------->|
+      return [self.batch_size, ssd_constants.MAX_NUM_EVAL_BOXES+1, 5]
+
+    # Training data:
+    # Encoded tensor with object category, number of bounding boxes and
+    # their locations. The 0th dimension is batch size, and for each
+    # item in batch the tensor looks like this:
+    #
+    # [[cord1,  cord2,  cord3,  cord4,  cat   ],       ^
+    #  [cord1,  cord2,  cord3,  cord4,  cat   ],       |
+    #  [...,    ...,    ...,    ...,    ...   ],  NUM_SSD_BOXES+1
+    #  [cord1,  cord2,  cord3,  cord4,  cat   ],       |
+    #  [nboxes, nboxes, nboxes, nboxes, nboxes]]       v
+    #
+    # |<---------- 4 cordinates + 1 ---------->|
+    return [self.batch_size, ssd_constants.NUM_SSD_BOXES+1, 5]
+
+  def accuracy_function(self, logits, labels, data_type):
+    """Returns the ops to measure the mean precision of the model."""
+    try:
+      import ssd_dataloader  # pylint: disable=g-import-not-at-top
+      from object_detection.box_coders import faster_rcnn_box_coder  # pylint: disable=g-import-not-at-top
+      from object_detection.core import box_coder  # pylint: disable=g-import-not-at-top
+      from object_detection.core import box_list  # pylint: disable=g-import-not-at-top
+    except ImportError:
+      raise ImportError('To use the COCO dataset, you must clone the '
+                        'repo https://github.com/tensorflow/models and add '
+                        'tensorflow/models and tensorflow/models/research to '
+                        'the PYTHONPATH, and compile the protobufs by '
+                        'following https://github.com/tensorflow/models/blob/'
+                        'master/research/object_detection/g3doc/installation.md'
+                        '#protobuf-compilation ; To evaluate using COCO'
+                        'metric, download and install Python COCO API from'
+                        'https://github.com/cocodataset/cocoapi')
+
+    # Unpack model output back to locations and confidence scores of predictions
+    # pred_locs: relative locations (coordiates) of objects in all SSD boxes
+    # shape: [batch_size, NUM_SSD_BOXES, 4]
+    # pred_labels: confidence scores of objects being of all categories
+    # shape: [batch_size, NUM_SSD_BOXES, label_num]
+    pred_locs, pred_labels = tf.split(logits, [4, self.label_num], 2)
+
+    ssd_box_coder = faster_rcnn_box_coder.FasterRcnnBoxCoder(
+        scale_factors=ssd_constants.BOX_CODER_SCALES)
+    anchors = box_list.BoxList(
+        tf.convert_to_tensor(ssd_dataloader.DefaultBoxes()('ltrb')))
+    pred_boxes = box_coder.batch_decode(
+        encoded_boxes=pred_locs, box_coder=ssd_box_coder, anchors=anchors)
+
+    pred_scores = tf.nn.softmax(pred_labels, axis=2)
+
+    boxes_classes, id_shape = tf.split(
+        labels, [ssd_constants.MAX_NUM_EVAL_BOXES, 1], 1)
+    # TODO(haoyuzhang): maybe use these values for visualization.
+    gt_boxes, gt_classes = tf.split(boxes_classes, [4, 1], 2)  # pylint: disable=unused-variable
+    id_shape = tf.squeeze(id_shape, 1)
+    source_id, raw_shape, _ = tf.split(id_shape, [1, 3, 1], 1)
+    source_id = tf.squeeze(source_id, 1)
+
+    return {
+        (constants.UNREDUCED_ACCURACY_OP_PREFIX +
+         ssd_constants.PRED_BOXES): pred_boxes,
+        (constants.UNREDUCED_ACCURACY_OP_PREFIX +
+         ssd_constants.PRED_SCORES): pred_scores,
+        # TODO(haoyuzhang): maybe use these values for visualization.
+        # constants.UNREDUCED_ACCURACY_OP_PREFIX+'gt_boxes': gt_boxes,
+        # constants.UNREDUCED_ACCURACY_OP_PREFIX+'gt_classes': gt_classes,
+        (constants.UNREDUCED_ACCURACY_OP_PREFIX +
+         ssd_constants.SOURCE_ID): source_id,
+        (constants.UNREDUCED_ACCURACY_OP_PREFIX +
+         ssd_constants.RAW_SHAPE): raw_shape
+    }
+
+  def postprocess(self, results):
+    """Postprocess results returned from model."""
+    try:
+      import coco_metric  # pylint: disable=g-import-not-at-top
+    except ImportError:
+      raise ImportError('To use the COCO dataset, you must clone the '
+                        'repo https://github.com/tensorflow/models and add '
+                        'tensorflow/models and tensorflow/models/research to '
+                        'the PYTHONPATH, and compile the protobufs by '
+                        'following https://github.com/tensorflow/models/blob/'
+                        'master/research/object_detection/g3doc/installation.md'
+                        '#protobuf-compilation ; To evaluate using COCO'
+                        'metric, download and install Python COCO API from'
+                        'https://github.com/cocodataset/cocoapi')
+
+    pred_boxes = results[ssd_constants.PRED_BOXES]
+    pred_scores = results[ssd_constants.PRED_SCORES]
+    # TODO(haoyuzhang): maybe use these values for visualization.
+    # gt_boxes = results['gt_boxes']
+    # gt_classes = results['gt_classes']
+    source_id = results[ssd_constants.SOURCE_ID]
+    raw_shape = results[ssd_constants.RAW_SHAPE]
+
+    for i in range(self.get_batch_size()):
+      self.predictions[int(source_id[i])] = {
+          ssd_constants.PRED_BOXES: pred_boxes[i],
+          ssd_constants.PRED_SCORES: pred_scores[i],
+          ssd_constants.SOURCE_ID: source_id[i],
+          ssd_constants.RAW_SHAPE: raw_shape[i]
+      }
+
+    # COCO metric calculates mAP only after a full epoch of evaluation. Return
+    # dummy results for top_N_accuracy to be compatible with benchmar_cnn.py.
+    if len(self.predictions) >= ssd_constants.COCO_NUM_VAL_IMAGES:
+      annotation_file = os.path.join(self.params.data_dir,
+                                     ssd_constants.ANNOTATION_FILE)
+      eval_results = coco_metric.compute_map(self.predictions.values(),
+                                             annotation_file)
+      ret = {'top_1_accuracy': 0., 'top_5_accuracy': 0.}
+      for metric_key, metric_value in eval_results.items():
+        ret['simple_value:' + metric_key] = metric_value
+      return ret
+    log_fn('Got {:d} out of {:d} eval examples.'
+           ' Waiting for the remaining to calculate mAP...'.format(
+               len(self.predictions), ssd_constants.COCO_NUM_VAL_IMAGES))
+    return {'top_1_accuracy': 0., 'top_5_accuracy': 0.}

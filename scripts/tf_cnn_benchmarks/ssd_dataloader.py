@@ -191,7 +191,6 @@ def ssd_crop(image, boxes, classes):
   )
 
   filtered_boxes = tf.boolean_mask(boxes, box_masks, axis=0)
-  num_filtered_boxes = tf.shape(filtered_boxes)[0]
 
   # Clip boxes to the cropped region.
   filtered_boxes = tf.stack([
@@ -268,11 +267,16 @@ class SSDInputReader(object):
 
     def _parse_example(data):
       with tf.name_scope('augmentation'):
-        source_id = data['source_id']
+        source_id = tf.string_to_number(data['source_id'])
         image = tf.image.convert_image_dtype(data['image'], dtype=tf.float32)
+        raw_shape = tf.shape(image)
         boxes = data['groundtruth_boxes']
-        classes = data['groundtruth_classes']
-        classes = tf.reshape(tf.cast(classes, dtype=tf.float32), [-1, 1])
+        classes = tf.reshape(data['groundtruth_classes'], [-1, 1])
+
+        # Only 80 of the 90 COCO classes are used.
+        class_map = tf.convert_to_tensor(ssd_constants.CLASS_MAP)
+        classes = tf.gather(class_map, classes)
+        classes = tf.cast(classes, dtype=tf.float32)
 
         if self._is_training:
           image, boxes, classes = ssd_crop(image, boxes, classes)
@@ -285,13 +289,6 @@ class SSDInputReader(object):
           encoded_classes, _, encoded_boxes, _, _ = encode_labels(boxes,
                                                                   classes)
 
-          # TODO(taylorrobie): Check that this cast is valid.
-          # encoded_classes = tf.cast(encoded_classes, tf.int32)
-          # labels = {
-          #     ssd_constants.NUM_BOXES: tf.shape(boxes)[0],
-          #     ssd_constants.BOXES: encoded_boxes,
-          #     ssd_constants.CLASSES: encoded_classes,
-          # }
           # TODO(haoyuzhang): measure or remove this overhead of concat
           # Encode labels (number of boxes, coordinates of bounding boxes, and
           # classes into a single tensor, in order to be compatible with
@@ -315,6 +312,9 @@ class SSDInputReader(object):
               size=(ssd_constants.IMAGE_SIZE, ssd_constants.IMAGE_SIZE)
           )[0, :, :, :]
 
+          # TODO(someone in object detection): Color Jitter
+          image = normalize_image(image)
+
           def trim_and_pad(inp_tensor):
             """Limit the number of boxes, and pad if necessary."""
             inp_tensor = inp_tensor[:ssd_constants.MAX_NUM_EVAL_BOXES]
@@ -324,19 +324,31 @@ class SSDInputReader(object):
                                            inp_tensor.get_shape()[1]])
 
           boxes, classes = trim_and_pad(boxes), trim_and_pad(classes)
-          return {
-              ssd_constants.IMAGE: image,
-              ssd_constants.BOXES: boxes,
-              ssd_constants.CLASSES: classes,
-              ssd_constants.SOURCE_ID: source_id,
-          }
+
+          # TODO(haoyuzhang): measure or remove this overhead of concat
+          # Encode labels into a single tensor, in order to be compatible with
+          # staging area in data input pipeline.
+          # Shape of boxes: [MAX_NUM_EVAL_BOXES, 4]
+          # Shape of classes: [MAX_NUM_EVAL_BOXES, 1]
+          # Shape of source_id: [] (scalar tensor)
+          # Shape of raw_shape: [3]
+          boxes_classes = tf.concat([boxes, classes], 1)
+          id_shape = tf.concat([tf.expand_dims(source_id, 0),
+                                tf.cast(raw_shape, tf.float32),
+                                tf.constant([0.])], 0)
+          # id_shape: [source_id, raw_shape_H, raw_shape_W, raw_shape_C, 0]
+          labels = tf.concat([boxes_classes, tf.expand_dims(id_shape, 0)], 0)
+          # Shape of labels: [MAX_NUM_EVAL_BOXES+1, 5]
+          return image, labels
 
     batch_size_per_split = params['batch_size_per_split']
     num_splits = params['num_splits']
     dataset = tf.data.Dataset.list_files(
         self._file_pattern, shuffle=self._is_training)
-    if self._is_training:
-      dataset = dataset.repeat()
+    # Repeat for both training and validation datasets because the number of
+    # validation examples is typically not a multiply of batch size, and COCO
+    # metric requires all results to be collected before calculating metrics.
+    dataset = dataset.repeat()
 
     # Prefetch data from files.
     def _prefetch_dataset(filename):
