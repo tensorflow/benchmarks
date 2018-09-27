@@ -863,13 +863,7 @@ def _get_checkpoint_to_load(ckpt_dir):
     # Finds latest checkpoint in directory provided
     ckpt = tf.train.get_checkpoint_state(ckpt_dir)
     if ckpt and ckpt.model_checkpoint_path:
-      if os.path.isabs(ckpt.model_checkpoint_path):
-        # Restores from checkpoint with absolute path.
-        model_checkpoint_path = ckpt.model_checkpoint_path
-      else:
-        # Restores from checkpoint with relative path.
-        model_checkpoint_path = os.path.join(ckpt_dir,
-                                             ckpt.model_checkpoint_path)
+      model_checkpoint_path = ckpt.model_checkpoint_path
     else:
       raise CheckpointNotFoundException('No checkpoint file found in dir:{}'.
                                         format(ckpt_dir))
