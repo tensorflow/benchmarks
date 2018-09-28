@@ -35,17 +35,6 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from google.protobuf import text_format
-
-from tensorflow.contrib.compiler import xla
-from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python import debug as tf_debug
-from tensorflow.python.client import timeline
-from tensorflow.python.framework import graph_util
-from tensorflow.python.framework import importer
-from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.platform import gfile
-from tensorflow.python.util import nest
 import cnn_util
 import constants
 import data_utils
@@ -56,6 +45,18 @@ import variable_mgr_util
 from cnn_util import log_fn
 from models import model_config
 from platforms import util as platforms_util
+from google.protobuf import text_format
+from tensorflow.contrib import tensorrt as trt
+from tensorflow.contrib.compiler import xla
+from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python import debug as tf_debug
+from tensorflow.python.client import timeline
+from tensorflow.python.framework import graph_util
+from tensorflow.python.framework import graph_util_impl
+from tensorflow.python.framework import importer
+from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.platform import gfile
+from tensorflow.python.util import nest
 
 
 _DEFAULT_NUM_BATCHES = 100
@@ -545,6 +546,12 @@ flags.DEFINE_string('eval_dir', '/tmp/tf_cnn_benchmarks/eval',
 flags.DEFINE_string('backbone_model_path', None,
                     'Path to pretrained backbone model checkpoint. Pass None '
                     'if not using a backbone model.')
+flags.DEFINE_enum('trt_mode', '', ['', 'FP32', 'FP16', 'INT8'],
+                  'If this is specified in forward_only mode and '
+                  'freeze_when_forward_only is set to True, use TensorRT to '
+                  'optimize the graph before execution.')
+flags.DEFINE_integer('trt_max_workspace_size_bytes', 4 << 30,
+                     'Max workspace size bytes used by the TensorRT optimizer.')
 
 # Benchmark logging for model garden metric
 flags.DEFINE_string('benchmark_log_dir', None,
@@ -1229,6 +1236,10 @@ class BenchmarkCNN(object):
       self.forward_only_and_freeze = True
     else:
       self.forward_only_and_freeze = False
+      if self.params.trt_mode:
+        raise ValueError('--trt_mode should not be specified if one of '
+                         '--forward_only and --freeze_when_forward_only is set '
+                         'to False')
 
     # Use the batch size from the command line if specified, otherwise use the
     # model's default batch size.  Scale the benchmark's batch size by the
@@ -1681,10 +1692,7 @@ class BenchmarkCNN(object):
     graph = tf.Graph()
     with graph.as_default():
       build_result = self._build_graph()
-    if self.forward_only_and_freeze:
-      (graph, result_to_benchmark) = self._freeze_graph(graph, build_result)
-    else:
-      result_to_benchmark = build_result
+    (graph, result_to_benchmark) = self._preprocess_graph(graph, build_result)
     with graph.as_default():
       return self._benchmark_graph(result_to_benchmark)
 
@@ -2028,20 +2036,26 @@ class BenchmarkCNN(object):
       stats['last_average_loss'] = last_average_loss
     return stats
 
-  def _freeze_graph(self, graph, graph_info):
-    """Freeze and re-import the graph.
+  def _preprocess_graph(self, graph, graph_info):
+    """Preprocess the graph before executing.
+
+    Depending on the params, it runs various preprocessing on the graph,
+    including freezing, TensorRT conversion, etc.
 
     Args:
-      graph: the graph to freeze.
+      graph: the graph to preprocess.
       graph_info: the namedtuple returned by _build_graph() which
         contains all necessary information to benchmark the graph, including
         named tensors/ops list, fetches, etc.
+
     Returns:
       The updated graph and graph_info with the ops/tensors/fetches updated
       according to the imported graph.
     """
     assert isinstance(graph_info.fetches, dict)
     assert isinstance(graph_info.global_step, tf.Variable)
+    if not self.forward_only_and_freeze:
+      return (graph, graph_info)
 
     # Get the names of the ops that need to keep during conversion.
     flattened_op_names = list(
@@ -2051,6 +2065,7 @@ class BenchmarkCNN(object):
             if v is not None
         ]))
     # Get variables that we don't want to freeze.
+    # Only keep unfreezable variables in forward_only_and_freeze mode.
     # TODO(laigd): consider making global_step a constant.
     variables_to_keep = {graph_info.global_step: tf.GraphKeys.GLOBAL_VARIABLES}
     variables_to_keep.update({
@@ -2058,25 +2073,47 @@ class BenchmarkCNN(object):
         for local_variable in self._unfreezable_local_variables(graph)
     })
 
+    variable_initializers = [
+        variable.initializer.name for variable in variables_to_keep]
     output_node_names = (
         flattened_op_names +
         # Add variable initializer and read ops to the output list, so
         # convert_variables_to_constants() will keep them.
-        [variable.initializer.name for variable in variables_to_keep] +
+        variable_initializers +
         [variable.value().op.name for variable in variables_to_keep])
+    graphdef = graph.as_graph_def(add_shapes=True)
 
     # Freeze the graph.
     with graph.as_default():
       with tf.Session(config=create_config_proto(self.params)) as sess:
         sess.run(tf.global_variables_initializer())
         sess.run(tf.local_variables_initializer())
-        converted_graphdef = graph_util.convert_variables_to_constants(
+        graphdef = graph_util.convert_variables_to_constants(
             sess,
-            graph.as_graph_def(add_shapes=True),
+            graphdef,
             output_node_names,
             variable_names_blacklist=[
                 variable.op.name for variable in variables_to_keep
             ])
+
+    # Run TensorRT conversion.
+    if self.params.trt_mode:
+      # Avoid TF-TRT bridge from touching all variable initializer ops and their
+      # dependencies, since they can directly be fetched by sess.run()s that
+      # initialize the variables.
+      # pylint: disable=protected-access
+      name_to_input_name, _, _ = graph_util_impl._extract_graph_summary(
+          graphdef)
+      initializer_subgraph_ops = graph_util_impl._bfs_for_reachable_nodes(
+          variable_initializers, name_to_input_name)
+      # pylint: enable=protected-access
+
+      graphdef = trt.create_inference_graph(
+          graphdef,
+          outputs=output_node_names + list(initializer_subgraph_ops),
+          max_batch_size=self.model.get_batch_size(),
+          max_workspace_size_bytes=self.params.trt_max_workspace_size_bytes,
+          precision_mode=self.params.trt_mode)
 
     # Creates a new graph as the default and import the converted graph back.
     updated_graph = tf.Graph()
@@ -2097,7 +2134,7 @@ class BenchmarkCNN(object):
         return _get_fn(inputs)
 
     with updated_graph.as_default():
-      importer.import_graph_def(graph_def=converted_graphdef, name='')
+      importer.import_graph_def(graph_def=graphdef, name='')
 
       # Update the variables
       for variable in variables_to_keep:
