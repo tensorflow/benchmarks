@@ -46,7 +46,6 @@ from cnn_util import log_fn
 from models import model_config
 from platforms import util as platforms_util
 from google.protobuf import text_format
-from tensorflow.contrib import tensorrt as trt
 from tensorflow.contrib.compiler import xla
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import debug as tf_debug
@@ -2098,6 +2097,9 @@ class BenchmarkCNN(object):
 
     # Run TensorRT conversion.
     if self.params.trt_mode:
+      # Import here instead of at top, because this will crash if TensorRT is
+      # not installed
+      from tensorflow.contrib import tensorrt as trt  # pylint: disable=g-import-not-at-top
       # Avoid TF-TRT bridge from touching all variable initializer ops and their
       # dependencies, since they can directly be fetched by sess.run()s that
       # initialize the variables.
