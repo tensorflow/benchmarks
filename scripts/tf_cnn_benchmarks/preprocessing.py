@@ -478,8 +478,8 @@ class BaseImagePreprocessor(InputPreprocessor):
   def preprocess(self, image_buffer, bbox, batch_position):
     raise NotImplementedError('Must be implemented by subclass.')
 
-  def minibatch(self, dataset, subset, use_datasets, cache_data,
-                shift_ratio):
+  def minibatch(self, dataset, subset, use_datasets,
+                datasets_repeat_cached_sample, shift_ratio):
     raise NotImplementedError('Must be implemented by subclass.')
 
   def supports_datasets(self):
@@ -515,7 +515,11 @@ class RecordInputImagePreprocessor(BaseImagePreprocessor):
     image = self.preprocess(image_buffer, bbox, batch_position)
     return (label_index, image)
 
-  def minibatch(self, dataset, subset, use_datasets, cache_data,
+  def minibatch(self,
+                dataset,
+                subset,
+                use_datasets,
+                datasets_repeat_cached_sample,
                 shift_ratio=-1):
     if shift_ratio < 0:
       shift_ratio = self.shift_ratio
@@ -524,9 +528,11 @@ class RecordInputImagePreprocessor(BaseImagePreprocessor):
       images = [[] for _ in range(self.num_splits)]
       labels = [[] for _ in range(self.num_splits)]
       if use_datasets:
-        ds = data_utils.create_dataset(
-            self.batch_size, self.num_splits, self.batch_size_per_split,
-            self.parse_and_preprocess, dataset, subset, self.train, cache_data)
+        ds = data_utils.create_dataset(self.batch_size, self.num_splits,
+                                       self.batch_size_per_split,
+                                       self.parse_and_preprocess, dataset,
+                                       subset, self.train,
+                                       datasets_repeat_cached_sample)
         ds_iterator = data_utils.create_iterator(ds)
         for d in xrange(self.num_splits):
           labels[d], images[d] = ds_iterator.get_next()
@@ -631,10 +637,14 @@ class Cifar10ImagePreprocessor(BaseImagePreprocessor):
     normalized = normalized_image(image)
     return tf.cast(normalized, self.dtype)
 
-  def minibatch(self, dataset, subset, use_datasets, cache_data,
+  def minibatch(self,
+                dataset,
+                subset,
+                use_datasets,
+                datasets_repeat_cached_sample,
                 shift_ratio=-1):
     # TODO(jsimsa): Implement datasets code path
-    del use_datasets, cache_data, shift_ratio
+    del use_datasets, datasets_repeat_cached_sample, shift_ratio
     with tf.name_scope('batch_processing'):
       all_images, all_labels = dataset.read_data_files(subset)
       all_images = tf.constant(all_images)
@@ -681,7 +691,11 @@ class Cifar10ImagePreprocessor(BaseImagePreprocessor):
 class COCOPreprocessor(BaseImagePreprocessor):
   """Preprocessor for COCO dataset input images, boxes, and labels."""
 
-  def minibatch(self, dataset, subset, use_datasets, cache_data,
+  def minibatch(self,
+                dataset,
+                subset,
+                use_datasets,
+                datasets_repeat_cached_sample,
                 shift_ratio=-1):
     try:
       import ssd_dataloader  # pylint: disable=g-import-not-at-top
@@ -755,10 +769,14 @@ class TestImagePreprocessor(BaseImagePreprocessor):
     self.fake_images = fake_images
     self.fake_labels = fake_labels
 
-  def minibatch(self, dataset, subset, use_datasets, cache_data,
+  def minibatch(self,
+                dataset,
+                subset,
+                use_datasets,
+                datasets_repeat_cached_sample,
                 shift_ratio=0):
     """Get test image batches."""
-    del dataset, use_datasets, cache_data
+    del dataset, use_datasets, datasets_repeat_cached_sample
     if (not hasattr(self, 'fake_images') or
         not hasattr(self, 'fake_labels')):
       raise ValueError('Must call set_fake_data() before calling minibatch '

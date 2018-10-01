@@ -209,12 +209,13 @@ flags.DEFINE_enum('variable_consistency', 'strong', ('strong', 'relaxed'),
                   'previous step. With relaxed consistency, all the updates '
                   'will eventually show up in the variables. Likely one step '
                   'behind.')
-flags.DEFINE_boolean('cache_data', False,
+flags.DEFINE_boolean('datasets_repeat_cached_sample', False,
                      'Enable use of a special datasets pipeline that reads a '
                      'single TFRecord into memory and repeats it infinitely '
                      'many times. The purpose of this flag is to make it '
                      'possible to write regression tests that are not '
-                     'bottlenecked by CNS throughput.')
+                     'bottlenecked by CNS throughput. '
+                     'Use datasets_use_caching to cache input data.')
 flags.DEFINE_enum('local_parameter_device', 'gpu', ('cpu', 'gpu', 'CPU', 'GPU'),
                   'Device to use as parameter server: cpu or gpu. For '
                   'distributed training, it can affect where caching of '
@@ -331,6 +332,18 @@ flags.DEFINE_integer('datasets_num_private_threads', None,
                      'all datasets computation. By default, we pick an '
                      'appropriate number. If set to 0, we use the default '
                      'tf-Compute threads for dataset operations.')
+flags.DEFINE_boolean('datasets_use_caching', False,
+                     'Cache the compressed input data in memory. This improves '
+                     'the data input performance, at the cost of additional '
+                     'memory.')
+flags.DEFINE_integer('datasets_parallel_interleave_cycle_length', None,
+                     'Number of parallel file readers interleaving input data.')
+flags.DEFINE_boolean('datasets_sloppy_parallel_interleave', False,
+                     'Allow parallel interleave to depart from deterministic '
+                     'ordering, by temporarily skipping over files whose '
+                     'elements are not readily available. This can increase '
+                     'througput in particular in the presence of stragglers.')
+
 flags.DEFINE_boolean(
     'use_multi_device_iterator', True,
     'If true, we use the MultiDeviceIterator for prefetching, '
@@ -1244,6 +1257,17 @@ class BenchmarkCNN(object):
         raise ValueError('--trt_mode should not be specified if one of '
                          '--forward_only and --freeze_when_forward_only is set '
                          'to False')
+
+    if not self.params.datasets_use_prefetch:
+      if self.params.datasets_use_caching:
+        raise ValueError('Dataset caching is only supported for '
+                         '--datasets_use_prefetch=True')
+      if self.params.datasets_parallel_interleave_cycle_length is not None:
+        raise ValueError('Setting parallel interleave cycle length is only '
+                         'supported for --datasets_use_prefetch=True')
+      if self.params.datasets_sloppy_parallel_interleave:
+        raise ValueError('Sloppy parallel interleave is only supported for '
+                         '--datasets_use_prefetch=True')
 
     # Use the batch size from the command line if specified, otherwise use the
     # model's default batch size.  Scale the benchmark's batch size by the
@@ -2215,7 +2239,8 @@ class BenchmarkCNN(object):
           self.dataset,
           subset=subset,
           use_datasets=self.params.use_datasets,
-          cache_data=self.params.cache_data,
+          datasets_repeat_cached_sample=(
+              self.params.datasets_repeat_cached_sample),
           shift_ratio=shift_ratio)
       images_shape = images_splits[0].get_shape()
       labels_shape = labels_splits[0].get_shape()

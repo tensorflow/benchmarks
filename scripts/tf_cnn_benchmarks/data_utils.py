@@ -46,8 +46,13 @@ def build_prefetch_input_processing(batch_size, data_point_shape, num_splits,
         dataset=dataset,
         subset=subset,
         train=(not params.eval),
-        cache_data=params.cache_data,
-        num_threads=params.datasets_num_private_threads)
+        datasets_repeat_cached_sample=params.datasets_repeat_cached_sample,
+        num_threads=params.datasets_num_private_threads,
+        datasets_use_caching=params.datasets_use_caching,
+        datasets_parallel_interleave_cycle_length=(
+            params.datasets_parallel_interleave_cycle_length),
+        datasets_sloppy_parallel_interleave=(
+            params.datasets_sloppy_parallel_interleave))
     for device_num in range(len(gpu_devices)):
       with tf.device(gpu_devices[device_num]):
         buffer_resource_handle = prefetching_ops.function_buffering_resource(
@@ -79,8 +84,13 @@ def build_multi_device_iterator(batch_size, num_splits, preprocess_fn,
         dataset,
         subset,
         train=(not params.eval),
-        cache_data=params.cache_data,
-        num_threads=params.datasets_num_private_threads)
+        datasets_repeat_cached_sample=params.datasets_repeat_cached_sample,
+        num_threads=params.datasets_num_private_threads,
+        datasets_use_caching=params.datasets_use_caching,
+        datasets_parallel_interleave_cycle_length=(
+            params.datasets_parallel_interleave_cycle_length),
+        datasets_sloppy_parallel_interleave=(
+            params.datasets_sloppy_parallel_interleave))
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
         ds,
         gpu_devices,
@@ -105,8 +115,11 @@ def create_dataset(batch_size,
                    dataset,
                    subset,
                    train,
-                   cache_data,
-                   num_threads=None):
+                   datasets_repeat_cached_sample,
+                   num_threads=None,
+                   datasets_use_caching=False,
+                   datasets_parallel_interleave_cycle_length=None,
+                   datasets_sloppy_parallel_interleave=False):
   """Creates a dataset for the benchmark."""
   glob_pattern = dataset.tf_record_pattern(subset)
   file_names = gfile.Glob(glob_pattern)
@@ -116,16 +129,22 @@ def create_dataset(batch_size,
   ds = tf.data.TFRecordDataset.list_files(file_names)
   ds = ds.apply(
       interleave_ops.parallel_interleave(
-          tf.data.TFRecordDataset, cycle_length=10))
-  if cache_data:
+          tf.data.TFRecordDataset,
+          cycle_length=datasets_parallel_interleave_cycle_length or 10,
+          sloppy=datasets_sloppy_parallel_interleave))
+  if datasets_repeat_cached_sample:
+    # Repeat a single sample element indefinitely to emulate memory-speed IO.
     ds = ds.take(1).cache().repeat()
   counter = tf.data.Dataset.range(batch_size)
   counter = counter.repeat()
   ds = tf.data.Dataset.zip((ds, counter))
   ds = ds.prefetch(buffer_size=batch_size)
+  if datasets_use_caching:
+    ds = ds.cache()
   if train:
-    ds = ds.shuffle(buffer_size=10000)
-  ds = ds.repeat()
+    ds = ds.apply(tf.contrib.data.shuffle_and_repeat(buffer_size=10000))
+  else:
+    ds = ds.repeat()
   ds = ds.apply(
       batching.map_and_batch(
           map_func=preprocess_fn,
@@ -147,13 +166,20 @@ def create_iterator(ds):
 
 
 def minibatch_fn(batch_size, data_point_shape, num_splits, preprocess_fn,
-                 dataset, subset, train, cache_data, num_threads):
+                 dataset, subset, train, datasets_repeat_cached_sample,
+                 num_threads, datasets_use_caching,
+                 datasets_parallel_interleave_cycle_length,
+                 datasets_sloppy_parallel_interleave):
   """Returns a function and list of args for the fn to create a minibatch."""
   batch_size_per_split = batch_size // num_splits
   with tf.name_scope('batch_processing'):
     ds = create_dataset(batch_size, num_splits, batch_size_per_split,
-                        preprocess_fn, dataset, subset, train, cache_data,
-                        num_threads)
+                        preprocess_fn, dataset, subset, train,
+                        datasets_repeat_cached_sample, num_threads,
+                        datasets_use_caching,
+                        datasets_parallel_interleave_cycle_length,
+                        datasets_sloppy_parallel_interleave)
+
     ds_iterator = create_iterator(ds)
 
     ds_iterator_string_handle = ds_iterator.string_handle()
