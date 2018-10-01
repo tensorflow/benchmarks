@@ -2631,8 +2631,7 @@ class BenchmarkCNN(object):
 
     labels_shape = self.model.get_labels_shape()
     if labels_shape:
-      with tf.device(self.raw_devices[rel_device_num]):
-        labels = tf.reshape(labels, shape=labels_shape)
+      labels = tf.reshape(labels, shape=labels_shape)
 
     def forward_pass_and_gradients():
       """Builds forward pass and gradient computation network.
