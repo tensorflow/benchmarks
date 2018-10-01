@@ -36,7 +36,13 @@ import ssd_constants
 
 
 class DefaultBoxes(object):
-  """Default bounding boxes for 300x300 5 layer SSD"""
+  """Default bounding boxes for 300x300 5 layer SSD.
+
+  Default bounding boxes generation follows the order of (W, H, anchor_sizes).
+  Therefore, the tensor converted from DefaultBoxes has a shape of
+  [anchor_sizes, H, W, 4]. The last dimension is the box coordinates; 'ltrb'
+  is [ymin, xmin, ymax, xmax] while 'xywh' is [cy, cx, h, w].
+  """
 
   def __init__(self):
     fk = ssd_constants.IMAGE_SIZE / np.array(ssd_constants.STEPS)
@@ -59,13 +65,13 @@ class DefaultBoxes(object):
       for w, h in all_sizes:
         for i, j in it.product(range(feature_size), repeat=2):
           cx, cy = (j + 0.5) / fk[idx], (i + 0.5) / fk[idx]
-          box = tuple(np.clip(k, 0, 1) for k in (cx, cy, w, h))
+          box = tuple(np.clip(k, 0, 1) for k in (cy, cx, h, w))
           self.default_boxes.append(box)
 
     assert len(self.default_boxes) == ssd_constants.NUM_SSD_BOXES
 
-    def to_ltrb(cx, cy, w, h):
-      return cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2
+    def to_ltrb(cy, cx, h, w):
+      return cy - h / 2, cx - w / 2, cy + h / 2, cx + w / 2
 
     # For IoU calculation
     self.default_boxes_ltrb = tuple(to_ltrb(*i) for i in self.default_boxes)
@@ -235,7 +241,19 @@ def normalize_image(image):
   return image
 
 
-def encode_labels(boxes, classes):
+def encode_labels(gt_boxes, gt_labels):
+  """Labels anchors with ground truth inputs.
+
+  Args:
+    gt_boxes: A float tensor with shape [N, 4] representing groundtruth boxes.
+      For each row, it stores [y0, x0, y1, x1] for four corners of a box.
+    gt_labels: A integer tensor with shape [N, 1] representing groundtruth
+      classes.
+  Returns:
+    encoded_classes: a tensor with shape [num_anchors, 1].
+    encoded_boxes: a tensor with shape [num_anchors, 4].
+    num_positives: scalar tensor storing number of positives in an image.
+  """
   similarity_calc = region_similarity_calculator.IouSimilarity()
   matcher = argmax_matcher.ArgMaxMatcher(
       matched_threshold=ssd_constants.MATCH_THRESHOLD,
@@ -247,12 +265,16 @@ def encode_labels(boxes, classes):
       scale_factors=ssd_constants.BOX_CODER_SCALES)
 
   default_boxes = box_list.BoxList(tf.convert_to_tensor(DefaultBoxes()('ltrb')))
-  target_boxes = box_list.BoxList(boxes)
+  target_boxes = box_list.BoxList(gt_boxes)
 
   assigner = target_assigner.TargetAssigner(
       similarity_calc, matcher, box_coder)
 
-  return assigner.assign(default_boxes, target_boxes, classes)
+  encoded_classes, _, encoded_boxes, _, matches = assigner.assign(
+      default_boxes, target_boxes, gt_labels)
+  num_matched_boxes = tf.reduce_sum(
+      tf.cast(tf.not_equal(matches.match_results, -1), tf.float32))
+  return encoded_classes, encoded_boxes, num_matched_boxes
 
 
 class SSDInputReader(object):
@@ -286,8 +308,8 @@ class SSDInputReader(object):
           # TODO(someone in object detection): Color Jitter
           image = normalize_image(image)
 
-          encoded_classes, _, encoded_boxes, _, _ = encode_labels(boxes,
-                                                                  classes)
+          encoded_classes, encoded_boxes, num_matched_boxes = encode_labels(
+              boxes, classes)
 
           # TODO(haoyuzhang): measure or remove this overhead of concat
           # Encode labels (number of boxes, coordinates of bounding boxes, and
@@ -299,8 +321,7 @@ class SSDInputReader(object):
           # Step 2 (HACK): repeat number of boxes (a scalar tensor) five times,
           #                and pack result from Step 1 with it.
           #     [nboxes, 5] concat [1, 5] ==> [nboxes + 1, 5]
-          nboxes = tf.shape(boxes)[0]                   # scalar, shape (,)
-          nboxes_1d = tf.tile(tf.expand_dims(nboxes, 0), [5])
+          nboxes_1d = tf.tile(tf.expand_dims(num_matched_boxes, 0), [5])
                                                         # 1D tensor, shape (5)
           nboxes_2d = tf.expand_dims(nboxes_1d, 0)      # 2D tensor, shape (1,5)
           labels = tf.concat([labels, tf.cast(nboxes_2d, tf.float32)], 0)

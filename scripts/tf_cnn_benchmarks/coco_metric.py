@@ -14,7 +14,7 @@
 # ==============================================================================
 """COCO-style evaluation metrics.
 
-Forked //third_party/tensorflow_models/mlperf/models/rough/ssd/coco_metric.py
+Forked from reference model implementation.
 
 COCO API: github.com/cocodataset/cocoapi/
 """
@@ -165,7 +165,7 @@ def decode_single(bboxes_in, scores_in, criteria, max_output, max_num=200):
     tf.logging.info("No objects detected. Returning dummy values.")
     return (
         np.zeros(shape=(1, 4), dtype=np.float32),
-        np.zeros(shape=(1,), dtype=np.float32),
+        np.zeros(shape=(1,), dtype=np.int32),
         np.ones(shape=(1,), dtype=np.float32) * ssd_constants.DUMMY_SCORE,
     )
 

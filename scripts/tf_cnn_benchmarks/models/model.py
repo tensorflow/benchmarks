@@ -71,6 +71,11 @@ class Model(object):
   def get_fp16_loss_scale(self):
     return self.fp16_loss_scale
 
+  def custom_l2_loss(self, fp32_params):
+    """Returns model specific L2 loss function; returns None to use default."""
+    del fp32_params
+    return None
+
   def get_learning_rate(self, global_step, batch_size):
     del global_step
     del batch_size

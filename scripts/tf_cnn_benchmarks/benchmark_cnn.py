@@ -2708,7 +2708,10 @@ class BenchmarkCNN(object):
           # last device because for some reason, on a Volta DGX1, the first four
           # GPUs take slightly longer to complete a step than the last four.
           # TODO(reedwm): Shard the L2 loss computations across GPUs.
-          if self.params.single_l2_loss_op:
+          custom_l2_loss = self.model.custom_l2_loss(fp32_params)
+          if custom_l2_loss is not None:
+            l2_loss = custom_l2_loss
+          elif self.params.single_l2_loss_op:
             # TODO(reedwm): If faster, create a fused op that does the L2 loss
             # on multiple tensors, and use that instead of concatenating
             # tensors.
