@@ -717,7 +717,8 @@ class COCOPreprocessor(BaseImagePreprocessor):
 
       glob_pattern = dataset.tf_record_pattern(subset)
       filenames = gfile.Glob(glob_pattern)
-      ssd_input = ssd_dataloader.SSDInputReader(filenames, subset == 'train')
+      ssd_input = ssd_dataloader.SSDInputReader(
+          filenames, subset == 'train', self.dtype)
       ds = ssd_input({'batch_size_per_split': self.batch_size_per_split,
                       'num_splits': self.num_splits})
       ds_iterator = data_utils.create_iterator(ds)

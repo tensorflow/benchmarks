@@ -528,3 +528,17 @@ class SSD300Model(model_lib.CNNModel):
            ' Waiting for the remaining to calculate mAP...'.format(
                len(self.predictions), ssd_constants.COCO_NUM_VAL_IMAGES))
     return {'top_1_accuracy': 0., 'top_5_accuracy': 0.}
+
+  def get_synthetic_inputs_and_labels(self, input_name, data_type, nclass):
+    """Generating synthetic data matching real data shape and type."""
+    inputs = tf.random_uniform(
+        [self.batch_size] + self.get_input_shape(), dtype=data_type)
+    inputs = tf.contrib.framework.local_variable(inputs, name=input_name)
+    boxes = tf.random_uniform(
+        [self.batch_size, ssd_constants.NUM_SSD_BOXES, 4], dtype=tf.float32)
+    classes = tf.random_uniform(
+        [self.batch_size, ssd_constants.NUM_SSD_BOXES, 1], dtype=tf.float32)
+    nboxes = tf.random_uniform(
+        [self.batch_size, 1, 5], minval=1, maxval=10, dtype=tf.float32)
+    labels = tf.concat([tf.concat([boxes, classes], 2), nboxes], 1)
+    return (inputs, labels)

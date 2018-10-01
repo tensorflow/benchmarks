@@ -280,9 +280,10 @@ def encode_labels(gt_boxes, gt_labels):
 class SSDInputReader(object):
   """Input reader for dataset."""
 
-  def __init__(self, file_pattern, is_training):
+  def __init__(self, file_pattern, is_training, dtype):
     self._file_pattern = file_pattern
     self._is_training = is_training
+    self.dtype = dtype
 
   def __call__(self, params):
     example_decoder = tf_example_decoder.TfExampleDecoder()
@@ -307,6 +308,7 @@ class SSDInputReader(object):
 
           # TODO(someone in object detection): Color Jitter
           image = normalize_image(image)
+          image = tf.cast(image, self.dtype)
 
           encoded_classes, encoded_boxes, num_matched_boxes = encode_labels(
               boxes, classes)
@@ -335,6 +337,7 @@ class SSDInputReader(object):
 
           # TODO(someone in object detection): Color Jitter
           image = normalize_image(image)
+          image = tf.cast(image, self.dtype)
 
           def trim_and_pad(inp_tensor):
             """Limit the number of boxes, and pad if necessary."""
