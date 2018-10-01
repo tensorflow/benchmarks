@@ -2911,6 +2911,12 @@ def setup(params):
   Raises:
     ValueError: invalid parames combinations.
   """
+
+  # Create a dummy session to initialize TF global variables using the input
+  # params. See b/115772076#comment6 for more details.
+  with tf.Session(config=create_config_proto(params)) as sess:
+    del sess
+
   if params.batchnorm_persistent:
     os.environ['TF_USE_CUDNN_BATCHNORM_SPATIAL_PERSISTENT'] = '1'
   else:
