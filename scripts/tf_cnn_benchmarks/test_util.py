@@ -447,6 +447,7 @@ class TestCNNModel(model.CNNModel):
   def __init__(self):
     super(TestCNNModel, self).__init__(
         'test_cnn_model', image_size=1, batch_size=1, learning_rate=1)
+    self.depth = 1
 
   VAR_A_INITIAL_VALUE = 1.
   VAR_B_INITIAL_VALUE = 2.
@@ -470,8 +471,8 @@ class TestCNNModel(model.CNNModel):
   def skip_final_affine_layer(self):
     return True
 
-  def loss_function(self, build_network_result, labels):
-    del labels
+  def loss_function(self, inputs, build_network_result):
+    del inputs
     return tf.reduce_mean(build_network_result.logits)
 
   def manually_compute_losses(self, inputs, num_workers, params):
@@ -483,9 +484,9 @@ class TestCNNModel(model.CNNModel):
                                           name='inputs_placeholder')
       inputs_reshaped = tf.reshape(inputs_placeholder, (-1, 1))
       loss = self.loss_function(
+          None,
           model.BuildNetworkResult(logits=inputs_reshaped * a * b,
-                                   extra_info=None),
-          None)
+                                   extra_info=None))
       return manually_compute_losses(inputs, inputs_placeholder, loss,
                                      num_workers, params)
 

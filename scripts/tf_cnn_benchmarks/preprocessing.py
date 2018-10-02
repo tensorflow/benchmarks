@@ -24,12 +24,17 @@ import math
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+import cnn_util
+from tensorflow.contrib.data.python.ops import batching
+from tensorflow.contrib.data.python.ops import interleave_ops
+from tensorflow.contrib.data.python.ops import threadpool
 from tensorflow.contrib.image.python.ops import distort_image_ops
+from tensorflow.python.data.experimental.ops import prefetching_ops
+from tensorflow.python.data.ops import multi_device_iterator_ops
+from tensorflow.python.framework import function
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import gfile
-import cnn_util
-import data_utils
 
 
 def parse_example_proto(example_serialized):
@@ -434,9 +439,157 @@ def distort_color(image, batch_position=0, distort_color_in_yiq=False,
 class InputPreprocessor(object):
   """Base class for all model preprocessors."""
 
-  def __init__(self, batch_size, output_shape):
+  def __init__(self, batch_size, output_shapes):
     self.batch_size = batch_size
-    self.output_shape = output_shape
+    self.output_shapes = output_shapes
+
+  def supports_datasets(self):
+    """Whether this preprocessor supports dataset."""
+    return False
+
+  def minibatch(self, dataset, subset, use_datasets,
+                datasets_repeat_cached_sample, shift_ratio=-1):
+    """Returns tensors representing a minibatch of all the input."""
+    raise NotImplementedError('Must be implemented by subclass.')
+
+  # The methods added below are only supported/used if supports_datasets()
+  # returns True.
+  # TODO(laigd): refactor benchmark_cnn.py and put the logic of
+  # _build_input_processing() into InputPreprocessor.
+
+  def parse_and_preprocess(self, value, batch_position):
+    """Function to parse and preprocess an Example proto in input pipeline."""
+    raise NotImplementedError('Must be implemented by subclass.')
+
+  def build_prefetch_input_processing(self, batch_size, model_input_shapes,
+                                      num_splits, cpu_device, params,
+                                      gpu_devices, model_input_data_types,
+                                      dataset):
+    """"Returns FunctionBufferingResources that do input pre(processing)."""
+    assert self.supports_datasets()
+    with tf.device(cpu_device):
+      if params.eval:
+        subset = 'validation'
+      else:
+        subset = 'train'
+
+      function_buffering_resources = []
+      remote_fn, args = self.minibatch_fn(
+          batch_size=batch_size,
+          model_input_shapes=model_input_shapes,
+          num_splits=num_splits,
+          dataset=dataset,
+          subset=subset,
+          train=(not params.eval),
+          datasets_repeat_cached_sample=params.datasets_repeat_cached_sample,
+          num_threads=params.datasets_num_private_threads,
+          datasets_use_caching=params.datasets_use_caching,
+          datasets_parallel_interleave_cycle_length=(
+              params.datasets_parallel_interleave_cycle_length),
+          datasets_sloppy_parallel_interleave=(
+              params.datasets_sloppy_parallel_interleave))
+      for device_num in range(len(gpu_devices)):
+        with tf.device(gpu_devices[device_num]):
+          buffer_resource_handle = prefetching_ops.function_buffering_resource(
+              f=remote_fn,
+              output_types=model_input_data_types,
+              target_device=cpu_device,
+              string_arg=args[0],
+              buffer_size=params.datasets_prefetch_buffer_size,
+              shared_name=None)
+          function_buffering_resources.append(buffer_resource_handle)
+      return function_buffering_resources
+
+  # TODO(laigd): figure out how to remove these parameters, since the
+  # preprocessor itself has self.batch_size, self.num_splits, etc defined.
+  def build_multi_device_iterator(self, batch_size, num_splits, cpu_device,
+                                  params, gpu_devices, dataset):
+    """Creates a MultiDeviceIterator."""
+    assert self.supports_datasets()
+    assert num_splits == len(gpu_devices)
+    with tf.name_scope('batch_processing'):
+      if params.eval:
+        subset = 'validation'
+      else:
+        subset = 'train'
+      batch_size_per_split = batch_size // num_splits
+      ds = self.create_dataset(
+          batch_size,
+          num_splits,
+          batch_size_per_split,
+          dataset,
+          subset,
+          train=(not params.eval),
+          datasets_repeat_cached_sample=params.datasets_repeat_cached_sample,
+          num_threads=params.datasets_num_private_threads,
+          datasets_use_caching=params.datasets_use_caching,
+          datasets_parallel_interleave_cycle_length=(
+              params.datasets_parallel_interleave_cycle_length),
+          datasets_sloppy_parallel_interleave=(
+              params.datasets_sloppy_parallel_interleave))
+      multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
+          ds,
+          gpu_devices,
+          source_device=cpu_device,
+          max_buffer_size=params.multi_device_iterator_max_buffer_size)
+      tf.add_to_collection(tf.GraphKeys.TABLE_INITIALIZERS,
+                           multi_device_iterator.initializer)
+      return multi_device_iterator
+
+  def create_dataset(self,
+                     batch_size,
+                     num_splits,
+                     batch_size_per_split,
+                     dataset,
+                     subset,
+                     train,
+                     datasets_repeat_cached_sample,
+                     num_threads=None,
+                     datasets_use_caching=False,
+                     datasets_parallel_interleave_cycle_length=None,
+                     datasets_sloppy_parallel_interleave=False):
+    """Creates a dataset for the benchmark."""
+    raise NotImplementedError('Must be implemented by subclass.')
+
+  def create_iterator(self, ds):
+    assert self.supports_datasets()
+    ds_iterator = ds.make_initializable_iterator()
+    tf.add_to_collection(tf.GraphKeys.TABLE_INITIALIZERS,
+                         ds_iterator.initializer)
+    return ds_iterator
+
+  def minibatch_fn(self, batch_size, model_input_shapes, num_splits,
+                   dataset, subset, train, datasets_repeat_cached_sample,
+                   num_threads, datasets_use_caching,
+                   datasets_parallel_interleave_cycle_length,
+                   datasets_sloppy_parallel_interleave):
+    """Returns a function and list of args for the fn to create a minibatch."""
+    assert self.supports_datasets()
+    batch_size_per_split = batch_size // num_splits
+    assert batch_size_per_split == model_input_shapes[0][0]
+    with tf.name_scope('batch_processing'):
+      ds = self.create_dataset(batch_size, num_splits, batch_size_per_split,
+                               dataset, subset, train,
+                               datasets_repeat_cached_sample, num_threads,
+                               datasets_use_caching,
+                               datasets_parallel_interleave_cycle_length,
+                               datasets_sloppy_parallel_interleave)
+      ds_iterator = self.create_iterator(ds)
+
+      ds_iterator_string_handle = ds_iterator.string_handle()
+
+      @function.Defun(tf.string)
+      def _fn(h):
+        remote_iterator = tf.data.Iterator.from_string_handle(
+            h, ds_iterator.output_types, ds_iterator.output_shapes)
+        input_list = remote_iterator.get_next()
+        reshaped_input_list = [
+            tf.reshape(input_list[i], shape=model_input_shapes[i])
+            for i in range(len(input_list))
+        ]
+        return reshaped_input_list
+
+      return _fn, [ds_iterator_string_handle]
 
 
 class BaseImagePreprocessor(InputPreprocessor):
@@ -444,7 +597,7 @@ class BaseImagePreprocessor(InputPreprocessor):
 
   def __init__(self,
                batch_size,
-               output_shape,
+               output_shapes,
                num_splits,
                dtype,
                train,
@@ -454,11 +607,12 @@ class BaseImagePreprocessor(InputPreprocessor):
                summary_verbosity=0,
                distort_color_in_yiq=True,
                fuse_decode_and_crop=True):
-    super(BaseImagePreprocessor, self).__init__(batch_size, output_shape)
-    # output_shape is in form (height, width, depth)
-    self.height = output_shape[0]
-    self.width = output_shape[1]
-    self.depth = output_shape[2]
+    super(BaseImagePreprocessor, self).__init__(batch_size, output_shapes)
+    image_shape = output_shapes[0]
+    # image_shape is in form (batch_size, height, width, depth)
+    self.height = image_shape[1]
+    self.width = image_shape[2]
+    self.depth = image_shape[3]
     self.num_splits = num_splits
     self.dtype = dtype
     self.train = train
@@ -475,15 +629,65 @@ class BaseImagePreprocessor(InputPreprocessor):
     self.batch_size_per_split = self.batch_size // self.num_splits
     self.summary_verbosity = summary_verbosity
 
+  def parse_and_preprocess(self, value, batch_position):
+    assert self.supports_datasets()
+    image_buffer, label_index, bbox, _ = parse_example_proto(value)
+    image = self.preprocess(image_buffer, bbox, batch_position)
+    return (image, label_index)
+
   def preprocess(self, image_buffer, bbox, batch_position):
     raise NotImplementedError('Must be implemented by subclass.')
 
-  def minibatch(self, dataset, subset, use_datasets,
-                datasets_repeat_cached_sample, shift_ratio):
-    raise NotImplementedError('Must be implemented by subclass.')
-
-  def supports_datasets(self):
-    return False
+  def create_dataset(self,
+                     batch_size,
+                     num_splits,
+                     batch_size_per_split,
+                     dataset,
+                     subset,
+                     train,
+                     datasets_repeat_cached_sample,
+                     num_threads=None,
+                     datasets_use_caching=False,
+                     datasets_parallel_interleave_cycle_length=None,
+                     datasets_sloppy_parallel_interleave=False):
+    """Creates a dataset for the benchmark."""
+    assert self.supports_datasets()
+    glob_pattern = dataset.tf_record_pattern(subset)
+    file_names = gfile.Glob(glob_pattern)
+    if not file_names:
+      raise ValueError('Found no files in --data_dir matching: {}'
+                       .format(glob_pattern))
+    ds = tf.data.TFRecordDataset.list_files(file_names)
+    ds = ds.apply(
+        interleave_ops.parallel_interleave(
+            tf.data.TFRecordDataset,
+            cycle_length=datasets_parallel_interleave_cycle_length or 10,
+            sloppy=datasets_sloppy_parallel_interleave))
+    if datasets_repeat_cached_sample:
+      # Repeat a single sample element indefinitely to emulate memory-speed IO.
+      ds = ds.take(1).cache().repeat()
+    counter = tf.data.Dataset.range(batch_size)
+    counter = counter.repeat()
+    ds = tf.data.Dataset.zip((ds, counter))
+    ds = ds.prefetch(buffer_size=batch_size)
+    if datasets_use_caching:
+      ds = ds.cache()
+    if train:
+      ds = ds.apply(tf.contrib.data.shuffle_and_repeat(buffer_size=10000))
+    else:
+      ds = ds.repeat()
+    ds = ds.apply(
+        batching.map_and_batch(
+            map_func=self.parse_and_preprocess,
+            batch_size=batch_size_per_split,
+            num_parallel_batches=num_splits))
+    ds = ds.prefetch(buffer_size=num_splits)
+    if num_threads:
+      ds = threadpool.override_threadpool(
+          ds,
+          threadpool.PrivateThreadPool(
+              num_threads, display_name='input_pipeline_thread_pool'))
+    return ds
 
 
 class RecordInputImagePreprocessor(BaseImagePreprocessor):
@@ -510,11 +714,6 @@ class RecordInputImagePreprocessor(BaseImagePreprocessor):
     normalized = normalized_image(image)
     return tf.cast(normalized, self.dtype)
 
-  def parse_and_preprocess(self, value, batch_position):
-    image_buffer, label_index, bbox, _ = parse_example_proto(value)
-    image = self.preprocess(image_buffer, bbox, batch_position)
-    return (label_index, image)
-
   def minibatch(self,
                 dataset,
                 subset,
@@ -528,14 +727,12 @@ class RecordInputImagePreprocessor(BaseImagePreprocessor):
       images = [[] for _ in range(self.num_splits)]
       labels = [[] for _ in range(self.num_splits)]
       if use_datasets:
-        ds = data_utils.create_dataset(self.batch_size, self.num_splits,
-                                       self.batch_size_per_split,
-                                       self.parse_and_preprocess, dataset,
-                                       subset, self.train,
-                                       datasets_repeat_cached_sample)
-        ds_iterator = data_utils.create_iterator(ds)
+        ds = self.create_dataset(
+            self.batch_size, self.num_splits, self.batch_size_per_split,
+            dataset, subset, self.train, datasets_repeat_cached_sample)
+        ds_iterator = self.create_iterator(ds)
         for d in xrange(self.num_splits):
-          labels[d], images[d] = ds_iterator.get_next()
+          images[d], labels[d] = ds_iterator.get_next()
 
       else:
         record_input = data_flow_ops.RecordInput(
@@ -551,7 +748,7 @@ class RecordInputImagePreprocessor(BaseImagePreprocessor):
         records = [tf.reshape(record, []) for record in records]
         for idx in xrange(self.batch_size):
           value = records[idx]
-          (label, image) = self.parse_and_preprocess(value, idx)
+          (image, label) = self.parse_and_preprocess(value, idx)
           split_index = idx % self.num_splits
           labels[split_index].append(label)
           images[split_index].append(image)
@@ -721,7 +918,7 @@ class COCOPreprocessor(BaseImagePreprocessor):
           filenames, subset == 'train', self.dtype)
       ds = ssd_input({'batch_size_per_split': self.batch_size_per_split,
                       'num_splits': self.num_splits})
-      ds_iterator = data_utils.create_iterator(ds)
+      ds_iterator = self.create_iterator(ds)
       for d in range(self.num_splits):
         images[d], labels[d] = ds_iterator.get_next()
       for split_index in xrange(self.num_splits):
@@ -744,7 +941,7 @@ class TestImagePreprocessor(BaseImagePreprocessor):
 
   def __init__(self,
                batch_size,
-               output_shape,
+               output_shapes,
                num_splits,
                dtype,
                train=None,
@@ -755,7 +952,7 @@ class TestImagePreprocessor(BaseImagePreprocessor):
                distort_color_in_yiq=False,
                fuse_decode_and_crop=False):
     super(TestImagePreprocessor, self).__init__(
-        batch_size, output_shape, num_splits, dtype, train, distortions,
+        batch_size, output_shapes, num_splits, dtype, train, distortions,
         resize_method, shift_ratio, summary_verbosity=summary_verbosity,
         distort_color_in_yiq=distort_color_in_yiq,
         fuse_decode_and_crop=fuse_decode_and_crop)
@@ -810,5 +1007,145 @@ class TestImagePreprocessor(BaseImagePreprocessor):
         images[split_index] = tf.parallel_stack(images[split_index])
         labels[split_index] = tf.parallel_stack(labels[split_index])
 
-      normalized = normalized_image(images)
-      return tf.cast(normalized, self.dtype), labels
+      normalized = [normalized_image(part) for part in images]
+      return [[tf.cast(part, self.dtype) for part in normalized], labels]
+
+
+class LibrispeechPreprocessor(InputPreprocessor):
+  """Preprocessor for librispeech class for all image model preprocessors."""
+
+  def __init__(self, batch_size, output_shapes, num_splits, dtype, train,
+               **kwargs):
+    del kwargs
+    super(LibrispeechPreprocessor, self).__init__(batch_size, output_shapes)
+    self.num_splits = num_splits
+    self.dtype = dtype
+    self.is_train = train
+    if self.batch_size % self.num_splits != 0:
+      raise ValueError(('batch_size must be a multiple of num_splits: '
+                        'batch_size %d, num_splits: %d') % (self.batch_size,
+                                                            self.num_splits))
+    self.batch_size_per_split = self.batch_size // self.num_splits
+
+  def create_dataset(self,
+                     batch_size,
+                     num_splits,
+                     batch_size_per_split,
+                     dataset,
+                     subset,
+                     train,
+                     datasets_repeat_cached_sample,
+                     num_threads=None,
+                     datasets_use_caching=False,
+                     datasets_parallel_interleave_cycle_length=None,
+                     datasets_sloppy_parallel_interleave=False):
+    """Creates a dataset for the benchmark."""
+    # TODO(laigd): currently the only difference between this and the one in
+    # BaseImagePreprocessor is, this uses map() and padded_batch() while the
+    # latter uses batching.map_and_batch(). Try to merge them.
+    assert self.supports_datasets()
+    glob_pattern = dataset.tf_record_pattern(subset)
+    file_names = gfile.Glob(glob_pattern)
+    if not file_names:
+      raise ValueError('Found no files in --data_dir matching: {}'
+                       .format(glob_pattern))
+    ds = tf.data.TFRecordDataset.list_files(file_names)
+    ds = ds.apply(
+        interleave_ops.parallel_interleave(
+            tf.data.TFRecordDataset,
+            cycle_length=datasets_parallel_interleave_cycle_length or 10,
+            sloppy=datasets_sloppy_parallel_interleave))
+    if datasets_repeat_cached_sample:
+      # Repeat a single sample element indefinitely to emulate memory-speed IO.
+      ds = ds.take(1).cache().repeat()
+    counter = tf.data.Dataset.range(batch_size)
+    counter = counter.repeat()
+    ds = tf.data.Dataset.zip((ds, counter))
+    ds = ds.prefetch(buffer_size=batch_size)
+    if datasets_use_caching:
+      ds = ds.cache()
+    if train:
+      ds = ds.apply(tf.contrib.data.shuffle_and_repeat(buffer_size=10000))
+    else:
+      ds = ds.repeat()
+    ds = ds.map(map_func=self.parse_and_preprocess,
+                num_parallel_calls=batch_size_per_split*num_splits)
+    ds = ds.padded_batch(
+        batch_size=batch_size_per_split,
+        padded_shapes=tuple([
+            tf.TensorShape(output_shape[1:])
+            for output_shape in self.output_shapes
+        ]),
+        drop_remainder=True)
+    ds = ds.prefetch(buffer_size=num_splits)
+    if num_threads:
+      ds = threadpool.override_threadpool(
+          ds,
+          threadpool.PrivateThreadPool(
+              num_threads, display_name='input_pipeline_thread_pool'))
+    return ds
+
+  def minibatch(self, dataset, subset, use_datasets,
+                datasets_repeat_cached_sample, shift_ratio=-1):
+    assert use_datasets
+    # TODO(laigd): unify this with CNNModel's minibatch()
+    # TODO(laigd): in distributed mode we use shift_ratio so different workers
+    # won't work on same inputs, so we should respect that.
+    del shift_ratio
+    with tf.name_scope('batch_processing'):
+      ds = self.create_dataset(
+          self.batch_size, self.num_splits, self.batch_size_per_split, dataset,
+          subset, self.is_train, datasets_repeat_cached_sample)
+      ds_iterator = self.create_iterator(ds)
+
+      # The four lists are: input spectrogram feature, labels, input lengths,
+      # label lengths
+      input_lists = [[None for _ in range(self.num_splits)] for _ in range(4)]
+      for d in xrange(self.num_splits):
+        input_list = ds_iterator.get_next()
+        for i in range(4):
+          input_lists[i][d] = input_list[i]
+
+      assert self.output_shapes == [
+          input_lists[i][0].shape.as_list() for i in range(4)
+      ]
+      return tuple(input_lists)
+
+  def supports_datasets(self):
+    return True
+
+  def parse_and_preprocess(self, value, batch_position):
+    """Parse an TFRecord."""
+    del batch_position
+    assert self.supports_datasets()
+    context_features = {
+        'labels': tf.VarLenFeature(dtype=tf.int64),
+        'input_length': tf.FixedLenFeature([], dtype=tf.int64),
+        'label_length': tf.FixedLenFeature([], dtype=tf.int64),
+    }
+    sequence_features = {
+        'features': tf.FixedLenSequenceFeature([161], dtype=tf.float32)
+    }
+    context_parsed, sequence_parsed = tf.parse_single_sequence_example(
+        serialized=value,
+        context_features=context_features,
+        sequence_features=sequence_features,
+    )
+
+    return [
+        # Input
+        tf.expand_dims(sequence_parsed['features'], axis=2),
+        # Label
+        tf.cast(
+            tf.reshape(
+                tf.sparse_tensor_to_dense(context_parsed['labels']), [-1]),
+            dtype=tf.int32),
+        # Input length
+        tf.cast(
+            tf.reshape(context_parsed['input_length'], [1]),
+            dtype=tf.int32),
+        # Label length
+        tf.cast(
+            tf.reshape(context_parsed['label_length'], [1]),
+            dtype=tf.int32),
+    ]

@@ -37,7 +37,6 @@ import tensorflow as tf
 
 import cnn_util
 import constants
-import data_utils
 import datasets
 import flags
 import variable_mgr
@@ -50,6 +49,7 @@ from tensorflow.contrib.compiler import xla
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import debug as tf_debug
 from tensorflow.python.client import timeline
+from tensorflow.python.data.experimental.ops import prefetching_ops
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import graph_util_impl
 from tensorflow.python.framework import importer
@@ -635,16 +635,6 @@ class GlobalStepWatcher(threading.Thread):
 
 class CheckpointNotFoundException(Exception):
   pass
-
-
-def get_data_type(params):
-  """Returns BenchmarkCNN's data type as determined by use_fp16.
-
-  Args:
-    params: Params tuple, typically created by make_params or
-            make_params_from_flags.
-  """
-  return tf.float16 if params.use_fp16 else tf.float32
 
 
 def create_config_proto(params):
@@ -2209,25 +2199,19 @@ class BenchmarkCNN(object):
 
     # Use prefetching mechanism provided by dataset input pipeline.
     if self.datasets_use_prefetch:
-      if self.params.variable_update == 'distributed_all_reduce':
-        batch_size = self.batch_size // len(self.devices)
-      else:
-        batch_size = self.batch_size
-
       if self.params.use_multi_device_iterator:
-        multi_device_iterator = data_utils.build_multi_device_iterator(
-            batch_size, len(self.devices),
-            self.input_preprocessor.parse_and_preprocess, self.cpu_device,
-            self.params, self.raw_devices, self.dataset)
+        multi_device_iterator = (
+            self.input_preprocessor.build_multi_device_iterator(
+                self.batch_size, len(self.devices), self.cpu_device,
+                self.params, self.raw_devices, self.dataset))
         return input_processing_info._replace(
             multi_device_iterator_input=multi_device_iterator.get_next())
 
       function_buffering_resources = (
-          data_utils.build_prefetch_input_processing(
-              batch_size, self.model.get_input_shape(),
-              len(self.devices), self.input_preprocessor.parse_and_preprocess,
-              self.cpu_device, self.params, self.devices,
-              get_data_type(self.params), self.dataset))
+          self.input_preprocessor.build_prefetch_input_processing(
+              self.batch_size, self.model.get_input_shapes(),
+              len(self.devices), self.cpu_device, self.params, self.devices,
+              self.model.get_input_data_types(), self.dataset))
       return input_processing_info._replace(
           function_buffering_resources=function_buffering_resources)
 
@@ -2238,28 +2222,28 @@ class BenchmarkCNN(object):
         subset = 'validation'
       else:
         subset = 'train'
-      images_splits, labels_splits = self.input_preprocessor.minibatch(
+      input_list = self.input_preprocessor.minibatch(
           self.dataset,
           subset=subset,
+          # TODO(laigd): consider removing this option, it should always use
+          # datasets.
           use_datasets=self.params.use_datasets,
           datasets_repeat_cached_sample=(
               self.params.datasets_repeat_cached_sample),
           shift_ratio=shift_ratio)
-      images_shape = images_splits[0].get_shape()
-      labels_shape = labels_splits[0].get_shape()
 
       input_producer_op = []
       input_producer_stages = []
       for device_num in range(len(self.devices)):
         staging_area = data_flow_ops.StagingArea(
-            [images_splits[0].dtype, labels_splits[0].dtype],
-            shapes=[images_shape, labels_shape],
-            shared_name='image_producer_staging_area_%d' % device_num)
+            [parts[0].dtype for parts in input_list],
+            shapes=[parts[0].get_shape() for parts in input_list],
+            shared_name='input_producer_staging_area_%d' % device_num)
         input_producer_stages.append(staging_area)
         for group_index in xrange(self.batch_group_size):
           batch_index = group_index + device_num * self.batch_group_size
           put_op = staging_area.put(
-              [images_splits[batch_index], labels_splits[batch_index]])
+              [parts[batch_index] for parts in input_list])
           input_producer_op.append(put_op)
       assert input_producer_op
 
@@ -2604,7 +2588,6 @@ class BenchmarkCNN(object):
                                      gpu_grad_stage_ops):
     """Add ops for forward-pass and gradient computations."""
     nclass = self.dataset.num_classes
-    data_type = get_data_type(self.params)
     if self.datasets_use_prefetch:
       function_buffering_resource = None
       if input_processing_info.function_buffering_resources:
@@ -2623,43 +2606,38 @@ class BenchmarkCNN(object):
       if function_buffering_resource is not None and input_data is not None:
         raise ValueError('Both function_buffering_resource and input_data '
                          'cannot be specified. Only one should be.')
-      input_shape = [self.model.get_batch_size()] + self.model.get_input_shape()
-      if function_buffering_resource is not None:
-        with tf.device(self.raw_devices[rel_device_num]):
-          inputs, labels = data_utils.get_inputs_and_labels(
-              function_buffering_resource, data_type)
-          inputs = tf.reshape(inputs, shape=input_shape)
-      else:
-        with tf.device(self.raw_devices[rel_device_num]):
-          labels, inputs = input_data
-          inputs = tf.reshape(inputs, shape=input_shape)
+      with tf.device(self.raw_devices[rel_device_num]):
+        if function_buffering_resource is not None:
+          input_list = prefetching_ops.function_buffering_resource_get_next(
+              function_buffering_resource,
+              output_types=self.model.get_input_data_types())
+        else:
+          input_list = input_data
     else:
       if not self.dataset.use_synthetic_gpu_inputs():
         input_producer_stage = input_processing_info.input_producer_stages[
             rel_device_num]
         with tf.device(self.cpu_device):
-          host_inputs, host_labels = input_producer_stage.get()
-          inputs_shape = host_inputs.get_shape()
-          labels_shape = host_labels.get_shape()
+          host_input_list = input_producer_stage.get()
         with tf.device(self.raw_devices[rel_device_num]):
           gpu_compute_stage = data_flow_ops.StagingArea(
-              [host_inputs.dtype, host_labels.dtype],
-              shapes=[inputs_shape, labels_shape])
+              [inp.dtype for inp in host_input_list],
+              shapes=[inp.get_shape() for inp in host_input_list])
           # The CPU-to-GPU copy is triggered here.
-          gpu_compute_stage_op = gpu_compute_stage.put(
-              [host_inputs, host_labels])
-          inputs, labels = gpu_compute_stage.get()
-          inputs = tf.reshape(inputs, shape=inputs_shape)
+          gpu_compute_stage_op = gpu_compute_stage.put(host_input_list)
+          input_list = gpu_compute_stage.get()
           gpu_compute_stage_ops.append(gpu_compute_stage_op)
       else:
         with tf.device(self.raw_devices[rel_device_num]):
           # Minor hack to avoid H2D copy when using synthetic data
-          inputs, labels = self.model.get_synthetic_inputs_and_labels(
-              BenchmarkCNN.GPU_CACHED_INPUT_VARIABLE_NAME, data_type, nclass)
+          input_list = self.model.get_synthetic_inputs(
+              BenchmarkCNN.GPU_CACHED_INPUT_VARIABLE_NAME, nclass)
 
-    labels_shape = self.model.get_labels_shape()
-    if labels_shape:
-      labels = tf.reshape(labels, shape=labels_shape)
+    input_shapes = self.model.get_input_shapes()
+    input_list = [
+        tf.reshape(input_list[i], shape=input_shapes[i])
+        for i in range(len(input_list))
+    ]
 
     def forward_pass_and_gradients():
       """Builds forward pass and gradient computation network.
@@ -2685,20 +2663,20 @@ class BenchmarkCNN(object):
       """
 
       build_network_result = self.model.build_network(
-          inputs, phase_train, nclass, data_type)
+          input_list, phase_train, nclass)
       logits = build_network_result.logits
 
       if not phase_train:
         return [logits]
 
-      base_loss = self.model.loss_function(build_network_result, labels)
+      base_loss = self.model.loss_function(input_list, build_network_result)
       params = self.variable_mgr.trainable_variables_on_device(
           rel_device_num, abs_device_num)
       l2_loss = None
       total_loss = base_loss
       with tf.name_scope('l2_loss'):
         fp32_params = params
-        if data_type == tf.float16 and self.params.fp16_vars:
+        if self.model.data_type == tf.float16 and self.params.fp16_vars:
           # fp16 reductions are very slow on GPUs, so cast to fp32 before
           # calling tf.nn.l2_loss and tf.add_n.
           # TODO(b/36217816): Once the bug is fixed, investigate if we should do
@@ -2810,7 +2788,7 @@ class BenchmarkCNN(object):
 
       if logits is not None:
         results['logits'] = logits
-        accuracy_ops = self.model.accuracy_function(logits, labels, data_type)
+        accuracy_ops = self.model.accuracy_function(input_list, logits)
         for name, op in accuracy_ops.items():
           results['accuracy:' + name] = op
 
@@ -2835,8 +2813,6 @@ class BenchmarkCNN(object):
     Returns:
       The image preprocessor, or None if synthetic data should be used.
     """
-    input_data_type = get_data_type(self.params)
-
     shift_ratio = 0
     if self.job_name:
       # shift_ratio prevents multiple workers from processing the same batch
@@ -2848,10 +2824,11 @@ class BenchmarkCNN(object):
     assert processor_class
     return processor_class(
         self.batch_size * self.batch_group_size,
-        self.model.get_input_shape(),
+        self.model.get_input_shapes(),
         len(self.devices) * self.batch_group_size,
-        dtype=input_data_type,
+        dtype=self.model.data_type,
         train=(not self.params.eval),
+        # TODO(laigd): refactor away image model specific parameters.
         distortions=self.params.distortions,
         resize_method=self.resize_method,
         shift_ratio=shift_ratio,

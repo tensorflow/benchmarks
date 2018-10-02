@@ -84,10 +84,19 @@ class Dataset(object):
 
 
 class LibrispeechDataset(Dataset):
+  """Configuration for LibriSpeech dataset."""
 
   def __init__(self, data_dir=None):
     super(LibrispeechDataset, self).__init__(
         'librispeech', data_dir, num_classes=29)
+
+  def tf_record_pattern(self, subset):
+    if subset == 'train':
+      return os.path.join(self.data_dir, 'train-clean-*.tfrecords')
+    elif subset == 'validation':
+      return os.path.join(self.data_dir, 'test-clean.tfrecords')
+    else:
+      return ''
 
   def num_examples_per_epoch(self, subset='train'):
     del subset
@@ -212,8 +221,7 @@ _SUPPORTED_INPUT_PREPROCESSORS = {
         'default': preprocessing.Cifar10ImagePreprocessor
     },
     'librispeech': {
-        # TODO(laigd): add preprocessor for librispeech dataset.
-        # 'default': preprocessing.LibrispeechPreprocessor
+        'default': preprocessing.LibrispeechPreprocessor
     },
     'coco': {
         'default': preprocessing.COCOPreprocessor

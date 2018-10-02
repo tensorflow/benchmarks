@@ -19,10 +19,89 @@ References:
   Deep Speech 2: End-to-End Speech Recognition in English and Mandarin
 """
 
+import itertools
+
+from nltk.metrics import distance
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
+import constants
+from cnn_util import log_fn
 from models import model as model_lib
+
+
+class DeepSpeechDecoder(object):
+  """Greedy decoder implementation for Deep Speech model."""
+
+  def __init__(self, labels, blank_index=28):
+    """Decoder initialization.
+
+    Arguments:
+      labels: a string specifying the speech labels for the decoder to use.
+      blank_index: an integer specifying index for the blank character. Defaults
+        to 28.
+    """
+    self.labels = labels
+    self.blank_index = blank_index
+    self.int_to_char = dict([(i, c) for (i, c) in enumerate(labels)])
+
+  def convert_to_string(self, sequence):
+    """Convert a sequence of indexes into corresponding string."""
+    return "".join([self.int_to_char[i] for i in sequence])
+
+  def wer(self, decode, target):
+    """Computes the Word Error Rate (WER).
+
+    WER is defined as the edit distance between the two provided sentences after
+    tokenizing to words.
+
+    Args:
+      decode: string of the decoded output.
+      target: a string for the ground truth label.
+
+    Returns:
+      A float number for the WER of the current decode-target pair.
+    """
+    # Map each word to a new char.
+    words = set(decode.split() + target.split())
+    word2char = dict(zip(words, range(len(words))))
+
+    new_decode = [chr(word2char[w]) for w in decode.split()]
+    new_target = [chr(word2char[w]) for w in target.split()]
+
+    return distance.edit_distance("".join(new_decode), "".join(new_target))
+
+  def cer(self, decode, target):
+    """Computes the Character Error Rate (CER).
+
+    CER is defined as the edit distance between the two given strings.
+
+    Args:
+      decode: a string of the decoded output.
+      target: a string for the ground truth label.
+
+    Returns:
+      A float number denoting the CER for the current sentence pair.
+    """
+    return distance.edit_distance(decode, target)
+
+  def decode(self, char_indexes):
+    """Decode the best guess from logits using greedy algorithm."""
+    # Merge repeated chars.
+    merge = [k for k, _ in itertools.groupby(char_indexes)]
+    # Remove the blank index in the decoded sequence.
+    merge_remove_blank = []
+    for k in merge:
+      if k != self.blank_index:
+        merge_remove_blank.append(k)
+
+    return self.convert_to_string(merge_remove_blank)
+
+  def decode_logits(self, logits):
+    """Decode the best guess from logits using greedy algorithm."""
+    # Choose the class with maximimum probability.
+    best = list(np.argmax(logits, axis=1))
+    return self.decode(best)
 
 
 class DeepSpeech2Model(model_lib.Model):
@@ -72,11 +151,8 @@ class DeepSpeech2Model(model_lib.Model):
     self.rnn_hidden_size = rnn_hidden_size
     self.use_bias = use_bias
     self.num_feature_bins = 161
-
-    # TODO(laigd): these are for synthetic data only, for real data we need to
-    # set self.max_time_steps=3494 and self.max_label_length=576
-    self.max_time_steps = 180
-    self.max_label_length = 50
+    self.max_time_steps = 3494
+    self.max_label_length = 576
 
   def _batch_norm(self, inputs, training):
     """Batch normalization layer.
@@ -179,39 +255,47 @@ class DeepSpeech2Model(model_lib.Model):
 
     return rnn_outputs
 
-  def get_input_shape(self):
-    """Returns the padded shape of the input spectrogram."""
-    return [self.max_time_steps, self.num_feature_bins, 1]
+  def get_input_data_types(self):
+    """Returns the list of data types of the inputs."""
+    return [self.data_type, tf.int32, tf.int32, tf.int32]
 
-  def get_synthetic_inputs_and_labels(self, input_name, data_type, nclass):
+  def get_input_shapes(self):
+    """Returns the list of shapes of the padded inputs."""
+    return [
+        [self.batch_size, self.max_time_steps, self.num_feature_bins, 1],
+        [self.batch_size, self.max_label_length],
+        [self.batch_size, 1],
+        [self.batch_size, 1],
+    ]
+
+  def get_synthetic_inputs(self, input_name, nclass):
     inputs = tf.random_uniform(
-        [self.batch_size] + self.get_input_shape(), dtype=data_type)
+        self.get_input_shapes()[0], dtype=self.get_input_data_types()[0])
     inputs = tf.contrib.framework.local_variable(inputs, name=input_name)
     labels = tf.convert_to_tensor(
         np.random.randint(28, size=[self.batch_size, self.max_label_length]))
-    return (inputs, labels)
+    input_lengths = tf.convert_to_tensor(
+        [self.max_time_steps] * self.batch_size)
+    label_lengths = tf.convert_to_tensor(
+        [self.max_label_length] * self.batch_size)
+    return [inputs, labels, input_lengths, label_lengths]
 
   # TODO(laigd): support fp16.
-  # TODO(laigd): support datasets.
   # TODO(laigd): support multiple gpus.
-  def build_network(self,
-                    inputs,
-                    phase_train=True,
-                    nclass=29,
-                    data_type=tf.float32):
+  def build_network(self, inputs, phase_train=True, nclass=29):
     """Builds the forward pass of the deepspeech2 model.
 
     Args:
-      inputs: The input images
+      inputs: The input list of the model.
       phase_train: True during training. False during evaluation.
-      nclass: Number of classes that the images can belong to.
-      data_type: The dtype to run the model in: tf.float32 or tf.float16. The
-        variable dtype is controlled by a separate parameter: self.fp16_vars.
+      nclass: Number of classes that the input spectrogram can belong to.
 
     Returns:
       A BuildNetworkResult which contains the logits and model-specific extra
         information.
     """
+    inputs = inputs[0]  # Get the spectrogram feature.
+
     # Two cnn layers.
     inputs = self._conv_bn_layer(
         inputs,
@@ -254,24 +338,20 @@ class DeepSpeech2Model(model_lib.Model):
     inputs = self._batch_norm(inputs, phase_train)
     logits = tf.layers.dense(inputs, nclass, use_bias=self.use_bias)
 
-    # (2=batchsize, 45, 29=#vocabulary)
-
     return model_lib.BuildNetworkResult(logits=logits, extra_info=None)
 
-  def loss_function(self, build_network_result, labels):
+  def loss_function(self, inputs, build_network_result):
     """Computes the ctc loss for the current batch of predictions.
 
     Args:
+      inputs: the input list of the model.
       build_network_result: a BuildNetworkResult returned by build_network().
-      labels: the label input tensor of the model.
 
     Returns:
       The loss tensor of the model.
     """
     logits = build_network_result.logits
-    # TODO(laigd): use the actual time steps read from each wav file.
-    actual_time_steps = tf.constant(
-        self.max_time_steps, shape=[self.batch_size, 1])
+    actual_time_steps = inputs[2]
     probs = tf.nn.softmax(logits)
     ctc_time_steps = tf.shape(probs)[1]
     ctc_input_length = tf.to_float(
@@ -279,13 +359,11 @@ class DeepSpeech2Model(model_lib.Model):
     ctc_input_length = tf.to_int32(
         tf.floordiv(ctc_input_length, tf.to_float(self.max_time_steps)))
 
-    # TODO(laigd): use the actual label length from the dataset files.
-    # TODO(laigd): this should be obtained from input.
-    label_length = tf.constant(
-        self.max_label_length, shape=[self.batch_size, 1])
+    label_length = inputs[3]
     label_length = tf.to_int32(tf.squeeze(label_length))
     ctc_input_length = tf.to_int32(tf.squeeze(ctc_input_length))
 
+    labels = inputs[1]
     sparse_labels = tf.to_int32(
         tf.keras.backend.ctc_label_dense_to_sparse(labels, label_length))
     y_pred = tf.log(
@@ -301,7 +379,48 @@ class DeepSpeech2Model(model_lib.Model):
     loss = tf.reduce_mean(losses)
     return loss
 
-  def accuracy_function(self, logits, labels, data_type):
-    """Returns the ops to measure the accuracy of the model."""
-    # TODO(laigd): implement this.
-    return {}
+  PROBABILITY_TENSOR = "deepspeech2_prob"
+  LABEL_TENSOR = "deepspeech2_label"
+
+  def accuracy_function(self, inputs, logits):
+    """Returns the ops to evaluate the model performance."""
+    # Get probabilities of each predicted class
+    probs = tf.nn.softmax(logits)
+    assert probs.shape.as_list()[0] == self.batch_size
+    return {
+        (constants.UNREDUCED_ACCURACY_OP_PREFIX + self.PROBABILITY_TENSOR):
+            probs,
+        (constants.UNREDUCED_ACCURACY_OP_PREFIX + self.LABEL_TENSOR):
+            inputs[1],
+    }
+
+  def postprocess(self, results):
+    """Postprocess results returned from model in Python."""
+    probs = results[self.PROBABILITY_TENSOR]
+
+    total_wer, total_cer = 0, 0
+    speech_labels = " abcdefghijklmnopqrstuvwxyz'-"
+    greedy_decoder = DeepSpeechDecoder(speech_labels)
+
+    # Evaluate the performance using WER (Word Error Rate) and CER (Character
+    # Error Rate) as metrics.
+    targets = results[self.LABEL_TENSOR]  # The ground truth transcript
+    for i in range(self.batch_size):
+      # Decode string.
+      predicted_str = greedy_decoder.decode_logits(probs[i])
+      expected_str = greedy_decoder.decode(targets[i])
+      # Compute CER.
+      total_cer += greedy_decoder.cer(predicted_str, expected_str) / float(
+          len(expected_str))
+      # Compute WER.
+      total_wer += greedy_decoder.wer(predicted_str, expected_str) / float(
+          len(expected_str.split()))
+
+    # Get mean value
+    total_cer /= self.batch_size
+    total_wer /= self.batch_size
+
+    log_fn("total CER: {:f}; total WER: {:f}; total example: {:d}.".format(
+        total_cer, total_wer, self.batch_size))
+    # TODO(laigd): get rid of top_N_accuracy bindings in benchmark_cnn.py
+    return {"top_1_accuracy": 0., "top_5_accuracy": 0.}

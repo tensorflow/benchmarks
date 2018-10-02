@@ -444,8 +444,10 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     benchmark_cnn.log_fn = test_util.print_and_add_to_list(logs)
     bench = benchmark_cnn.BenchmarkCNN(params)
     bench.input_preprocessor = preprocessing.TestImagePreprocessor(
-        params.batch_size * params.num_gpus, [227, 227, 3], params.num_gpus,
-        benchmark_cnn.get_data_type(params))
+        params.batch_size * params.num_gpus,
+        [[params.batch_size, 227, 227, 3], [params.batch_size]],
+        params.num_gpus,
+        bench.model.data_type)
     bench.dataset._queue_runner_required = True
     bench.input_preprocessor.set_fake_data(images, labels)
     bench.input_preprocessor.expected_subset = ('validation'

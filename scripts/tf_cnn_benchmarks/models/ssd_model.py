@@ -395,7 +395,7 @@ class SSD300Model(model_lib.CNNModel):
     self.backbone_saver.restore(sess, backbone_model_path)
     return
 
-  def get_labels_shape(self):
+  def get_input_shapes(self):
     """Return encoded tensor shapes for train and eval data respectively."""
     if self.params.eval:
       # Validation data:
@@ -410,7 +410,10 @@ class SSD300Model(model_lib.CNNModel):
       #  [id,     shape,  shape,  shape,  0     ]]       v
       #
       # |<---------- 4 cordinates + 1 ---------->|
-      return [self.batch_size, ssd_constants.MAX_NUM_EVAL_BOXES+1, 5]
+      return [
+          [self.batch_size, self.image_size, self.image_size, self.depth],
+          [self.batch_size, ssd_constants.MAX_NUM_EVAL_BOXES+1, 5],
+      ]
 
     # Training data:
     # Encoded tensor with object category, number of bounding boxes and
@@ -424,7 +427,10 @@ class SSD300Model(model_lib.CNNModel):
     #  [nboxes, nboxes, nboxes, nboxes, nboxes]]       v
     #
     # |<---------- 4 cordinates + 1 ---------->|
-    return [self.batch_size, ssd_constants.NUM_SSD_BOXES+1, 5]
+    return [
+        [self.batch_size, self.image_size, self.image_size, self.depth],
+        [self.batch_size, ssd_constants.NUM_SSD_BOXES+1, 5],
+    ]
 
   def accuracy_function(self, logits, labels, data_type):
     """Returns the ops to measure the mean precision of the model."""

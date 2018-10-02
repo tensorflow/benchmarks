@@ -49,9 +49,10 @@ class NcfModel(model.Model):
     super(NcfModel, self).__init__(
         'official_ncf', batch_size=2048, learning_rate=0.0005,
         fp16_loss_scale=128, params=params)
+    if self.data_type != tf.float32:
+      raise ValueError('NCF model only supports float32 for now.')
 
-  def build_network(self, inputs, phase_train=True, nclass=1001,
-                    data_type=tf.float32):
+  def build_network(self, inputs, phase_train=True, nclass=1001):
     try:
       from official.recommendation import neumf_model  # pylint: disable=g-import-not-at-top
     except ImportError as e:
@@ -61,10 +62,8 @@ class NcfModel(model.Model):
                         'repo https://github.com/tensorflow/models and add '
                         'tensorflow/models to the PYTHONPATH.')
     del nclass
-    if data_type != tf.float32:
-      raise ValueError('NCF model only supports float32 for now.')
 
-    users, items = inputs
+    users, items, _ = inputs
     params = {
         'num_users': _NUM_USERS_20M,
         'num_items': _NUM_ITEMS_20M,
@@ -76,7 +75,7 @@ class NcfModel(model.Model):
     logits = neumf_model.construct_model(users, items, params)
     return model.BuildNetworkResult(logits=logits, extra_info=None)
 
-  def loss_function(self, build_network_result, labels):
+  def loss_function(self, inputs, build_network_result):
     logits = build_network_result.logits
 
     # Softmax with the first column of ones is equivalent to sigmoid.
@@ -86,11 +85,11 @@ class NcfModel(model.Model):
                        axis=1)
 
     return tf.losses.sparse_softmax_cross_entropy(
-        labels=labels,
+        labels=inputs[2],
         logits=logits
     )
 
-  def get_synthetic_inputs_and_labels(self, input_name, data_type, nclass):
+  def get_synthetic_inputs(self, input_name, nclass):
     """Returns the ops to generate synthetic inputs and labels."""
     def users_init_val():
       return tf.random_uniform((self.batch_size,), minval=0,
@@ -112,7 +111,10 @@ class NcfModel(model.Model):
                          collections=[tf.GraphKeys.LOCAL_VARIABLES],
                          name='synthetic_labels')
 
-    return (users, items), labels
+    return [users, items, labels]
 
-  def get_input_shape(self):
-    return []
+  def get_input_shapes(self):
+    return [[self.batch_size], [self.batch_size], [self.batch_size]]
+
+  def get_input_data_types(self):
+    return [self.int32, tf.int32, tf.int32]
