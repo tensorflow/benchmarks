@@ -230,6 +230,22 @@ def ssd_crop(image, boxes, classes):
   return cropped_image, cropped_boxes, cropped_classes
 
 
+def color_jitter(image, brightness=0, contrast=0, saturation=0, hue=0):
+  """Distort the color of the image."""
+  with tf.name_scope('distort_color'):
+    if brightness > 0:
+      image = tf.image.random_brightness(image, max_delta=brightness)
+    if contrast > 0:
+      image = tf.image.random_contrast(
+          image, lower=1-contrast, upper=1+contrast)
+    if saturation > 0:
+      image = tf.image.random_saturation(
+          image, lower=1-saturation, upper=1+saturation)
+    if hue > 0:
+      image = tf.image.random_hue(image, max_delta=hue)
+    return image
+
+
 def normalize_image(image):
   """Normalize the image to zero mean and unit variance."""
   image -= tf.constant(
@@ -306,7 +322,8 @@ class SSDInputReader(object):
           image, boxes = preprocessor.random_horizontal_flip(
               image=image, boxes=boxes)
 
-          # TODO(someone in object detection): Color Jitter
+          image = color_jitter(
+              image, brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05)
           image = normalize_image(image)
           image = tf.cast(image, self.dtype)
 
@@ -335,7 +352,6 @@ class SSDInputReader(object):
               size=(ssd_constants.IMAGE_SIZE, ssd_constants.IMAGE_SIZE)
           )[0, :, :, :]
 
-          # TODO(someone in object detection): Color Jitter
           image = normalize_image(image)
           image = tf.cast(image, self.dtype)
 
