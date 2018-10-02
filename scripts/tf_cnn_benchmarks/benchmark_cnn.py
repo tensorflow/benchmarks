@@ -695,11 +695,14 @@ def create_config_proto(params):
     rewrite_options.scoped_allocator_optimization = off
     rewrite_options.memory_optimization = (
         rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
+  elif params.variable_update == 'collective_all_reduce':
+    rewrite_options = config.graph_options.rewrite_options
+    rewrite_options.scoped_allocator_optimization = (
+        rewriter_config_pb2.RewriterConfig.ON)
+    rewrite_options.scoped_allocator_opts.enable_op.append('CollectiveReduce')
   if params.variable_update == 'horovod':
     import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
     config.gpu_options.visible_device_list = str(hvd.local_rank())
-  if params.variable_update == 'collective_all_reduce':
-    config.gpu_options.experimental.num_dev_to_dev_copy_streams = 2
 
   return config
 
