@@ -21,7 +21,6 @@ References:
 
 import itertools
 
-from nltk.metrics import distance
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -47,7 +46,7 @@ class DeepSpeechDecoder(object):
 
   def convert_to_string(self, sequence):
     """Convert a sequence of indexes into corresponding string."""
-    return "".join([self.int_to_char[i] for i in sequence])
+    return ''.join([self.int_to_char[i] for i in sequence])
 
   def wer(self, decode, target):
     """Computes the Word Error Rate (WER).
@@ -62,6 +61,14 @@ class DeepSpeechDecoder(object):
     Returns:
       A float number for the WER of the current decode-target pair.
     """
+    try:
+      from nltk.metrics import distance  # pylint: disable=g-import-not-at-top
+    except ImportError as e:
+      if 'nltk.metrics' not in e.message:
+        raise
+      raise ImportError('To use the experimental deepspeech model, you must '
+                        'pip install -U nltk')
+
     # Map each word to a new char.
     words = set(decode.split() + target.split())
     word2char = dict(zip(words, range(len(words))))
@@ -69,7 +76,7 @@ class DeepSpeechDecoder(object):
     new_decode = [chr(word2char[w]) for w in decode.split()]
     new_target = [chr(word2char[w]) for w in target.split()]
 
-    return distance.edit_distance("".join(new_decode), "".join(new_target))
+    return distance.edit_distance(''.join(new_decode), ''.join(new_target))
 
   def cer(self, decode, target):
     """Computes the Character Error Rate (CER).
@@ -83,6 +90,13 @@ class DeepSpeechDecoder(object):
     Returns:
       A float number denoting the CER for the current sentence pair.
     """
+    try:
+      from nltk.metrics import distance  # pylint: disable=g-import-not-at-top
+    except ImportError as e:
+      if 'nltk.metrics' not in e.message:
+        raise
+      raise ImportError('To use the experimental deepspeech model, you must '
+                        'pip install -U nltk')
     return distance.edit_distance(decode, target)
 
   def decode(self, char_indexes):
@@ -109,9 +123,9 @@ class DeepSpeech2Model(model_lib.Model):
 
   # Supported rnn cells.
   SUPPORTED_RNNS = {
-      "lstm": tf.nn.rnn_cell.BasicLSTMCell,
-      "rnn": tf.nn.rnn_cell.RNNCell,
-      "gru": tf.nn.rnn_cell.GRUCell,
+      'lstm': tf.nn.rnn_cell.BasicLSTMCell,
+      'rnn': tf.nn.rnn_cell.RNNCell,
+      'gru': tf.nn.rnn_cell.GRUCell,
   }
 
   # Parameters for batch normalization.
@@ -123,7 +137,7 @@ class DeepSpeech2Model(model_lib.Model):
 
   def __init__(self,
                num_rnn_layers=5,
-               rnn_type="lstm",
+               rnn_type='lstm',
                is_bidirectional=True,
                rnn_hidden_size=800,
                use_bias=True,
@@ -140,7 +154,7 @@ class DeepSpeech2Model(model_lib.Model):
       params: the params from BenchmarkCNN.
     """
     super(DeepSpeech2Model, self).__init__(
-        "deepspeech2",
+        'deepspeech2',
         batch_size=128,
         learning_rate=0.0005,
         fp16_loss_scale=128,
@@ -207,10 +221,10 @@ class DeepSpeech2Model(model_lib.Model):
         filters=filters,
         kernel_size=kernel_size,
         strides=strides,
-        padding="valid",
+        padding='valid',
         use_bias=False,
         activation=tf.nn.relu6,
-        name="cnn_{}".format(layer_id))
+        name='cnn_{}'.format(layer_id))
     return self._batch_norm(inputs, training)
 
   def _rnn_layer(self, inputs, rnn_cell, rnn_hidden_size, layer_id,
@@ -237,11 +251,11 @@ class DeepSpeech2Model(model_lib.Model):
 
     # Construct forward/backward RNN cells.
     fw_cell = rnn_cell(
-        num_units=rnn_hidden_size, name="rnn_fw_{}".format(layer_id))
+        num_units=rnn_hidden_size, name='rnn_fw_{}'.format(layer_id))
 
     if is_bidirectional:
       bw_cell = rnn_cell(
-          num_units=rnn_hidden_size, name="rnn_bw_{}".format(layer_id))
+          num_units=rnn_hidden_size, name='rnn_bw_{}'.format(layer_id))
       outputs, _ = tf.nn.bidirectional_dynamic_rnn(
           cell_fw=fw_cell,
           cell_bw=bw_cell,
@@ -379,8 +393,8 @@ class DeepSpeech2Model(model_lib.Model):
     loss = tf.reduce_mean(losses)
     return loss
 
-  PROBABILITY_TENSOR = "deepspeech2_prob"
-  LABEL_TENSOR = "deepspeech2_label"
+  PROBABILITY_TENSOR = 'deepspeech2_prob'
+  LABEL_TENSOR = 'deepspeech2_label'
 
   def accuracy_function(self, inputs, logits):
     """Returns the ops to evaluate the model performance."""
@@ -420,7 +434,7 @@ class DeepSpeech2Model(model_lib.Model):
     total_cer /= self.batch_size
     total_wer /= self.batch_size
 
-    log_fn("total CER: {:f}; total WER: {:f}; total example: {:d}.".format(
+    log_fn('total CER: {:f}; total WER: {:f}; total example: {:d}.'.format(
         total_cer, total_wer, self.batch_size))
     # TODO(laigd): get rid of top_N_accuracy bindings in benchmark_cnn.py
-    return {"top_1_accuracy": 0., "top_5_accuracy": 0.}
+    return {'top_1_accuracy': 0., 'top_5_accuracy': 0.}
