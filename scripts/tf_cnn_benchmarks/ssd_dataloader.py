@@ -341,7 +341,7 @@ class SSDInputReader(object):
           #                and pack result from Step 1 with it.
           #     [nboxes, 5] concat [1, 5] ==> [nboxes + 1, 5]
           nboxes_1d = tf.tile(tf.expand_dims(num_matched_boxes, 0), [5])
-                                                        # 1D tensor, shape (5)
+          # 1D tensor, shape (5)
           nboxes_2d = tf.expand_dims(nboxes_1d, 0)      # 2D tensor, shape (1,5)
           labels = tf.concat([labels, tf.cast(nboxes_2d, tf.float32)], 0)
           return image, labels
@@ -395,7 +395,7 @@ class SSDInputReader(object):
       dataset = tf.data.TFRecordDataset(filename).prefetch(batch_size_per_split)
       return dataset
     dataset = dataset.apply(
-        tf.contrib.data.parallel_interleave(
+        tf.data.experimental.parallel_interleave(
             _prefetch_dataset, cycle_length=32, sloppy=self._is_training))
 
     if self._is_training:
