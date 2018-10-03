@@ -552,7 +552,6 @@ class InputPreprocessor(object):
     raise NotImplementedError('Must be implemented by subclass.')
 
   def create_iterator(self, ds):
-    assert self.supports_datasets()
     ds_iterator = ds.make_initializable_iterator()
     tf.add_to_collection(tf.GraphKeys.TABLE_INITIALIZERS,
                          ds_iterator.initializer)

@@ -290,8 +290,9 @@ class SSD300Model(model_lib.CNNModel):
     vname_in_ckpt += '/' + param_name
     return vname_in_ckpt
 
-  def loss_function(self, build_network_result, labels):
+  def loss_function(self, inputs, build_network_result):
     logits = build_network_result.logits
+    _, labels = inputs
     # Unpack model output back to locations and confidence scores of predictions
     # Shape of pred_loc: [batch_size, NUM_SSD_BOXES, 4]
     # Shape of pred_label: [batch_size, NUM_SSD_BOXES, label_num]
@@ -432,8 +433,9 @@ class SSD300Model(model_lib.CNNModel):
         [self.batch_size, ssd_constants.NUM_SSD_BOXES+1, 5],
     ]
 
-  def accuracy_function(self, logits, labels, data_type):
+  def accuracy_function(self, inputs, logits):
     """Returns the ops to measure the mean precision of the model."""
+    _, labels = inputs
     try:
       import ssd_dataloader  # pylint: disable=g-import-not-at-top
       from object_detection.box_coders import faster_rcnn_box_coder  # pylint: disable=g-import-not-at-top
@@ -535,10 +537,9 @@ class SSD300Model(model_lib.CNNModel):
                len(self.predictions), ssd_constants.COCO_NUM_VAL_IMAGES))
     return {'top_1_accuracy': 0., 'top_5_accuracy': 0.}
 
-  def get_synthetic_inputs_and_labels(self, input_name, data_type, nclass):
+  def get_synthetic_inputs(self, input_name, nclass):
     """Generating synthetic data matching real data shape and type."""
-    inputs = tf.random_uniform(
-        [self.batch_size] + self.get_input_shape(), dtype=data_type)
+    inputs = tf.random_uniform(self.get_input_shapes()[0], dtype=self.data_type)
     inputs = tf.contrib.framework.local_variable(inputs, name=input_name)
     boxes = tf.random_uniform(
         [self.batch_size, ssd_constants.NUM_SSD_BOXES, 4], dtype=tf.float32)
