@@ -2633,11 +2633,12 @@ class BenchmarkCNN(object):
           input_list = self.model.get_synthetic_inputs(
               BenchmarkCNN.GPU_CACHED_INPUT_VARIABLE_NAME, nclass)
 
-    input_shapes = self.model.get_input_shapes()
-    input_list = [
-        tf.reshape(input_list[i], shape=input_shapes[i])
-        for i in range(len(input_list))
-    ]
+    with tf.device(self.devices[rel_device_num]):
+      input_shapes = self.model.get_input_shapes()
+      input_list = [
+          tf.reshape(input_list[i], shape=input_shapes[i])
+          for i in range(len(input_list))
+      ]
 
     def forward_pass_and_gradients():
       """Builds forward pass and gradient computation network.
