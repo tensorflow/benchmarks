@@ -664,7 +664,9 @@ def create_config_proto(params):
   if params.xla:
     config.graph_options.optimizer_options.global_jit_level = (
         tf.OptimizerOptions.ON_1)
-    # TODO(b/117324590): Disable PinToHostOptimizer if XLA is on.
+    # TODO(b/117324590): Re-enable PinToHostOptimizer when b/117324590 is fixed.
+    # Currently we have to disable PinToHostOptimizer w/ XLA since it causes
+    # OOM/perf cliffs.
     config.graph_options.rewrite_options.pin_to_host_optimization = (
         rewriter_config_pb2.RewriterConfig.OFF)
   if params.rewriter_config:
