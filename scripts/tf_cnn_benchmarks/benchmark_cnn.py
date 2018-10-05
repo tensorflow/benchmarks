@@ -664,6 +664,9 @@ def create_config_proto(params):
   if params.xla:
     config.graph_options.optimizer_options.global_jit_level = (
         tf.OptimizerOptions.ON_1)
+    # TODO(b/117324590): Disable PinToHostOptimizer if XLA is on.
+    config.graph_options.rewrite_options.pin_to_host_optimization = (
+        rewriter_config_pb2.RewriterConfig.OFF)
   if params.rewriter_config:
     rewriter_config = rewriter_config_pb2.RewriterConfig()
     text_format.Merge(params.rewriter_config, rewriter_config)
@@ -685,6 +688,7 @@ def create_config_proto(params):
     rewrite_options.scoped_allocator_optimization = off
     rewrite_options.memory_optimization = (
         rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
+    rewrite_options.pin_to_host_optimization = off
   elif params.variable_update == 'collective_all_reduce':
     rewrite_options = config.graph_options.rewrite_options
     rewrite_options.scoped_allocator_optimization = (
