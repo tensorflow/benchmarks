@@ -2639,12 +2639,26 @@ class BenchmarkCNN(object):
           input_list = self.model.get_synthetic_inputs(
               BenchmarkCNN.GPU_CACHED_INPUT_VARIABLE_NAME, nclass)
 
-    with tf.device(self.devices[rel_device_num]):
-      input_shapes = self.model.get_input_shapes()
-      input_list = [
-          tf.reshape(input_list[i], shape=input_shapes[i])
-          for i in range(len(input_list))
-      ]
+    # Labels reshaping happens all on gpu:0. Reshaping synthetic labels on
+    # multiple devices slows down XLA computation for an unknown reason.
+    # TODO(b/116875203): Find/address root cause of XLA slow down.
+    labels_device_placement_hack = (
+        self.dataset.use_synthetic_gpu_inputs() and self.params.xla_compile)
+
+    def device_aware_reshape(tensor, shape):
+      device = self.devices[rel_device_num]
+      # Labels are int32, place reshapes on gpu:0 (no device placement) when the
+      # hack is enabled.
+      if labels_device_placement_hack and tensor.dtype == tf.int32:
+        device = ''
+      with tf.device(device):
+        return tf.reshape(tensor, shape=shape)
+
+    input_shapes = self.model.get_input_shapes()
+    input_list = [
+        device_aware_reshape(input_list[i], shape=input_shapes[i])
+        for i in range(len(input_list))
+    ]
 
     def forward_pass_and_gradients():
       """Builds forward pass and gradient computation network.
