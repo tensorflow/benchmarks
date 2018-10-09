@@ -398,6 +398,8 @@ class SSD300Model(model_lib.CNNModel):
 
   def get_input_shapes(self):
     """Return encoded tensor shapes for train and eval data respectively."""
+    # TODO(b/116627045): Instead of checking eval here, pass doing_eval to each
+    # model constructor.
     if self.params.eval:
       # Validation data:
       # Encoded tensor with object category, number of bounding boxes and

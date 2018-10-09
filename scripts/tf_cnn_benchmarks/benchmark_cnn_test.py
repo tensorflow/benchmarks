@@ -30,6 +30,7 @@ from tensorflow.core.framework import step_stats_pb2
 from tensorflow.core.profiler import tfprof_log_pb2
 from tensorflow.python.platform import test
 import benchmark_cnn
+import datasets
 import flags
 import preprocessing
 import test_util
@@ -468,6 +469,8 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     Returns:
       A list of lines from the output of BenchmarkCNN.
     """
+    # TODO(reedwm): Instead of generating images here, use black and white
+    # tfrecords by calling test_util.create_black_and_white_images().
     effective_batch_size = params.batch_size * params.num_gpus
     half_batch_size = effective_batch_size // 2
     images = np.zeros((effective_batch_size, 227, 227, 3), dtype=np.float32)
@@ -1007,6 +1010,116 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
       params = benchmark_cnn.make_params(num_batches=100, num_epochs=100)
       benchmark_cnn.get_num_batches_and_epochs(params, 1, 1)
 
+  def _testEvalDuringTrainingEveryNSteps(self, data_dir, params):
+    # The idea of this test is that all train images are black and all eval
+    # images are white. We pass the images through the TestModel, and ensure
+    # the outputs are as expected.
+
+    class TestModel(test_util.TestCNNModel):
+
+      def __init__(self):
+        super(TestModel, self).__init__()
+        self.depth = 3
+
+      def add_inference(self, cnn):
+        if cnn.phase_train:
+          # This will allow us to test that 100 is only added during training
+          # and not during eval.
+          cnn.top_layer += 100
+
+        # Reduce the image to a single number. The number should be (-1 + 100)
+        # during training and 1 during testing.
+        cnn.top_layer = tf.reshape(cnn.top_layer, (cnn.top_layer.shape[0], -1))
+        cnn.top_layer = tf.reduce_mean(cnn.top_layer, axis=1)
+        cnn.top_layer = tf.reshape(cnn.top_layer,
+                                   (cnn.top_layer.shape[0], 1, 1, 1))
+        cnn.top_size = 1
+        trainable_vars = tf.trainable_variables()
+
+        # The super method will compute image*A*B, where A=1 and B=2.
+        super(TestModel, self).add_inference(cnn)
+
+        if not cnn.phase_train:
+          # Assert no new variables were added, since they should be reused from
+          # training.
+          assert len(trainable_vars) == len(tf.trainable_variables())
+
+    model = TestModel()
+    dataset = datasets.ImagenetDataset(data_dir)
+    logs = []
+    params = params._replace(num_warmup_batches=0,
+                             num_batches=7,
+                             num_eval_batches=2,
+                             display_every=1,
+                             init_learning_rate=0,
+                             weight_decay=0,
+                             eval_during_training_every_n_steps=2,
+                             use_multi_device_iterator=False,
+                             distortions=False)
+    bench_cnn = benchmark_cnn.BenchmarkCNN(params, model=model, dataset=dataset)
+    with test_util.monkey_patch(benchmark_cnn,
+                                log_fn=test_util.print_and_add_to_list(logs)):
+      bench_cnn.run()
+    training_outputs = test_util.get_training_outputs_from_logs(
+        logs, print_training_accuracy=False)
+    self.assertEqual(len(training_outputs), params.num_batches)
+    expected_training_output = (-1 + 100) * 1 * 2
+    for training_output in training_outputs:
+      self.assertEqual(training_output.loss, expected_training_output)
+    eval_outputs = test_util.get_evaluation_outputs_from_logs(logs)
+    self.assertTrue(eval_outputs)
+    expected_eval_output = 1 * 1 * 2
+    for eval_output in eval_outputs:
+      self.assertEqual(eval_output.top_1_accuracy, expected_eval_output)
+      self.assertEqual(eval_output.top_5_accuracy, expected_eval_output)
+
+    num_eval_batches_found = 0
+    eval_batch_regex = re.compile(r'^\d+\t[0-9.]+ examples/sec$')
+    for log in logs:
+      if eval_batch_regex.match(log):
+        num_eval_batches_found += 1
+    expected_num_eval_batches_found = (
+        (params.num_batches // params.eval_during_training_every_n_steps + 1) *
+        params.num_eval_batches)
+    self.assertEqual(num_eval_batches_found, expected_num_eval_batches_found)
+
+  def testEvalDuringTrainingEveryNSteps(self):
+    data_dir = test_util.create_black_and_white_images()
+    base_params = test_util.get_params('testEvalDuringTrainingEveryNSteps')
+    train_dir = base_params.train_dir
+
+    base_params = base_params._replace(
+        train_dir=None, print_training_accuracy=False)
+    self._testEvalDuringTrainingEveryNSteps(data_dir, base_params._replace(
+        variable_update='parameter_server'))
+    self._testEvalDuringTrainingEveryNSteps(data_dir, base_params._replace(
+        variable_update='replicated'))
+    self._testEvalDuringTrainingEveryNSteps(data_dir, base_params._replace(
+        variable_update='replicated', summary_verbosity=2,
+        save_summaries_steps=2, datasets_use_prefetch=False))
+    self._testEvalDuringTrainingEveryNSteps(data_dir, base_params._replace(
+        variable_update='replicated', use_fp16=True, train_dir=train_dir))
+
+    # Test --eval_during_training_every_n_steps runs with synthetic data.
+    params = base_params._replace(
+        variable_update='replicated', data_dir=None,
+        eval_during_training_every_n_steps=2, use_multi_device_iterator=False,
+        num_batches=2)
+    benchmark_cnn.BenchmarkCNN(params).run()
+
+  def testEvalDuringTrainingNumEpochs(self):
+    params = benchmark_cnn.make_params(
+        batch_size=1, eval_during_training_every_n_steps=1,
+        use_multi_device_iterator=False, num_batches=30,
+        num_eval_epochs=100 / datasets.IMAGENET_NUM_VAL_IMAGES)
+    bench_cnn = benchmark_cnn.BenchmarkCNN(params)
+    self.assertEqual(bench_cnn.num_batches, 30)
+    self.assertAlmostEqual(bench_cnn.num_epochs,
+                           30 / datasets.IMAGENET_NUM_TRAIN_IMAGES)
+    self.assertAlmostEqual(bench_cnn.num_eval_batches, 100)
+    self.assertAlmostEqual(bench_cnn.num_eval_epochs,
+                           100 / datasets.IMAGENET_NUM_VAL_IMAGES)
+
   def testInvalidFlags(self):
     params = benchmark_cnn.make_params(device='cpu', data_format='NCHW')
     with self.assertRaises(ValueError):
@@ -1097,6 +1210,8 @@ class VariableUpdateTest(tf.test.TestCase):
       # values do not matter as long as it's the right shape.
       labels = np.array([1] * inputs.shape[0])
       bench.input_preprocessor.set_fake_data(inputs, labels)
+      if bench.eval_input_preprocessor:
+        bench.eval_input_preprocessor.set_fake_data(inputs, labels)
       bench.run()
 
     outputs = test_util.get_training_outputs_from_logs(
@@ -1185,6 +1300,13 @@ class VariableUpdateTest(tf.test.TestCase):
     params = test_util.get_var_update_params()._replace(
         use_resource_vars=True)
     self._test_variable_updates(params)
+
+  def testEvalDuringTrainingEveryNSteps(self):
+    # TODO(reedwm): Test that the eval results are correct. This only tests that
+    # training results are correct.
+    params = test_util.get_var_update_params()._replace(
+        eval_during_training_every_n_steps=1, use_multi_device_iterator=False)
+    self._test_variable_updates(params, var_updates=('replicated',))
 
 
 class VariableMgrLocalReplicatedTest(tf.test.TestCase):

@@ -464,11 +464,11 @@ class InputPreprocessor(object):
   def build_prefetch_input_processing(self, batch_size, model_input_shapes,
                                       num_splits, cpu_device, params,
                                       gpu_devices, model_input_data_types,
-                                      dataset):
+                                      dataset, doing_eval):
     """"Returns FunctionBufferingResources that do input pre(processing)."""
     assert self.supports_datasets()
     with tf.device(cpu_device):
-      if params.eval:
+      if doing_eval:
         subset = 'validation'
       else:
         subset = 'train'
@@ -480,7 +480,7 @@ class InputPreprocessor(object):
           num_splits=num_splits,
           dataset=dataset,
           subset=subset,
-          train=(not params.eval),
+          train=(not doing_eval),
           datasets_repeat_cached_sample=params.datasets_repeat_cached_sample,
           num_threads=params.datasets_num_private_threads,
           datasets_use_caching=params.datasets_use_caching,
@@ -503,12 +503,12 @@ class InputPreprocessor(object):
   # TODO(laigd): figure out how to remove these parameters, since the
   # preprocessor itself has self.batch_size, self.num_splits, etc defined.
   def build_multi_device_iterator(self, batch_size, num_splits, cpu_device,
-                                  params, gpu_devices, dataset):
+                                  params, gpu_devices, dataset, doing_eval):
     """Creates a MultiDeviceIterator."""
     assert self.supports_datasets()
     assert num_splits == len(gpu_devices)
     with tf.name_scope('batch_processing'):
-      if params.eval:
+      if doing_eval:
         subset = 'validation'
       else:
         subset = 'train'
@@ -519,7 +519,7 @@ class InputPreprocessor(object):
           batch_size_per_split,
           dataset,
           subset,
-          train=(not params.eval),
+          train=(not doing_eval),
           datasets_repeat_cached_sample=params.datasets_repeat_cached_sample,
           num_threads=params.datasets_num_private_threads,
           datasets_use_caching=params.datasets_use_caching,

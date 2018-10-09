@@ -24,13 +24,14 @@ import os
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.platform import test
 import benchmark_cnn
 import cnn_util
 import datasets
 import preprocessing
 from models import model
 from platforms import util as platforms_util
+from test_data import tfrecord_image_generator
+from tensorflow.python.platform import test
 
 
 @contextmanager
@@ -139,27 +140,26 @@ def get_evaluation_outputs_from_logs(logs):
 
   Args:
     logs: A list of strings, each which is a line from the standard output of
-      tf_cnn_benchmarks from evaluation. Only the line in the form:
+      tf_cnn_benchmarks from evaluation. Only lines in the form:
         Accuracy @ 1 = 0.5000 Accuracy @ 5 = 1.0000 [80 examples]
-      is parsed. The log should only contain one such line.
+      is parsed.
   Returns:
-    An EvalOutput.
+    A list of EvalOutputs. Normally this list only has one EvalOutput, but can
+    contain multiple if training is done and
+    --eval_during_training_every_n_steps is specified.
   """
-  top_1_accuracy = None
-  top_5_accuracy = None
+  eval_outputs = []
   for log in logs:
     if 'Accuracy @ ' in log:
       # Example log:
       #   Accuracy @ 1 = 0.5000 Accuracy @ 5 = 1.0000 [80 examples]
       parts = log.split()
       assert len(parts) == 12
-      assert top_1_accuracy is None
-      assert top_5_accuracy is None
       top_1_accuracy = float(parts[4])
       top_5_accuracy = float(parts[9])
-  assert top_1_accuracy is not None
-  assert top_5_accuracy is not None
-  return EvalOutput(top_1_accuracy, top_5_accuracy)
+      eval_outputs.append(EvalOutput(top_1_accuracy, top_5_accuracy))
+  assert eval_outputs
+  return eval_outputs
 
 
 def check_training_outputs_are_reasonable(testcase, training_outputs,
@@ -291,7 +291,9 @@ def train_and_eval(testcase,
   eval_logs = run_fn('Evaluation', params)
   testcase.assertGreaterEqual(len(eval_logs), 1)
   for lines in eval_logs:
-    top_1_accuracy, top_5_accuracy = get_evaluation_outputs_from_logs(lines)
+    eval_outputs = get_evaluation_outputs_from_logs(lines)
+    assert len(eval_outputs) == 1
+    top_1_accuracy, top_5_accuracy = eval_outputs[0]
     if check_output_values:
       testcase.assertEqual(top_1_accuracy, 1.0)
       testcase.assertEqual(top_5_accuracy, 1.0)
@@ -300,6 +302,13 @@ def train_and_eval(testcase,
 def get_temp_dir(dir_name):
   dir_path = os.path.join(test.get_temp_dir(), dir_name)
   os.mkdir(dir_path)
+  return dir_path
+
+
+def create_black_and_white_images():
+  dir_path = get_temp_dir('black_and_white_images')
+  tfrecord_image_generator.write_black_and_white_tfrecord_data(dir_path,
+                                                               num_classes=1)
   return dir_path
 
 
@@ -489,6 +498,11 @@ class TestCNNModel(model.CNNModel):
                                    extra_info=None))
       return manually_compute_losses(inputs, inputs_placeholder, loss,
                                      num_workers, params)
+
+  def accuracy_function(self, inputs, logits):
+    del inputs
+    # Let the accuracy be the same as the loss function.
+    return {'top_1_accuracy': logits, 'top_5_accuracy': logits}
 
 
 class TestDataSet(datasets.ImageDataset):

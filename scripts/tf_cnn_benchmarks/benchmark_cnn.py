@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import argparse
 from collections import namedtuple
+import contextlib
 import math
 import multiprocessing
 import os
@@ -77,7 +78,9 @@ GraphInfo = namedtuple(  # pylint: disable=invalid-name
         # The global step variable
         'global_step',
         # Group of ops that perform per-device initialization work
-        'local_var_init_op_group'
+        'local_var_init_op_group',
+        # Op to produce summaries
+        'summary_op'
     ])
 
 
@@ -124,6 +127,15 @@ flags.DEFINE_integer('eval_interval_secs', 0,
                      'How often to run eval on saved checkpoints. Usually the '
                      'same as save_model_secs from the corresponding training '
                      'run. Pass 0 to eval only once.')
+flags.DEFINE_integer('eval_during_training_every_n_steps', None,
+                     'Every n steps during training, pause training, run '
+                     'evaluation, then resume training. Must not be used with '
+                     '--eval, as unlike --eval, this option causes both '
+                     'training and eval to be done. This may take slightly '
+                     'more GPU memory than running just training or evaluation '
+                     'alone. It also may slightly slow down training, even '
+                     'when not taking into account the additional time to '
+                     'evaluate.', lower_bound=1)
 flags.DEFINE_boolean('forward_only', False,
                      'whether use forward-only or training for benchmarking')
 flags.DEFINE_boolean('freeze_when_forward_only', False,
@@ -137,9 +149,15 @@ flags.DEFINE_integer('batch_group_size', 1,
                      'producer.')
 flags.DEFINE_integer('num_batches', None, 'number of batches to run, excluding '
                      'warmup. Defaults to %d' % _DEFAULT_NUM_BATCHES)
+flags.DEFINE_integer('num_eval_batches', None,
+                     'number of eval batches to run, excluding warmup. '
+                     'Defaults to --num_batches')
 flags.DEFINE_float('num_epochs', None,
                    'number of epochs to run, excluding warmup. '
                    'This and --num_batches cannot both be specified.')
+flags.DEFINE_float('num_eval_epochs', None,
+                   'number of eval epochs to run, excluding warmup. '
+                   'Defaults to --num_epochs')
 flags.DEFINE_integer('num_warmup_batches', None,
                      'number of batches to run before timing')
 flags.DEFINE_integer('autotune_threshold', None,
@@ -426,7 +444,7 @@ flags.DEFINE_float('fp16_loss_scale', None,
                    'right before gradients are computed, then each gradient '
                    'is divided by this amount. Mathematically, this has no '
                    'effect, but it helps avoid fp16 underflow. Set to 1 to '
-                   'effectively disable.')
+                   'effectively disable. Ignored during eval.')
 flags.DEFINE_boolean('fp16_vars', False,
                      'If fp16 is enabled, also use fp16 for variables. If '
                      'False, the variables are stored in fp32 and casted to '
@@ -717,9 +735,12 @@ def get_mode_from_params(params):
 
   if params.eval:
     return 'evaluation'
-  if params.forward_only:
+  elif params.forward_only:
     return 'forward-only'
-  return 'training'
+  elif params.eval_during_training_every_n_steps:
+    return 'training + evaluation'
+  else:
+    return 'training'
 
 
 # How many digits to show for the loss and accuracies during training.
@@ -917,17 +938,17 @@ def validate_params(params):
   for name, value in params._asdict().items():
     param_spec = flags.param_specs[name]
     if param_spec.flag_type in ('integer', 'float'):
-      if (param_spec.kwargs['lower_bound'] is not None and
+      if (value is not None and param_spec.kwargs['lower_bound'] is not None and
           value < param_spec.kwargs['lower_bound']):
         raise ValueError('Param %s value of %s is lower than the lower bound '
                          'of %s' %
                          (name, value, param_spec.kwargs['lower_bound']))
-      if (param_spec.kwargs['upper_bound'] is not None and
+      if (value is not None and param_spec.kwargs['upper_bound'] is not None and
           param_spec.kwargs['upper_bound'] < value):
         raise ValueError('Param %s value of %s is higher than the upper bound '
                          'of %s' %
                          (name, value, param_spec.kwargs['upper_bound']))
-    elif (param_spec.flag_type == 'enum' and
+    elif (value is not None and param_spec.flag_type == 'enum' and
           value not in param_spec.kwargs['enum_values']):
       raise ValueError('Param %s of value %s is not in %s'%
                        (name, value, param_spec.kwargs['enum_values']))
@@ -964,6 +985,17 @@ def make_params_from_flags():
   flag_values = {name: getattr(absl_flags.FLAGS, name)
                  for name in flags.param_specs.keys()}
   return Params(**flag_values)
+
+
+def remove_param_fields(params, fields_to_remove):
+  """Remove fields from a Params namedtuple."""
+  params_dict = params._asdict()
+  for field in fields_to_remove:
+    assert field in params_dict, 'Invalid Params field: ' + field
+  params_dict = {k: v for k, v in params_dict.items()
+                 if k not in fields_to_remove}
+  new_params_type = namedtuple('Params', params_dict.keys())
+  return new_params_type(**params_dict)
 
 
 def get_num_batches_and_epochs(params, batch_size, num_examples_per_epoch):
@@ -1057,7 +1089,8 @@ def get_learning_rate(params, global_step, num_examples_per_epoch, model,
     num_batches_per_epoch = (float(num_examples_per_epoch) / batch_size)
 
     if params.piecewise_learning_rate_schedule:
-      if (params.init_learning_rate or params.learning_rate_decay_factor or
+      if (params.init_learning_rate is not None or
+          params.learning_rate_decay_factor or
           params.minimum_learning_rate or params.num_epochs_per_decay):
         raise ValueError('No other learning rate-related flags can be '
                          'specified if --piecewise_learning_rate_schedule is '
@@ -1065,7 +1098,7 @@ def get_learning_rate(params, global_step, num_examples_per_epoch, model,
       learning_rate = get_piecewise_learning_rate(
           params.piecewise_learning_rate_schedule,
           global_step, num_batches_per_epoch)
-    elif params.init_learning_rate:
+    elif params.init_learning_rate is not None:
       learning_rate = params.init_learning_rate
       if (params.num_epochs_per_decay > 0 and
           params.learning_rate_decay_factor > 0):
@@ -1085,11 +1118,13 @@ def get_learning_rate(params, global_step, num_examples_per_epoch, model,
     else:
       learning_rate = model.get_learning_rate(global_step, batch_size)
     if params.num_learning_rate_warmup_epochs > 0 and (
-        params.init_learning_rate or params.piecewise_learning_rate_schedule):
+        params.init_learning_rate is not None or
+        params.piecewise_learning_rate_schedule):
       warmup_steps = int(num_batches_per_epoch *
                          params.num_learning_rate_warmup_epochs)
-      init_lr = (params.init_learning_rate or
-                 float(params.piecewise_learning_rate_schedule.split(';')[0]))
+      init_lr = params.init_learning_rate
+      if init_lr is None:
+        init_lr = float(params.piecewise_learning_rate_schedule.split(';')[0])
       warmup_lr = init_lr * tf.cast(global_step, tf.float32) / tf.cast(
           warmup_steps, tf.float32)
       learning_rate = tf.cond(global_step < warmup_steps,
@@ -1160,6 +1195,12 @@ class BenchmarkCNN(object):
       ValueError: Unsupported params settings.
     """
     self.params = params
+    if params.eval:
+      self._doing_eval = True
+    else:
+      # Note self._doing_eval can later switch to True in self._do_eval() if
+      # self.params.eval_during_training_every_n_steps is specified.
+      self._doing_eval = False
     self.dataset = dataset or datasets.create_dataset(self.params.data_dir,
                                                       self.params.data_name)
     self.model = model or model_config.get_model_config(
@@ -1187,14 +1228,16 @@ class BenchmarkCNN(object):
 
     if ((self.params.num_epochs_per_decay or
          self.params.learning_rate_decay_factor) and
-        not (self.params.init_learning_rate and self.params.num_epochs_per_decay
+        not (self.params.init_learning_rate is not None and
+             self.params.num_epochs_per_decay
              and self.params.learning_rate_decay_factor)):
       raise ValueError('If one of num_epochs_per_decay or '
                        'learning_rate_decay_factor is set, both must be set'
                        'and learning_rate must be set')
     if (self.params.minimum_learning_rate and
-        not (self.params.init_learning_rate and self.params.num_epochs_per_decay
-             and self.params.learning_rate_decay_factor)):
+        not (self.params.init_learning_rate is not None and
+             self.params.num_epochs_per_decay and
+             self.params.learning_rate_decay_factor)):
       raise ValueError('minimum_learning_rate requires learning_rate,'
                        'num_epochs_per_decay, and '
                        'learning_rate_decay_factor to be set')
@@ -1237,6 +1280,29 @@ class BenchmarkCNN(object):
       raise ValueError('At most one of --save_model_secs and '
                        '--save_model_steps can be specified')
 
+    if params.eval_during_training_every_n_steps is not None:
+      if params.eval:
+        raise ValueError('At most one of --eval and '
+                         '--eval_during_training_every_n_steps must be '
+                         'specified')
+      if params.forward_only:
+        raise ValueError('At most one of --eval and --forward_only must be '
+                         'specified')
+      if params.job_name:
+        raise ValueError('--eval_during_training_every_n_steps is not yet '
+                         'supported in distributed mode.')
+      if params.use_multi_device_iterator:
+        # TODO(b/116627045): Support --use_multi_device_iterator
+        raise ValueError('When --eval_during_training_every_n_steps is '
+                         'specified, --use_multi_device_iterator=false must be '
+                         'specified')
+      if params.model == 'ssd300':
+        # TODO(b/116627045): Support the SSD model.
+        raise ValueError('--eval_during_training_every_n_steps is currently '
+                         'not compatible with the ssd300 model.')
+      if params.staged_vars:
+        raise ValueError('--eval_during_training_every_n_steps is not '
+                         'currently compatible with --staged_vars')
     if self.params.forward_only and self.params.freeze_when_forward_only:
       if self.params.train_dir is not None:
         raise ValueError('In forward_only mode, when --freeze_when_forward_only'
@@ -1353,6 +1419,21 @@ class BenchmarkCNN(object):
     self.num_batches, self.num_epochs = get_num_batches_and_epochs(
         params, self.batch_size * self.num_workers,
         self.dataset.num_examples_per_epoch(subset))
+    if params.eval or params.eval_during_training_every_n_steps:
+      # TODO(reedwm): Currently we do extra eval logic for num_eval_batches and
+      # the preprocessor. We should encapsulate this logic into a shared
+      # function or class.
+      if params.num_eval_batches is None and params.num_eval_epochs is None:
+        eval_params = self.params
+      else:
+        eval_params = self.params._replace(
+            num_batches=self.params.num_eval_batches,
+            num_epochs=self.params.num_eval_epochs)
+      self.num_eval_batches, self.num_eval_epochs = get_num_batches_and_epochs(
+          eval_params, self.batch_size * self.num_workers,
+          self.dataset.num_examples_per_epoch('validation'))
+    else:
+      self.num_eval_batches, self.num_eval_epochs = None, None
 
     if (self.params.staged_vars and
         self.params.variable_update != 'parameter_server'):
@@ -1425,8 +1506,13 @@ class BenchmarkCNN(object):
       self.global_step_device = self.cpu_device
 
     self.input_preprocessor = None
+    self.eval_input_preprocessor = None
     if not self.dataset.use_synthetic_gpu_inputs():
-      self.input_preprocessor = self.get_input_preprocessor()
+      if not self.params.eval:
+        self.input_preprocessor = self.get_input_preprocessor()
+      if self.params.eval or self.params.eval_during_training_every_n_steps:
+        with self._do_eval():
+          self.eval_input_preprocessor = self.get_input_preprocessor()
     self.datasets_use_prefetch = (
         self.params.datasets_use_prefetch and
         # TODO(rohanj): Figure out why --datasets_use_prefetch freezes on the
@@ -1437,6 +1523,44 @@ class BenchmarkCNN(object):
     self.init_global_step = 0
 
     self._config_benchmark_logger()
+
+    self.mode = get_mode_from_params(self.params)
+    if params.eval_during_training_every_n_steps:
+      # Remove "eval" from params so it is not accidentally used. Since eval can
+      # still occur despite params.eval being False, params.eval should never
+      # be used. We cannot yet remove this unconditionally, because the SSD
+      # model still uses params.eval, and hence does not work properly with
+      # --eval_during_training_every_n_steps.
+      # TODO(b/116627045): We should also remove fields that have an eval
+      # equivalent, like num_batches and num_eval_batches.
+      self.params = remove_param_fields(self.params, {'eval'})
+
+  @contextlib.contextmanager
+  def _do_eval(self):
+    """Context manager to switches BenchmarkCNN to eval mode.
+
+    Any evaluation code should be put under this context manager. This context
+    manager switches self._doing_eval to True. It also switches certain
+    attributes, like self.num_batches and self.num_epochs, to be the number of
+    batches and epochs for evaluation respectively
+
+    Yields:
+      Nothing.
+    """
+    # TODO(b/116627045): Find a more general way of switching attributes to the
+    # eval equivalents.
+    old_doing_eval = self._doing_eval
+    old_num_batches = self.num_batches
+    old_num_epochs = self.num_epochs
+    try:
+      self._doing_eval = True
+      self.num_batches = self.num_eval_batches
+      self.num_epochs = self.num_eval_epochs
+      yield
+    finally:
+      self._doing_eval = old_doing_eval
+      self.num_batches = old_num_batches
+      self.num_epochs = old_num_epochs
 
   def _config_benchmark_logger(self):
     """Config the model garden benchmark logger."""
@@ -1484,7 +1608,7 @@ class BenchmarkCNN(object):
     benchmark_info = self._get_params_info()
     log_fn('Model:       %s' % self.model.get_model_name())
     log_fn('Dataset:     %s' % benchmark_info['dataset_name'])
-    log_fn('Mode:        %s' % get_mode_from_params(self.params))
+    log_fn('Mode:        %s' % self.mode)
     log_fn('SingleSess:  %s' % benchmark_info['single_session'])
     log_fn('Batch size:  %s global' % (self.batch_size * self.num_workers))
     log_fn('             %s per device' % (self.batch_size /
@@ -1546,7 +1670,7 @@ class BenchmarkCNN(object):
       run_param = {
           'model': self.model.get_model_name(),
           'dataset': benchmark_info['dataset_name'],
-          'mode': get_mode_from_params(self.params),
+          'mode': self.mode,
           'single_sess': benchmark_info['single_session'],
           'devices': benchmark_info['device_list'],
           'batch_size': self.batch_size,
@@ -1590,7 +1714,7 @@ class BenchmarkCNN(object):
         raise ValueError('unrecognized job name: %s' % self.params.job_name)
 
     self._log_benchmark_run()
-    if self.params.eval:
+    if self._doing_eval:
       with tf.Graph().as_default():
         # TODO(laigd): freeze the graph in eval mode.
         return self._run_eval()
@@ -1603,43 +1727,94 @@ class BenchmarkCNN(object):
     Returns:
       Dictionary containing eval statistics. Currently returns an empty
       dictionary.
+
+    Raises:
+      ValueError: If self.params.train_dir is unspecified.
     """
-    (input_producer_op, enqueue_ops, fetches) = self._build_model()
+    if self.params.train_dir is None:
+      raise ValueError('Trained model directory not specified')
+    graph_info = self._build_eval_graph()
     saver = tf.train.Saver(self.variable_mgr.savable_variables())
     summary_writer = tf.summary.FileWriter(self.params.eval_dir,
                                            tf.get_default_graph())
     target = ''
-    local_var_init_op = tf.local_variables_initializer()
-    table_init_ops = tf.tables_initializer()
-    variable_mgr_init_ops = [local_var_init_op]
-    if table_init_ops:
-      variable_mgr_init_ops.extend([table_init_ops])
-    with tf.control_dependencies([local_var_init_op]):
-      variable_mgr_init_ops.extend(self.variable_mgr.get_post_init_ops())
-    local_var_init_op_group = tf.group(*variable_mgr_init_ops)
-    summary_op = tf.summary.merge_all()
     # TODO(huangyp): Check if checkpoints haven't updated for hours and abort.
     while True:
-      self._eval_once(saver, summary_writer, target, local_var_init_op_group,
-                      input_producer_op, enqueue_ops, fetches, summary_op)
-      if self.params.eval_interval_secs <= 0:
-        break
-      time.sleep(self.params.eval_interval_secs)
+      with tf.Session(
+          target=target, config=create_config_proto(self.params)) as sess:
+        image_producer = None
+        try:
+          global_step = load_checkpoint(saver, sess, self.params.train_dir)
+          image_producer = self._initialize_eval_graph(
+              graph_info.enqueue_ops, graph_info.input_producer_op,
+              graph_info.local_var_init_op_group, sess)
+        except CheckpointNotFoundException:
+          log_fn('Checkpoint not found in %s' % self.params.train_dir)
+        else:  # Only executes if an exception was not thrown
+          self._eval_once(sess, summary_writer, graph_info.fetches,
+                          graph_info.summary_op, image_producer, global_step)
+        if image_producer is not None:
+          image_producer.done()
+        if self.params.eval_interval_secs <= 0:
+          break
+        time.sleep(self.params.eval_interval_secs)
     return {}
 
-  def _eval_once(self, saver, summary_writer, target, local_var_init_op_group,
-                 input_producer_op, enqueue_ops, fetches, summary_op):
-    """Evaluate the model from a checkpoint using validation dataset."""
-    with tf.Session(
-        target=target, config=create_config_proto(self.params)) as sess:
-      if self.params.train_dir is None:
-        raise ValueError('Trained model directory not specified')
-      try:
-        global_step = load_checkpoint(saver, sess, self.params.train_dir)
-      except CheckpointNotFoundException:
-        log_fn('Checkpoint not found in %s' % self.params.train_dir)
-        return
-      sess.run(local_var_init_op_group)
+  def _build_eval_graph(self, scope_name=None):
+    """Build the evaluation graph.
+
+    Args:
+      scope_name: String to filter what summaries are collected. Only summary
+        ops whose name contains `scope_name` will be added, which is useful for
+        only including evaluation ops.
+
+    Returns:
+      A GraphInfo named_tuple containing various useful ops and tensors of the
+      evaluation grpah.
+    """
+    with self._do_eval():
+      input_producer_op, enqueue_ops, fetches = self._build_model()
+      local_var_init_op = tf.local_variables_initializer()
+      table_init_ops = tf.tables_initializer()
+      variable_mgr_init_ops = [local_var_init_op]
+      if table_init_ops:
+        variable_mgr_init_ops.extend([table_init_ops])
+      with tf.control_dependencies([local_var_init_op]):
+        variable_mgr_init_ops.extend(self.variable_mgr.get_post_init_ops())
+      local_var_init_op_group = tf.group(*variable_mgr_init_ops)
+
+      summary_op = tf.summary.merge_all(scope=scope_name)
+      # The eval graph has no execution barrier because it doesn't run in
+      # distributed mode.
+      execution_barrier = None
+      # We do not use the global step during evaluation.
+      global_step = None
+      return GraphInfo(input_producer_op, enqueue_ops, fetches,
+                       execution_barrier, global_step, local_var_init_op_group,
+                       summary_op)
+
+  # TODO(reedwm): For consistency, we should have a similar
+  # "_initialize_train_graph" function. They can likely be the same function.
+  def _initialize_eval_graph(self, enqueue_ops, input_producer_op,
+                             local_var_init_op_group, sess):
+    """Initializes the evaluation graph.
+
+    Args:
+      enqueue_ops: Ops that adds the preprocessed images to the staging areas.
+      input_producer_op: Op that produce the input batches (before
+        preprocessing).
+      local_var_init_op_group: Group of ops that perform per-device
+        initialization work.
+      sess: The session to initialize the eval graph with.
+
+    Returns:
+      An ImageProducer, or None if an ImageProducer isn't being used.
+    """
+    with self._do_eval():
+      if local_var_init_op_group is not None:
+        # We might reinitialize local variables if they were already initialized
+        # during training. This is OK.
+        sess.run(local_var_init_op_group)
       if self.dataset.queue_runner_required():
         tf.train.start_queue_runners(sess=sess)
       image_producer = None
@@ -1653,6 +1828,12 @@ class BenchmarkCNN(object):
           sess.run(enqueue_ops[:(i + 1)])
           if image_producer is not None:
             image_producer.notify_image_consumption()
+      return image_producer
+
+  def _eval_once(self, sess, summary_writer, fetches, summary_op,
+                 image_producer, global_step):
+    """Evaluate the model using the validation dataset."""
+    with self._do_eval():
       loop_start_time = start_time = time.time()
       # TODO(laigd): refactor the part to compute/report the accuracy. Currently
       # it only works for image models.
@@ -1660,7 +1841,7 @@ class BenchmarkCNN(object):
       top_5_accuracy_sum = 0.0
       total_eval_count = self.num_batches * self.batch_size
       for step in xrange(self.num_batches):
-        if (self.params.save_summaries_steps > 0 and
+        if (summary_writer and self.params.save_summaries_steps > 0 and
             (step + 1) % self.params.save_summaries_steps == 0):
           results, summary_str = sess.run([fetches, summary_op])
           summary_writer.add_summary(summary_str)
@@ -1678,8 +1859,6 @@ class BenchmarkCNN(object):
         if image_producer is not None:
           image_producer.notify_image_consumption()
       loop_end_time = time.time()
-      if image_producer is not None:
-        image_producer.done()
       accuracy_at_1 = top_1_accuracy_sum / self.num_batches
       accuracy_at_5 = top_5_accuracy_sum / self.num_batches
       summary = tf.Summary()
@@ -1690,16 +1869,18 @@ class BenchmarkCNN(object):
           prefix_len = len(constants.SIMPLE_VALUE_RESULT_PREFIX)
           summary.value.add(tag='eval/' + result_key[prefix_len:],
                             simple_value=result_value)
-      summary_writer.add_summary(summary, global_step)
+      if summary_writer:
+        summary_writer.add_summary(summary, global_step)
       log_fn('Accuracy @ 1 = %.4f Accuracy @ 5 = %.4f [%d examples]' %
              (accuracy_at_1, accuracy_at_5, total_eval_count))
       elapsed_time = loop_end_time - loop_start_time
       images_per_sec = (self.num_batches * self.batch_size / elapsed_time)
-      # Note that we compute the top 1 accuracy and top 5 accuracy for each
-      # batch, which will have a slight performance impact.
-      log_fn('-' * 64)
-      log_fn('total images/sec: %.2f' % images_per_sec)
-      log_fn('-' * 64)
+      if not self.params.eval_during_training_every_n_steps:
+        # Note that we compute the top 1 accuracy and top 5 accuracy for each
+        # batch, which will have a slight performance impact.
+        log_fn('-' * 64)
+        log_fn('total images/sec: %.2f' % images_per_sec)
+        log_fn('-' * 64)
       if self.benchmark_logger:
         eval_result = {
             'eval_top_1_accuracy', accuracy_at_1,
@@ -1719,9 +1900,15 @@ class BenchmarkCNN(object):
     graph = tf.Graph()
     with graph.as_default():
       build_result = self._build_graph()
+      if self.params.eval_during_training_every_n_steps:
+        with self.variable_mgr.reuse_variables():
+          with tf.name_scope('Evaluation') as ns:
+            eval_build_results = self._build_eval_graph(ns)
+      else:
+        eval_build_results = None
     (graph, result_to_benchmark) = self._preprocess_graph(graph, build_result)
     with graph.as_default():
-      return self._benchmark_graph(result_to_benchmark)
+      return self._benchmark_graph(result_to_benchmark, eval_build_results)
 
   GPU_CACHED_INPUT_VARIABLE_NAME = 'gpu_cached_inputs'
 
@@ -1791,6 +1978,7 @@ class BenchmarkCNN(object):
                                            variable_manager_init_ops))
     local_var_init_op_group = tf.group(*variable_manager_init_ops,
                                        name='local_var_init_op_group')
+    summary_op = tf.summary.merge_all()
 
     return GraphInfo(
         input_producer_op=input_producer_op,
@@ -1798,19 +1986,23 @@ class BenchmarkCNN(object):
         fetches=fetches,
         execution_barrier=execution_barrier,
         global_step=global_step,
-        local_var_init_op_group=local_var_init_op_group)
+        local_var_init_op_group=local_var_init_op_group,
+        summary_op=summary_op)
 
-  def _benchmark_graph(self, graph_info):
-    """Benchmark the graph.
+  def _benchmark_graph(self, graph_info, eval_graph_info):
+    """Benchmark the training graph.
 
     Args:
       graph_info: the namedtuple returned by _build_graph() which
         contains all necessary information to benchmark the graph, including
         named tensors/ops list, fetches, etc.
+      eval_graph_info: Similar to graph_info but for the eval graph if
+        --eval_during_training_every_n_steps is used. Otherwise, None.
     Returns:
       Dictionary containing training statistics (num_workers, num_steps,
       average_wall_time, images_per_sec).
     """
+    log_fn('Initializing graph')
     if self.params.variable_update == 'horovod':
       import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
       # First worker will be 'chief' - it will write summaries and
@@ -1819,7 +2011,6 @@ class BenchmarkCNN(object):
     else:
       is_chief = (not self.job_name or self.task_index == 0)
 
-    summary_op = tf.summary.merge_all()
     summary_writer = None
     if (is_chief and self.params.summary_verbosity and self.params.train_dir and
         self.params.save_summaries_steps > 0):
@@ -1874,6 +2065,15 @@ class BenchmarkCNN(object):
       init_run_options.experimental.collective_graph_key = 6
     else:
       init_run_options = tf.RunOptions()
+    local_var_init_ops = [graph_info.local_var_init_op_group]
+    if eval_graph_info:
+      # `eval_graph_info.local_var_init_op_group` also includes some of the
+      # training initializer ops, since it's difficult to filter them out.
+      # Rerunning the training initializer ops is OK, but we add a control
+      # dependency since running two sets of training initializer ops at the
+      # same time can cause race conditions.
+      with tf.control_dependencies(local_var_init_ops):
+        local_var_init_ops.append(eval_graph_info.local_var_init_op_group)
     sv = tf.train.Supervisor(
         # For the purpose of Supervisor, all Horovod workers are 'chiefs',
         # since we want session to be initialized symmetrically on all the
@@ -1884,7 +2084,7 @@ class BenchmarkCNN(object):
         # workers from corrupting each other's checkpoints.
         logdir=self.params.train_dir if is_chief else None,
         ready_for_local_init_op=ready_for_local_init_op,
-        local_init_op=graph_info.local_var_init_op_group,
+        local_init_op=local_var_init_ops,
         saver=saver,
         global_step=graph_info.global_step,
         summary_op=None,
@@ -1928,6 +2128,16 @@ class BenchmarkCNN(object):
         global_step_watcher.start()
       else:
         global_step_watcher = None
+
+      eval_image_producer = None
+      if eval_graph_info:
+        # We pass local_var_init_op_group=None because the Supervisor already
+        # initialized local variables above. We need to have the Supervisor
+        # initialize the local variables, because otherwise it throws an error
+        # complaining that not all variables were initialized.
+        eval_image_producer = self._initialize_eval_graph(
+            eval_graph_info.enqueue_ops, eval_graph_info.input_producer_op,
+            local_var_init_op_group=None, sess=sess)
 
       if self.graph_file is not None:
         path, filename = os.path.split(self.graph_file)
@@ -1986,7 +2196,7 @@ class BenchmarkCNN(object):
           loop_start_time = time.time()
         if (summary_writer and
             (local_step + 1) % self.params.save_summaries_steps == 0):
-          fetch_summary = summary_op
+          fetch_summary = graph_info.summary_op
         else:
           fetch_summary = None
         collective_graph_key = 7 if (
@@ -2007,6 +2217,16 @@ class BenchmarkCNN(object):
             local_step > 0 and
             is_chief):
           sv.saver.save(sess, sv.save_path, sv.global_step)
+        if (eval_graph_info and
+            local_step % self.params.eval_during_training_every_n_steps == 0 and
+            local_step > 0):
+          python_global_step = sess.run(graph_info.global_step)
+          log_fn('Running evaluation at global_step {}'.format(
+              python_global_step))
+          self._eval_once(sess, summary_writer, eval_graph_info.fetches,
+                          eval_graph_info.summary_op, eval_image_producer,
+                          python_global_step)
+          log_fn('Resuming training')
       loop_end_time = time.time()
       # Waits for the global step to be done, regardless of done_fn.
       if global_step_watcher:
@@ -2027,12 +2247,27 @@ class BenchmarkCNN(object):
                              if num_steps > 0 else 0)
         images_per_sec = num_steps * self.batch_size / elapsed_time
 
-      log_fn('-' * 64)
-      # TODO(laigd): rename 'images' to maybe 'inputs'.
-      log_fn('total images/sec: %.2f' % images_per_sec)
-      log_fn('-' * 64)
+      # We skip printing images/sec if --eval_during_training_every_n_steps is
+      # specified, because we are both processing training and evaluation
+      # images, so a singular "images/sec" value is meaningless.
+      if not self.params.eval_during_training_every_n_steps:
+        log_fn('-' * 64)
+        # TODO(laigd): rename 'images' to maybe 'inputs'.
+        log_fn('total images/sec: %.2f' % images_per_sec)
+        log_fn('-' * 64)
+      else:
+        log_fn('Done with training')
+      if eval_graph_info:
+        python_global_step = sess.run(graph_info.global_step)
+        log_fn('Running final evaluation at global_step {}'.format(
+            python_global_step))
+        self._eval_once(sess, summary_writer, eval_graph_info.fetches,
+                        eval_graph_info.summary_op, eval_image_producer,
+                        python_global_step)
       if image_producer is not None:
         image_producer.done()
+      if eval_image_producer is not None:
+        eval_image_producer.done()
       if is_chief:
         if self.benchmark_logger:
           self.benchmark_logger.log_metric(
@@ -2180,7 +2415,8 @@ class BenchmarkCNN(object):
         local_var_init_op_group=_get_tensors_or_ops(
             graph_info.local_var_init_op_group),
         fetches=_get_tensors_or_ops(graph_info.fetches),
-        global_step=updated_global_step)
+        global_step=updated_global_step,
+        summary_op=None)
     return (updated_graph, updated_graph_info)
 
   def _build_input_processing(self, shift_ratio=0):
@@ -2203,13 +2439,18 @@ class BenchmarkCNN(object):
       assert not self.datasets_use_prefetch
       return input_processing_info
 
+    if self._doing_eval:
+      input_preprocessor = self.eval_input_preprocessor
+    else:
+      input_preprocessor = self.input_preprocessor
+
     # Use prefetching mechanism provided by dataset input pipeline.
     if self.datasets_use_prefetch:
       if self.params.use_multi_device_iterator:
         multi_device_iterator = (
             self.input_preprocessor.build_multi_device_iterator(
                 self.batch_size, len(self.devices), self.cpu_device,
-                self.params, self.raw_devices, self.dataset))
+                self.params, self.raw_devices, self.dataset, self._doing_eval))
         return input_processing_info._replace(
             multi_device_iterator_input=multi_device_iterator.get_next())
 
@@ -2217,18 +2458,19 @@ class BenchmarkCNN(object):
           self.input_preprocessor.build_prefetch_input_processing(
               self.batch_size, self.model.get_input_shapes(),
               len(self.devices), self.cpu_device, self.params, self.devices,
-              self.model.get_input_data_types(), self.dataset))
+              self.model.get_input_data_types(), self.dataset,
+              self._doing_eval))
       return input_processing_info._replace(
           function_buffering_resources=function_buffering_resources)
 
     # Not using dataset prefetching. Use a staging area to mimic the prefetching
     # behavior instead.
     with tf.device(self.cpu_device):
-      if self.params.eval:
+      if self._doing_eval:
         subset = 'validation'
       else:
         subset = 'train'
-      input_list = self.input_preprocessor.minibatch(
+      input_list = input_preprocessor.minibatch(
           self.dataset,
           subset=subset,
           # TODO(laigd): consider removing this option, it should always use
@@ -2244,7 +2486,8 @@ class BenchmarkCNN(object):
         staging_area = data_flow_ops.StagingArea(
             [parts[0].dtype for parts in input_list],
             shapes=[parts[0].get_shape() for parts in input_list],
-            shared_name='input_producer_staging_area_%d' % device_num)
+            shared_name='input_producer_staging_area_%d_eval_%s' %
+            (device_num, self._doing_eval))
         input_producer_stages.append(staging_area)
         for group_index in xrange(self.batch_group_size):
           batch_index = group_index + device_num * self.batch_group_size
@@ -2259,7 +2502,7 @@ class BenchmarkCNN(object):
 
   def _maybe_initialize_fp16(self):
     """Initialize fp16 settings."""
-    if self.params.use_fp16:
+    if self.params.use_fp16 and not self._doing_eval:
       init_loss_scale_val = float(self.params.fp16_loss_scale or
                                   self.model.get_fp16_loss_scale())
       self.loss_scale = None
@@ -2288,9 +2531,14 @@ class BenchmarkCNN(object):
       seed_adjustment = 0
     tf.set_random_seed(self.params.tf_random_seed + seed_adjustment)
     np.random.seed(4321 + seed_adjustment)
-    phase_train = not (self.params.eval or self.params.forward_only)
+    phase_train = not (self._doing_eval or self.params.forward_only)
 
-    log_fn('Generating model')
+    if self._doing_eval:
+      mode_string = 'evaluation'
+    else:
+      mode_string = 'training'
+
+    log_fn('Generating {} model'.format(mode_string))
     losses = []
     device_grads = []
     all_logits = []
@@ -2363,6 +2611,16 @@ class BenchmarkCNN(object):
         staging_delta_ops += gpu_grad_stage_ops
       if staging_delta_ops:
         enqueue_ops.append(tf.group(*(staging_delta_ops)))
+
+    if (self.params.eval_during_training_every_n_steps and
+        self.params.variable_update == 'replicated'):
+      # We need to get all the update ops instead of only those for the first
+      # tower. This is because during evaluation, each tower will read from its
+      # own tower's moving averages instead of the first tower's moving
+      # averages.
+      # TODO(reedwm): Have each tower read from the first tower's moving
+      # averages for a slight performance gain.
+      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
 
     fetches = self._build_fetches(global_step, all_logits, losses, device_grads,
                                   enqueue_ops, update_ops, all_accuracy_ops,
@@ -2491,7 +2749,7 @@ class BenchmarkCNN(object):
     """
     # verify assumptions
     assert self.params.task_index == 0
-    assert not self.params.eval
+    assert not self._doing_eval
     assert not self.params.forward_only
     assert not self.params.staged_vars
 
@@ -2499,7 +2757,7 @@ class BenchmarkCNN(object):
     np.random.seed(4321)
     phase_train = True
 
-    log_fn('Generating model')
+    log_fn('Generating training model')
     losses = []
     device_grads = []
     all_logits = []
@@ -2848,7 +3106,7 @@ class BenchmarkCNN(object):
         self.model.get_input_shapes(),
         len(self.devices) * self.batch_group_size,
         dtype=self.model.data_type,
-        train=(not self.params.eval),
+        train=(not self._doing_eval),
         # TODO(laigd): refactor away image model specific parameters.
         distortions=self.params.distortions,
         resize_method=self.resize_method,
