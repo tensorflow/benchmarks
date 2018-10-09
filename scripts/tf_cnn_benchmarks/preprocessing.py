@@ -486,7 +486,9 @@ class InputPreprocessor(object):
           datasets_parallel_interleave_cycle_length=(
               params.datasets_parallel_interleave_cycle_length),
           datasets_sloppy_parallel_interleave=(
-              params.datasets_sloppy_parallel_interleave))
+              params.datasets_sloppy_parallel_interleave),
+          datasets_parallel_interleave_prefetch=(
+              params.datasets_parallel_interleave_prefetch))
       for device_num in range(len(gpu_devices)):
         with tf.device(gpu_devices[device_num]):
           buffer_resource_handle = prefetching_ops.function_buffering_resource(
@@ -525,7 +527,9 @@ class InputPreprocessor(object):
           datasets_parallel_interleave_cycle_length=(
               params.datasets_parallel_interleave_cycle_length),
           datasets_sloppy_parallel_interleave=(
-              params.datasets_sloppy_parallel_interleave))
+              params.datasets_sloppy_parallel_interleave),
+          datasets_parallel_interleave_prefetch=(
+              params.datasets_parallel_interleave_prefetch))
       multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
           ds,
           gpu_devices,
@@ -546,7 +550,8 @@ class InputPreprocessor(object):
                      num_threads=None,
                      datasets_use_caching=False,
                      datasets_parallel_interleave_cycle_length=None,
-                     datasets_sloppy_parallel_interleave=False):
+                     datasets_sloppy_parallel_interleave=False,
+                     datasets_parallel_interleave_prefetch=None):
     """Creates a dataset for the benchmark."""
     raise NotImplementedError('Must be implemented by subclass.')
 
@@ -560,7 +565,8 @@ class InputPreprocessor(object):
                    dataset, subset, train, datasets_repeat_cached_sample,
                    num_threads, datasets_use_caching,
                    datasets_parallel_interleave_cycle_length,
-                   datasets_sloppy_parallel_interleave):
+                   datasets_sloppy_parallel_interleave,
+                   datasets_parallel_interleave_prefetch):
     """Returns a function and list of args for the fn to create a minibatch."""
     assert self.supports_datasets()
     batch_size_per_split = batch_size // num_splits
@@ -571,7 +577,8 @@ class InputPreprocessor(object):
                                datasets_repeat_cached_sample, num_threads,
                                datasets_use_caching,
                                datasets_parallel_interleave_cycle_length,
-                               datasets_sloppy_parallel_interleave)
+                               datasets_sloppy_parallel_interleave,
+                               datasets_parallel_interleave_prefetch)
       ds_iterator = self.create_iterator(ds)
 
       ds_iterator_string_handle = ds_iterator.string_handle()
@@ -647,7 +654,8 @@ class BaseImagePreprocessor(InputPreprocessor):
                      num_threads=None,
                      datasets_use_caching=False,
                      datasets_parallel_interleave_cycle_length=None,
-                     datasets_sloppy_parallel_interleave=False):
+                     datasets_sloppy_parallel_interleave=False,
+                     datasets_parallel_interleave_prefetch=None):
     """Creates a dataset for the benchmark."""
     assert self.supports_datasets()
     glob_pattern = dataset.tf_record_pattern(subset)
@@ -660,7 +668,8 @@ class BaseImagePreprocessor(InputPreprocessor):
         interleave_ops.parallel_interleave(
             tf.data.TFRecordDataset,
             cycle_length=datasets_parallel_interleave_cycle_length or 10,
-            sloppy=datasets_sloppy_parallel_interleave))
+            sloppy=datasets_sloppy_parallel_interleave,
+            prefetch_input_elements=datasets_parallel_interleave_prefetch))
     if datasets_repeat_cached_sample:
       # Repeat a single sample element indefinitely to emulate memory-speed IO.
       ds = ds.take(1).cache().repeat()
@@ -733,7 +742,9 @@ class RecordInputImagePreprocessor(BaseImagePreprocessor):
             datasets_parallel_interleave_cycle_length=(
                 params.datasets_parallel_interleave_cycle_length),
             datasets_sloppy_parallel_interleave=(
-                params.datasets_sloppy_parallel_interleave))
+                params.datasets_sloppy_parallel_interleave),
+            datasets_parallel_interleave_prefetch=(
+                params.datasets_parallel_interleave_prefetch))
         ds_iterator = self.create_iterator(ds)
         for d in xrange(self.num_splits):
           images[d], labels[d] = ds_iterator.get_next()
@@ -1041,7 +1052,8 @@ class LibrispeechPreprocessor(InputPreprocessor):
                      num_threads=None,
                      datasets_use_caching=False,
                      datasets_parallel_interleave_cycle_length=None,
-                     datasets_sloppy_parallel_interleave=False):
+                     datasets_sloppy_parallel_interleave=False,
+                     datasets_parallel_interleave_prefetch=None):
     """Creates a dataset for the benchmark."""
     # TODO(laigd): currently the only difference between this and the one in
     # BaseImagePreprocessor is, this uses map() and padded_batch() while the
@@ -1057,7 +1069,8 @@ class LibrispeechPreprocessor(InputPreprocessor):
         interleave_ops.parallel_interleave(
             tf.data.TFRecordDataset,
             cycle_length=datasets_parallel_interleave_cycle_length or 10,
-            sloppy=datasets_sloppy_parallel_interleave))
+            sloppy=datasets_sloppy_parallel_interleave,
+            prefetch_input_elements=datasets_parallel_interleave_prefetch))
     if datasets_repeat_cached_sample:
       # Repeat a single sample element indefinitely to emulate memory-speed IO.
       ds = ds.take(1).cache().repeat()
@@ -1108,7 +1121,9 @@ class LibrispeechPreprocessor(InputPreprocessor):
           datasets_parallel_interleave_cycle_length=(
               params.datasets_parallel_interleave_cycle_length),
           datasets_sloppy_parallel_interleave=(
-              params.datasets_sloppy_parallel_interleave))
+              params.datasets_sloppy_parallel_interleave),
+          datasets_parallel_interleave_prefetch=(
+              params.datasets_parallel_interleave_prefetch))
       ds_iterator = self.create_iterator(ds)
 
       # The four lists are: input spectrogram feature, labels, input lengths,

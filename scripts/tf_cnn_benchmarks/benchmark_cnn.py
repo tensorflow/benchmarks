@@ -361,6 +361,9 @@ flags.DEFINE_boolean('datasets_sloppy_parallel_interleave', False,
                      'ordering, by temporarily skipping over files whose '
                      'elements are not readily available. This can increase '
                      'througput in particular in the presence of stragglers.')
+flags.DEFINE_integer('datasets_parallel_interleave_prefetch', None,
+                     'The number of input elements to fetch before they are '
+                     'needed for interleaving.')
 
 flags.DEFINE_boolean(
     'use_multi_device_iterator', True,
