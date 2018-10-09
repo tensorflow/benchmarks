@@ -1323,17 +1323,6 @@ class BenchmarkCNN(object):
                          '--forward_only and --freeze_when_forward_only is set '
                          'to False')
 
-    if not self.params.datasets_use_prefetch:
-      if self.params.datasets_use_caching:
-        raise ValueError('Dataset caching is only supported for '
-                         '--datasets_use_prefetch=True')
-      if self.params.datasets_parallel_interleave_cycle_length is not None:
-        raise ValueError('Setting parallel interleave cycle length is only '
-                         'supported for --datasets_use_prefetch=True')
-      if self.params.datasets_sloppy_parallel_interleave:
-        raise ValueError('Sloppy parallel interleave is only supported for '
-                         '--datasets_use_prefetch=True')
-
     # Use the batch size from the command line if specified, otherwise use the
     # model's default batch size.  Scale the benchmark's batch size by the
     # number of GPUs.
@@ -2473,11 +2462,7 @@ class BenchmarkCNN(object):
       input_list = input_preprocessor.minibatch(
           self.dataset,
           subset=subset,
-          # TODO(laigd): consider removing this option, it should always use
-          # datasets.
-          use_datasets=self.params.use_datasets,
-          datasets_repeat_cached_sample=(
-              self.params.datasets_repeat_cached_sample),
+          params=self.params,
           shift_ratio=shift_ratio)
 
       input_producer_op = []

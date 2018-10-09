@@ -447,8 +447,7 @@ class InputPreprocessor(object):
     """Whether this preprocessor supports dataset."""
     return False
 
-  def minibatch(self, dataset, subset, use_datasets,
-                datasets_repeat_cached_sample, shift_ratio=-1):
+  def minibatch(self, dataset, subset, params, shift_ratio=-1):
     """Returns tensors representing a minibatch of all the input."""
     raise NotImplementedError('Must be implemented by subclass.')
 
@@ -716,8 +715,7 @@ class RecordInputImagePreprocessor(BaseImagePreprocessor):
   def minibatch(self,
                 dataset,
                 subset,
-                use_datasets,
-                datasets_repeat_cached_sample,
+                params,
                 shift_ratio=-1):
     if shift_ratio < 0:
       shift_ratio = self.shift_ratio
@@ -725,14 +723,23 @@ class RecordInputImagePreprocessor(BaseImagePreprocessor):
       # Build final results per split.
       images = [[] for _ in range(self.num_splits)]
       labels = [[] for _ in range(self.num_splits)]
-      if use_datasets:
+      if params.use_datasets:
         ds = self.create_dataset(
             self.batch_size, self.num_splits, self.batch_size_per_split,
-            dataset, subset, self.train, datasets_repeat_cached_sample)
+            dataset, subset, self.train,
+            datasets_repeat_cached_sample=params.datasets_repeat_cached_sample,
+            num_threads=params.datasets_num_private_threads,
+            datasets_use_caching=params.datasets_use_caching,
+            datasets_parallel_interleave_cycle_length=(
+                params.datasets_parallel_interleave_cycle_length),
+            datasets_sloppy_parallel_interleave=(
+                params.datasets_sloppy_parallel_interleave))
         ds_iterator = self.create_iterator(ds)
         for d in xrange(self.num_splits):
           images[d], labels[d] = ds_iterator.get_next()
 
+      # TODO(laigd): consider removing the --use_datasets option, it should
+      # always use datasets.
       else:
         record_input = data_flow_ops.RecordInput(
             file_pattern=dataset.tf_record_pattern(subset),
@@ -753,7 +760,7 @@ class RecordInputImagePreprocessor(BaseImagePreprocessor):
           images[split_index].append(image)
 
       for split_index in xrange(self.num_splits):
-        if not use_datasets:
+        if not params.use_datasets:
           images[split_index] = tf.parallel_stack(images[split_index])
           labels[split_index] = tf.concat(labels[split_index], 0)
         images[split_index] = tf.reshape(
@@ -836,11 +843,10 @@ class Cifar10ImagePreprocessor(BaseImagePreprocessor):
   def minibatch(self,
                 dataset,
                 subset,
-                use_datasets,
-                datasets_repeat_cached_sample,
+                params,
                 shift_ratio=-1):
     # TODO(jsimsa): Implement datasets code path
-    del use_datasets, datasets_repeat_cached_sample, shift_ratio
+    del shift_ratio, params
     with tf.name_scope('batch_processing'):
       all_images, all_labels = dataset.read_data_files(subset)
       all_images = tf.constant(all_images)
@@ -890,8 +896,7 @@ class COCOPreprocessor(BaseImagePreprocessor):
   def minibatch(self,
                 dataset,
                 subset,
-                use_datasets,
-                datasets_repeat_cached_sample,
+                params,
                 shift_ratio=-1):
     try:
       import ssd_dataloader  # pylint: disable=g-import-not-at-top
@@ -969,11 +974,10 @@ class TestImagePreprocessor(BaseImagePreprocessor):
   def minibatch(self,
                 dataset,
                 subset,
-                use_datasets,
-                datasets_repeat_cached_sample,
+                params,
                 shift_ratio=0):
     """Get test image batches."""
-    del dataset, use_datasets, datasets_repeat_cached_sample
+    del dataset, params
     if (not hasattr(self, 'fake_images') or
         not hasattr(self, 'fake_labels')):
       raise ValueError('Must call set_fake_data() before calling minibatch '
@@ -1084,17 +1088,27 @@ class LibrispeechPreprocessor(InputPreprocessor):
               num_threads, display_name='input_pipeline_thread_pool'))
     return ds
 
-  def minibatch(self, dataset, subset, use_datasets,
-                datasets_repeat_cached_sample, shift_ratio=-1):
-    assert use_datasets
+  def minibatch(self, dataset, subset, params, shift_ratio=-1):
+    assert params.use_datasets
     # TODO(laigd): unify this with CNNModel's minibatch()
     # TODO(laigd): in distributed mode we use shift_ratio so different workers
     # won't work on same inputs, so we should respect that.
     del shift_ratio
     with tf.name_scope('batch_processing'):
       ds = self.create_dataset(
-          self.batch_size, self.num_splits, self.batch_size_per_split, dataset,
-          subset, self.is_train, datasets_repeat_cached_sample)
+          self.batch_size,
+          self.num_splits,
+          self.batch_size_per_split,
+          dataset,
+          subset,
+          self.is_train,
+          datasets_repeat_cached_sample=params.datasets_repeat_cached_sample,
+          num_threads=params.datasets_num_private_threads,
+          datasets_use_caching=params.datasets_use_caching,
+          datasets_parallel_interleave_cycle_length=(
+              params.datasets_parallel_interleave_cycle_length),
+          datasets_sloppy_parallel_interleave=(
+              params.datasets_sloppy_parallel_interleave))
       ds_iterator = self.create_iterator(ds)
 
       # The four lists are: input spectrogram feature, labels, input lengths,
