@@ -3164,6 +3164,7 @@ def setup(params):
 
   # Create a dummy session to initialize TF global variables using the input
   # params. See b/115772076#comment6 for more details.
+  platforms_util.initialize(params, create_config_proto(params))
   with tf.Session(config=create_config_proto(params)) as sess:
     del sess
 
@@ -3238,8 +3239,6 @@ def setup(params):
   if params.variable_update == 'horovod':
     import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
     hvd.init()
-
-  platforms_util.initialize(params, create_config_proto(params))
 
   return params
 
