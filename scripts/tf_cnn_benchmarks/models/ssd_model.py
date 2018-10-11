@@ -66,7 +66,10 @@ class SSD300Model(model_lib.CNNModel):
     #   38x38x4, 19x19x6, 10x10x6, 5x5x6, 3x3x4, 1x1x4
     self.num_dboxes = [4, 6, 6, 6, 4, 4]
 
-    self.backbone_saver = None
+    # TODO(haoyuzhang): in order to correctly restore in replicated mode, need
+    # to create a saver for each tower before graph is finalized. Use variable
+    # manager for better efficiency.
+    self.backbone_savers = []
 
     # Collected predictions for eval stage. It maps each image id in eval
     # dataset to a dict containing the following information:
@@ -292,24 +295,16 @@ class SSD300Model(model_lib.CNNModel):
 
   def loss_function(self, inputs, build_network_result):
     logits = build_network_result.logits
-    _, labels = inputs
+
     # Unpack model output back to locations and confidence scores of predictions
     # Shape of pred_loc: [batch_size, NUM_SSD_BOXES, 4]
     # Shape of pred_label: [batch_size, NUM_SSD_BOXES, label_num]
     pred_loc, pred_label = tf.split(logits, [4, self.label_num], 2)
 
-    # Unpack ground truth labels to number of boxes, locations, and classes
-    # initial shape: [batch_size, NUM_SSD_BOXES, 5]
-    # Shape of labels: [batch_size, NUM_SSD_BOXES, 5]
-    # Shape of num_gt: [batch_size, 1, 5] -- 5 identical copies
-    labels, num_gt = tf.split(labels, [ssd_constants.NUM_SSD_BOXES, 1], 1)
-
-    # Shape of num_gt: [batch_size]
-    num_gt = tf.squeeze(tf.cast(num_gt[:, :, 0], tf.float32), 1)
-
     # Shape of gt_loc: [batch_size, NUM_SSD_BOXES, 4]
     # Shape of gt_label: [batch_size, NUM_SSD_BOXES, 1]
-    gt_loc, gt_label = tf.split(labels, [4, 1], 2)
+    # Shape of num_gt: [batch_size]
+    _, gt_loc, gt_label, num_gt = inputs
     gt_label = tf.cast(gt_label, tf.int32)
 
     box_loss = self._localization_loss(pred_loc, gt_loc, gt_label, num_gt)
@@ -388,56 +383,46 @@ class SSD300Model(model_lib.CNNModel):
   def add_backbone_saver(self):
     # Create saver with mapping from variable names in checkpoint of backbone
     # model to variables in SSD model
-    if not self.backbone_saver:
-      backbone_var_list = self._collect_backbone_vars()
-      self.backbone_saver = tf.train.Saver(backbone_var_list)
+    backbone_var_list = self._collect_backbone_vars()
+    self.backbone_savers.append(tf.train.Saver(backbone_var_list))
 
   def load_backbone_model(self, sess, backbone_model_path):
-    self.backbone_saver.restore(sess, backbone_model_path)
-    return
+    for saver in self.backbone_savers:
+      saver.restore(sess, backbone_model_path)
 
   def get_input_shapes(self):
     """Return encoded tensor shapes for train and eval data respectively."""
     # TODO(b/116627045): Instead of checking eval here, pass doing_eval to each
     # model constructor.
     if self.params.eval:
-      # Validation data:
-      # Encoded tensor with object category, number of bounding boxes and
-      # their locations. The 0th dimension is batch size, and for each
-      # item in batch the tensor looks like this:
-      #
-      # [[cord1,  cord2,  cord3,  cord4,  cat   ],       ^
-      #  [cord1,  cord2,  cord3,  cord4,  cat   ],       |
-      #  [...,    ...,    ...,    ...,    ...   ],  MAX_NUM_EVAL_BOXES+1
-      #  [cord1,  cord2,  cord3,  cord4,  cat   ],       |
-      #  [id,     shape,  shape,  shape,  0     ]]       v
-      #
-      # |<---------- 4 cordinates + 1 ---------->|
+      # Validation data shapes:
+      # 1. images
+      # 2. ground truth locations of boxes
+      # 3. ground truth classes of objects in boxes
+      # 4. source image IDs
+      # 5. raw image shapes
       return [
           [self.batch_size, self.image_size, self.image_size, self.depth],
-          [self.batch_size, ssd_constants.MAX_NUM_EVAL_BOXES+1, 5],
+          [self.batch_size, ssd_constants.MAX_NUM_EVAL_BOXES, 4],
+          [self.batch_size, ssd_constants.MAX_NUM_EVAL_BOXES, 1],
+          [self.batch_size],
+          [self.batch_size, 3],
       ]
 
-    # Training data:
-    # Encoded tensor with object category, number of bounding boxes and
-    # their locations. The 0th dimension is batch size, and for each
-    # item in batch the tensor looks like this:
-    #
-    # [[cord1,  cord2,  cord3,  cord4,  cat   ],       ^
-    #  [cord1,  cord2,  cord3,  cord4,  cat   ],       |
-    #  [...,    ...,    ...,    ...,    ...   ],  NUM_SSD_BOXES+1
-    #  [cord1,  cord2,  cord3,  cord4,  cat   ],       |
-    #  [nboxes, nboxes, nboxes, nboxes, nboxes]]       v
-    #
-    # |<---------- 4 cordinates + 1 ---------->|
+    # Training data shapes:
+    # 1. images
+    # 2. ground truth locations of boxes
+    # 3. ground truth classes of objects in boxes
+    # 4. numbers of objects in images
     return [
         [self.batch_size, self.image_size, self.image_size, self.depth],
-        [self.batch_size, ssd_constants.NUM_SSD_BOXES+1, 5],
+        [self.batch_size, ssd_constants.NUM_SSD_BOXES, 4],
+        [self.batch_size, ssd_constants.NUM_SSD_BOXES, 1],
+        [self.batch_size]
     ]
 
   def accuracy_function(self, inputs, logits):
     """Returns the ops to measure the mean precision of the model."""
-    _, labels = inputs
     try:
       import ssd_dataloader  # pylint: disable=g-import-not-at-top
       from object_detection.box_coders import faster_rcnn_box_coder  # pylint: disable=g-import-not-at-top
@@ -470,13 +455,8 @@ class SSD300Model(model_lib.CNNModel):
 
     pred_scores = tf.nn.softmax(pred_labels, axis=2)
 
-    boxes_classes, id_shape = tf.split(
-        labels, [ssd_constants.MAX_NUM_EVAL_BOXES, 1], 1)
-    # TODO(haoyuzhang): maybe use these values for visualization.
-    gt_boxes, gt_classes = tf.split(boxes_classes, [4, 1], 2)  # pylint: disable=unused-variable
-    id_shape = tf.squeeze(id_shape, 1)
-    source_id, raw_shape, _ = tf.split(id_shape, [1, 3, 1], 1)
-    source_id = tf.squeeze(source_id, 1)
+    # TODO(haoyuzhang): maybe use `gt_boxes` and `gt_classes` for visualization.
+    _, gt_boxes, gt_classes, source_id, raw_shape = inputs  # pylint: disable=unused-variable
 
     return {
         (constants.UNREDUCED_ACCURACY_OP_PREFIX +
@@ -548,6 +528,5 @@ class SSD300Model(model_lib.CNNModel):
     classes = tf.random_uniform(
         [self.batch_size, ssd_constants.NUM_SSD_BOXES, 1], dtype=tf.float32)
     nboxes = tf.random_uniform(
-        [self.batch_size, 1, 5], minval=1, maxval=10, dtype=tf.float32)
-    labels = tf.concat([tf.concat([boxes, classes], 2), nboxes], 1)
-    return (inputs, labels)
+        [self.batch_size], minval=1, maxval=10, dtype=tf.float32)
+    return (inputs, boxes, classes, nboxes)

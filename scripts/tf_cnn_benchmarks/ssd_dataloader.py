@@ -24,13 +24,10 @@ import math
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.contrib.data.python.ops import batching
 from object_detection.box_coders import faster_rcnn_box_coder
 from object_detection.core import box_list
-from object_detection.core import preprocessor
 from object_detection.core import region_similarity_calculator
 from object_detection.core import target_assigner
-from object_detection.data_decoders import tf_example_decoder
 from object_detection.matchers import argmax_matcher
 import ssd_constants
 
@@ -291,126 +288,3 @@ def encode_labels(gt_boxes, gt_labels):
   num_matched_boxes = tf.reduce_sum(
       tf.cast(tf.not_equal(matches.match_results, -1), tf.float32))
   return encoded_classes, encoded_boxes, num_matched_boxes
-
-
-class SSDInputReader(object):
-  """Input reader for dataset."""
-
-  def __init__(self, file_pattern, is_training, dtype):
-    self._file_pattern = file_pattern
-    self._is_training = is_training
-    self.dtype = dtype
-
-  def __call__(self, params):
-    example_decoder = tf_example_decoder.TfExampleDecoder()
-
-    def _parse_example(data):
-      with tf.name_scope('augmentation'):
-        source_id = tf.string_to_number(data['source_id'])
-        image = tf.image.convert_image_dtype(data['image'], dtype=tf.float32)
-        raw_shape = tf.shape(image)
-        boxes = data['groundtruth_boxes']
-        classes = tf.reshape(data['groundtruth_classes'], [-1, 1])
-
-        # Only 80 of the 90 COCO classes are used.
-        class_map = tf.convert_to_tensor(ssd_constants.CLASS_MAP)
-        classes = tf.gather(class_map, classes)
-        classes = tf.cast(classes, dtype=tf.float32)
-
-        if self._is_training:
-          image, boxes, classes = ssd_crop(image, boxes, classes)
-          image, boxes = preprocessor.random_horizontal_flip(
-              image=image, boxes=boxes)
-
-          image = color_jitter(
-              image, brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05)
-          image = normalize_image(image)
-          image = tf.cast(image, self.dtype)
-
-          encoded_classes, encoded_boxes, num_matched_boxes = encode_labels(
-              boxes, classes)
-
-          # TODO(haoyuzhang): measure or remove this overhead of concat
-          # Encode labels (number of boxes, coordinates of bounding boxes, and
-          # classes into a single tensor, in order to be compatible with
-          # staging area in data input pipeline.
-          # Step 1: pack box coordinates and classes together
-          #     [nboxes, 4] concat [nboxes, 1] ==> [nboxes, 5]
-          labels = tf.concat([encoded_boxes, encoded_classes], 1)
-          # Step 2 (HACK): repeat number of boxes (a scalar tensor) five times,
-          #                and pack result from Step 1 with it.
-          #     [nboxes, 5] concat [1, 5] ==> [nboxes + 1, 5]
-          nboxes_1d = tf.tile(tf.expand_dims(num_matched_boxes, 0), [5])
-          # 1D tensor, shape (5)
-          nboxes_2d = tf.expand_dims(nboxes_1d, 0)      # 2D tensor, shape (1,5)
-          labels = tf.concat([labels, tf.cast(nboxes_2d, tf.float32)], 0)
-          return image, labels
-
-        else:
-          image = tf.image.resize_images(
-              image[tf.newaxis, :, :, :],
-              size=(ssd_constants.IMAGE_SIZE, ssd_constants.IMAGE_SIZE)
-          )[0, :, :, :]
-
-          image = normalize_image(image)
-          image = tf.cast(image, self.dtype)
-
-          def trim_and_pad(inp_tensor):
-            """Limit the number of boxes, and pad if necessary."""
-            inp_tensor = inp_tensor[:ssd_constants.MAX_NUM_EVAL_BOXES]
-            num_pad = ssd_constants.MAX_NUM_EVAL_BOXES - tf.shape(inp_tensor)[0]
-            inp_tensor = tf.pad(inp_tensor, [[0, num_pad], [0, 0]])
-            return tf.reshape(inp_tensor, [ssd_constants.MAX_NUM_EVAL_BOXES,
-                                           inp_tensor.get_shape()[1]])
-
-          boxes, classes = trim_and_pad(boxes), trim_and_pad(classes)
-
-          # TODO(haoyuzhang): measure or remove this overhead of concat
-          # Encode labels into a single tensor, in order to be compatible with
-          # staging area in data input pipeline.
-          # Shape of boxes: [MAX_NUM_EVAL_BOXES, 4]
-          # Shape of classes: [MAX_NUM_EVAL_BOXES, 1]
-          # Shape of source_id: [] (scalar tensor)
-          # Shape of raw_shape: [3]
-          boxes_classes = tf.concat([boxes, classes], 1)
-          id_shape = tf.concat([tf.expand_dims(source_id, 0),
-                                tf.cast(raw_shape, tf.float32),
-                                tf.constant([0.])], 0)
-          # id_shape: [source_id, raw_shape_H, raw_shape_W, raw_shape_C, 0]
-          labels = tf.concat([boxes_classes, tf.expand_dims(id_shape, 0)], 0)
-          # Shape of labels: [MAX_NUM_EVAL_BOXES+1, 5]
-          return image, labels
-
-    batch_size_per_split = params['batch_size_per_split']
-    num_splits = params['num_splits']
-    dataset = tf.data.Dataset.list_files(
-        self._file_pattern, shuffle=self._is_training)
-    # Repeat for both training and validation datasets because the number of
-    # validation examples is typically not a multiply of batch size, and COCO
-    # metric requires all results to be collected before calculating metrics.
-    dataset = dataset.repeat()
-
-    # Prefetch data from files.
-    def _prefetch_dataset(filename):
-      dataset = tf.data.TFRecordDataset(filename).prefetch(batch_size_per_split)
-      return dataset
-    dataset = dataset.apply(
-        tf.data.experimental.parallel_interleave(
-            _prefetch_dataset, cycle_length=32, sloppy=self._is_training))
-
-    if self._is_training:
-      dataset = dataset.shuffle(64)
-
-    # Parse the fetched records to input tensors for model function.
-    dataset = dataset.map(example_decoder.decode, num_parallel_calls=64)
-
-    # TODO(taylorrobie): Confirm that this is MLPerf rules compliant.
-    dataset = dataset.filter(
-        lambda data: tf.greater(tf.shape(data['groundtruth_boxes'])[0], 0))
-    dataset = dataset.apply(batching.map_and_batch(
-        map_func=_parse_example,
-        batch_size=batch_size_per_split,
-        num_parallel_batches=num_splits,
-        drop_remainder=True))
-    dataset = dataset.prefetch(buffer_size=num_splits)
-    return dataset

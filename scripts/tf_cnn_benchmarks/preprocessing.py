@@ -909,8 +909,30 @@ class COCOPreprocessor(BaseImagePreprocessor):
                 subset,
                 params,
                 shift_ratio=-1):
+    del shift_ratio  # Not used when using datasets instead of data_flow_ops
+    with tf.name_scope('batch_processing'):
+      ds = self.create_dataset(
+          self.batch_size, self.num_splits, self.batch_size_per_split,
+          dataset, subset, self.train, params.datasets_repeat_cached_sample)
+      ds_iterator = self.create_iterator(ds)
+
+      # Training data: 4 tuple
+      # Validation data: 5 tuple
+      # See get_input_shapes in models/ssd_model.py for details.
+      input_len = 4 if subset == 'train' else 5
+      input_lists = [[None for _ in range(self.num_splits)]
+                     for _ in range(input_len)]
+      for d in xrange(self.num_splits):
+        input_list = ds_iterator.get_next()
+        for i in range(input_len):
+          input_lists[i][d] = input_list[i]
+      return input_lists
+
+  def preprocess(self, data):
     try:
       import ssd_dataloader  # pylint: disable=g-import-not-at-top
+      import ssd_constants  # pylint: disable=g-import-not-at-top
+      from object_detection.core import preprocessor  # pylint: disable=g-import-not-at-top
     except ImportError:
       raise ImportError('To use the COCO dataset, you must clone the '
                         'repo https://github.com/tensorflow/models and add '
@@ -919,29 +941,130 @@ class COCOPreprocessor(BaseImagePreprocessor):
                         'following https://github.com/tensorflow/models/blob/'
                         'master/research/object_detection/g3doc/installation.md'
                         '#protobuf-compilation')
+    source_id = tf.string_to_number(data['source_id'])
+    image = tf.image.convert_image_dtype(data['image'], dtype=tf.float32)
+    raw_shape = tf.shape(image)
+    boxes = data['groundtruth_boxes']
+    classes = tf.reshape(data['groundtruth_classes'], [-1, 1])
 
-    if shift_ratio < 0:
-      shift_ratio = self.shift_ratio
+    # Only 80 of the 90 COCO classes are used.
+    class_map = tf.convert_to_tensor(ssd_constants.CLASS_MAP)
+    classes = tf.gather(class_map, classes)
+    classes = tf.cast(classes, dtype=tf.float32)
 
-    with tf.name_scope('batch_processing'):
-      images = [[] for _ in range(self.num_splits)]
-      labels = [[] for _ in range(self.num_splits)]
+    if self.train:
+      image, boxes, classes = ssd_dataloader.ssd_crop(image, boxes, classes)
+      image, boxes = preprocessor.random_horizontal_flip(
+          image=image, boxes=boxes)
 
-      glob_pattern = dataset.tf_record_pattern(subset)
-      filenames = gfile.Glob(glob_pattern)
-      ssd_input = ssd_dataloader.SSDInputReader(
-          filenames, subset == 'train', self.dtype)
-      ds = ssd_input({'batch_size_per_split': self.batch_size_per_split,
-                      'num_splits': self.num_splits})
-      ds_iterator = self.create_iterator(ds)
-      for d in range(self.num_splits):
-        images[d], labels[d] = ds_iterator.get_next()
-      for split_index in xrange(self.num_splits):
-        images[split_index] = tf.reshape(
-            images[split_index],
-            shape=[self.batch_size_per_split, self.height, self.width,
-                   self.depth])
-      return images, labels
+      image = ssd_dataloader.color_jitter(
+          image, brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05)
+      image = ssd_dataloader.normalize_image(image)
+      image = tf.cast(image, self.dtype)
+
+      encoded_returns = ssd_dataloader.encode_labels(boxes, classes)
+      encoded_classes, encoded_boxes, num_matched_boxes = encoded_returns
+
+      # Shape of image: [width, height, channel]
+      # Shape of encoded_boxes: [NUM_SSD_BOXES, 4]
+      # Shape of encoded_classes: [NUM_SSD_BOXES, 1]
+      # Shape of num_matched_boxes: [1]
+      return (image, encoded_boxes, encoded_classes, num_matched_boxes)
+
+    else:
+      image = tf.image.resize_images(
+          image[tf.newaxis, :, :, :],
+          size=(ssd_constants.IMAGE_SIZE, ssd_constants.IMAGE_SIZE)
+      )[0, :, :, :]
+
+      image = ssd_dataloader.normalize_image(image)
+      image = tf.cast(image, self.dtype)
+
+      def trim_and_pad(inp_tensor):
+        """Limit the number of boxes, and pad if necessary."""
+        inp_tensor = inp_tensor[:ssd_constants.MAX_NUM_EVAL_BOXES]
+        num_pad = ssd_constants.MAX_NUM_EVAL_BOXES - tf.shape(inp_tensor)[0]
+        inp_tensor = tf.pad(inp_tensor, [[0, num_pad], [0, 0]])
+        return tf.reshape(inp_tensor, [ssd_constants.MAX_NUM_EVAL_BOXES,
+                                       inp_tensor.get_shape()[1]])
+
+      boxes, classes = trim_and_pad(boxes), trim_and_pad(classes)
+
+      # Shape of boxes: [MAX_NUM_EVAL_BOXES, 4]
+      # Shape of classes: [MAX_NUM_EVAL_BOXES, 1]
+      # Shape of source_id: [] (scalar tensor)
+      # Shape of raw_shape: [3]
+      return (image, boxes, classes, source_id, raw_shape)
+
+  def create_dataset(self,
+                     batch_size,
+                     num_splits,
+                     batch_size_per_split,
+                     dataset,
+                     subset,
+                     train,
+                     datasets_repeat_cached_sample,
+                     num_threads=None,
+                     datasets_use_caching=False,
+                     datasets_parallel_interleave_cycle_length=None,
+                     datasets_sloppy_parallel_interleave=False,
+                     datasets_parallel_interleave_prefetch=None):
+    """Creates a dataset for the benchmark."""
+    try:
+      from object_detection.data_decoders import tf_example_decoder  # pylint: disable=g-import-not-at-top
+    except ImportError:
+      raise ImportError('To use the COCO dataset, you must clone the '
+                        'repo https://github.com/tensorflow/models and add '
+                        'tensorflow/models and tensorflow/models/research to '
+                        'the PYTHONPATH, and compile the protobufs by '
+                        'following https://github.com/tensorflow/models/blob/'
+                        'master/research/object_detection/g3doc/installation.md'
+                        '#protobuf-compilation')
+    assert self.supports_datasets()
+    example_decoder = tf_example_decoder.TfExampleDecoder()
+
+    glob_pattern = dataset.tf_record_pattern(subset)
+    file_names = gfile.Glob(glob_pattern)
+    if not file_names:
+      raise ValueError('Found no files in --data_dir matching: {}'
+                       .format(glob_pattern))
+
+    ds = tf.data.TFRecordDataset.list_files(file_names)
+    ds = ds.apply(
+        interleave_ops.parallel_interleave(
+            tf.data.TFRecordDataset,
+            cycle_length=datasets_parallel_interleave_cycle_length or 10,
+            sloppy=datasets_sloppy_parallel_interleave))
+    if datasets_repeat_cached_sample:
+      # Repeat a single sample element indefinitely to emulate memory-speed IO.
+      ds = ds.take(1).cache().repeat()
+    ds = ds.prefetch(buffer_size=batch_size)
+    if datasets_use_caching:
+      ds = ds.cache()
+    if train:
+      ds = ds.apply(tf.contrib.data.shuffle_and_repeat(buffer_size=10000))
+    else:
+      ds = ds.repeat()
+
+    ds = ds.map(example_decoder.decode, num_parallel_calls=64)
+    ds = ds.filter(
+        lambda data: tf.greater(tf.shape(data['groundtruth_boxes'])[0], 0))
+    ds = ds.apply(
+        batching.map_and_batch(
+            map_func=self.preprocess,
+            batch_size=batch_size_per_split,
+            num_parallel_batches=num_splits,
+            drop_remainder=True))
+    ds = ds.prefetch(buffer_size=num_splits)
+    if num_threads:
+      ds = threadpool.override_threadpool(
+          ds,
+          threadpool.PrivateThreadPool(
+              num_threads, display_name='input_pipeline_thread_pool'))
+    return ds
+
+  def supports_datasets(self):
+    return True
 
 
 class TestImagePreprocessor(BaseImagePreprocessor):
