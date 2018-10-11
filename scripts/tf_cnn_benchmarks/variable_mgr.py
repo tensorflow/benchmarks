@@ -323,7 +323,7 @@ class VariableMgrLocalReplicated(VariableMgr):
     algorithm = batch_allreduce.algorithm_from_params(self.benchmark_cnn.params)
     reduced_grads, self._warmup_ops = algorithm.batch_all_reduce(
         grads_to_reduce, self.benchmark_cnn.params.gradient_repacking,
-        compact_grads, defer_grads)
+        compact_grads, defer_grads, self.benchmark_cnn.params.xla_compile)
     if self.benchmark_cnn.enable_auto_loss_scale:
       # Check for infs or nans
       is_finite_list = []

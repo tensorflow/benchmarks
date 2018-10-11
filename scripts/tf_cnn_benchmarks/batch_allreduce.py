@@ -34,11 +34,11 @@ from __future__ import print_function
 # batch-reduce while this file only supports single-machine all-reduce.
 
 import abc
-from collections import namedtuple
 
 import six
 import tensorflow as tf
 
+from tensorflow.contrib.compiler import xla
 from tensorflow.python.ops import data_flow_ops
 import allreduce
 import constants
@@ -65,8 +65,12 @@ def _all_reduce_using_copy(tensors_across_devices, use_mean):
 class BatchAllReduceAlgorithm(object):
   """Represents an algorithm for performing a batch all-reduce operation."""
 
-  def batch_all_reduce(self, all_device_tensors, num_splits, compact_tensors,
-                       defer_tensors):
+  def batch_all_reduce(self,
+                       all_device_tensors,
+                       num_splits,
+                       compact_tensors,
+                       defer_tensors,
+                       xla_compile=False):
     """Performs a batch all-reduce.
 
     The reduction done is a sum.
@@ -101,6 +105,8 @@ class BatchAllReduceAlgorithm(object):
         run. This can improve performance. When training neural networks,
         deferring gradients often does not harm training, so this can be used to
         improve performance.
+      xla_compile: If True, use XLA to compile gradients packing and unpacking
+        ops.
 
     Returns:
       reduced_all_device_tensors: A list in the same form as
@@ -108,44 +114,94 @@ class BatchAllReduceAlgorithm(object):
       warmup_ops: A list of ops needed to be run once before the all-reduce can
         occur.
     """
+
     # Before all-reducing tensors, we do several preprocessing functions that
     # can speed up the all-reduce. We undo these functions after all-reducing
     # the tensors.
-    warmup_ops = []
-    if num_splits:
-      packer = _TensorPacker(num_splits)
-      all_device_tensors = packer.concat_all_device_tensors(all_device_tensors)
-    # If enabled, we compact and defer tensors in between concatenating them
-    # and splitting them, because it is faster to do operations on a single
-    # concatenated tensor than on multiple smaller tensors.
-    if compact_tensors:
-      all_device_tensors_before_compact = all_device_tensors
-      all_device_tensors = _compact_all_device_tensors(all_device_tensors)
-    if defer_tensors:
-      all_device_tensors, put_ops, warmup_ops = _defer_all_device_tensors(
-          all_device_tensors)
-    if num_splits:
-      all_device_tensors = packer.split_all_device_tensors(all_device_tensors)
 
-    all_device_tensors = self._do_batch_all_reduce(all_device_tensors)
+    # all_device_packed_tensors is a 2-d list of tensors indexed by
+    # [device_id][tensor_id], holding packed tensors from all devices involved
+    # in all-reduce.
+    all_device_packed_tensors = []
 
-    # Undo the preprocessing operations in opposite order as we applied them.
-    if num_splits:
-      all_device_tensors = packer.undo_split_all_device_tensors(
-          all_device_tensors)
+    # all_device_warmup_ops is a 2-d list of ops indexed by
+    # [device_id][tensor_id], holding warmup_ops that need to be run once before
+    # all-reduce can occur.
+    all_device_warmup_ops = []
+
+    # all_device_put_ops is a 2-d list of ops indexed by
+    # [device_id][tensor_id], holding put ops for deferred tensors. They will be
+    # called in each all-reduce step automatically due to control dependency.
+    all_device_put_ops = []
+
+    # packers is a list of _TensorPacker, one for each device involved in
+    # all-reduce.
+    packers = [
+        _TensorPacker(num_splits, compact_tensors) for _ in all_device_tensors
+    ]
+
+    for packer, device_tensors in zip(packers, all_device_tensors):
+
+      def pack_single_device_tensors(packer=packer,
+                                     device_tensors=device_tensors):
+        """Pack gradient tensors of a device."""
+        packed_tensors = packer.maybe_concat_tensors(device_tensors)
+        packed_tensors = packer.maybe_compact_tensors(packed_tensors)
+        # When xla_compile=False, defer tensors after concat for better
+        # performance.
+        if defer_tensors and not xla_compile:
+          packed_tensors, put_ops, warmup_ops = defer_single_device_tensors(
+              packed_tensors)
+          all_device_put_ops.append(put_ops)
+          all_device_warmup_ops.append(warmup_ops)
+        packed_tensors = packer.maybe_split_tensors(packed_tensors)
+        return packed_tensors
+
+      with tf.device(device_tensors[0].device):
+        if xla_compile:
+          packed_tensors = xla.compile(pack_single_device_tensors)
+          # When xla_compile=True, intermediate tensors in packing process are
+          # not materialized. Thus, we defer tensors after packing process is
+          # completed instead of in the middle of it.
+          if defer_tensors:
+            packed_tensors, put_ops, warmup_ops = defer_single_device_tensors(
+                packed_tensors)
+            all_device_put_ops.append(put_ops)
+            all_device_warmup_ops.append(warmup_ops)
+        else:
+          packed_tensors = pack_single_device_tensors()
+
+      all_device_packed_tensors.append(packed_tensors)
+
+    # Perform all-reduce on packed tensors.
+    all_device_tensors = self._do_batch_all_reduce(all_device_packed_tensors)
+
+    all_device_unpacked_tensors = []
+    for packer, device_tensors in zip(packers, all_device_tensors):
+
+      def unpack_single_device_tensors(packer=packer,
+                                       device_tensors=device_tensors):
+        """Unpack gradient tensors of a device."""
+        unpacked_tensors = packer.undo_maybe_split_tensors(device_tensors)
+        unpacked_tensors = packer.undo_maybe_compact_tensors(unpacked_tensors)
+        unpacked_tensors = packer.undo_maybe_concat_tensors(unpacked_tensors)
+        return unpacked_tensors
+
+      with tf.device(device_tensors[0].device):
+        if xla_compile:
+          unpacked_device_tensor = xla.compile(unpack_single_device_tensors)
+        else:
+          unpacked_device_tensor = unpack_single_device_tensors()
+
+      all_device_unpacked_tensors.append(unpacked_device_tensor)
+
     # Note: There is no undo operation for deferring tensors. But we do need to
     # call _add_put_op_control_deps at the end if we deferred the tensors.
-    if compact_tensors:
-      all_device_tensors = _undo_compact_all_device_tensors(
-          all_device_tensors, all_device_tensors_before_compact)
-    if num_splits:
-      all_device_tensors = packer.undo_concat_all_device_tensors(
-          all_device_tensors)
-
     if defer_tensors:
-      all_device_tensors = _add_put_op_control_deps(all_device_tensors,
-                                                    num_splits, put_ops)
-    return all_device_tensors, warmup_ops
+      all_device_unpacked_tensors = _add_put_op_control_deps(
+          all_device_unpacked_tensors, num_splits, all_device_put_ops)
+
+    return all_device_unpacked_tensors, all_device_warmup_ops
 
   @abc.abstractmethod
   def _do_batch_all_reduce(self, all_device_tensors):
@@ -399,19 +455,30 @@ def _defer_tensor(tensor):
   return tensor, put_op, warmup_op
 
 
-def _defer_all_device_tensors(all_device_tensors):
-  """Defers every tensor in `all_device_tensors`."""
-  put_ops = [[] for _ in all_device_tensors]
-  warmup_ops = [[] for _ in all_device_tensors]
-  def apply_func(tensor, device_index, tensor_index):
-    del tensor_index
-    tensor, put_op, warmup_op = _defer_tensor(tensor)
-    put_ops[device_index].append(put_op)
-    warmup_ops[device_index].append(warmup_op)
-    return tensor
-  new_all_device_tensors = _apply_to_all_device_tensors(all_device_tensors,
-                                                        apply_func)
-  return new_all_device_tensors, put_ops, warmup_ops
+def defer_single_device_tensors(device_tensors):
+  """Defer tensors (gradients in this case) from a single device.
+
+  Arguments:
+    device_tensors: A list of gradients tensors from a single device to defer.
+
+  Returns:
+    deferred_tensors: A list of tensors deferred for one step.
+    put_ops: A list of ops that put `tensors` in the StagingAreas. Must be run
+      every step that `deferred_tensors` is run.
+    warmup_ops: Warmup ops that should be called before the first step. Puts
+      zero tensors into the StagingArea.
+  """
+  put_ops = []
+  warmup_ops = []
+  deferred_tensors = []
+
+  for tensor in device_tensors:
+    deferred_tensor, put_op, warmup_op = _defer_tensor(tensor)
+    deferred_tensors.append(deferred_tensor)
+    put_ops.append(put_op)
+    warmup_ops.append(warmup_op)
+
+  return deferred_tensors, put_ops, warmup_ops
 
 
 def _add_put_op_control_deps(all_device_tensors, num_splits, put_ops):
@@ -444,25 +511,6 @@ def _add_put_op_control_deps(all_device_tensors, num_splits, put_ops):
   return _apply_to_all_device_tensors(all_device_tensors, apply_func)
 
 
-def _compact_all_device_tensors(all_device_tensors):
-  """Compacts each tensor by casting to fp16."""
-  def apply_func(tensor, device_index, tensor_index):
-    del device_index, tensor_index
-    return tf.cast(tensor, tf.float16)
-  return _apply_to_all_device_tensors(all_device_tensors, apply_func)
-
-
-def _undo_compact_all_device_tensors(all_device_tensors,
-                                     orig_all_device_tensors):
-  """Uncompacts each tensor by casting to it's original dtype."""
-  def apply_func(tensor, device_index, tensor_index):
-    orig_tensor = orig_all_device_tensors[device_index][tensor_index]
-    with tf.colocate_with(orig_tensor):
-      return tf.cast(tensor, orig_tensor.dtype)
-  return _apply_to_all_device_tensors(all_device_tensors, apply_func,
-                                      colocate=False)
-
-
 class _TensorPacker(object):
   """Packs and unpacks tensors into groups.
 
@@ -470,38 +518,53 @@ class _TensorPacker(object):
   tensor into a small number of chunks. This is useful for all-reducing tensors,
   as doing a small number of all-reduces on large tensors can be faster than
   doing a large number of all-reduces on small tensors.
+
+  It also provides option to compact tensors by casting them to fp16, for better
+  all-reduce performance.
+
+  This class maintains states of processed tensors like shapes and types. So
+  each packer can only be used to pack and unpack one list of tensors. If you
+  need to pack multiple lists of tensors (say from multiple devices), then you
+  need multiple _TensorPacker object, one for each device.
   """
 
-  def __init__(self, num_splits):
+  def __init__(self, num_splits, compact):
     """Initializes the _TensorPacker.
 
-    Args:
+    Arguments:
       num_splits: The number of tensors to split the concatenated tensor into.
-        The batch all-reduce will consist of `num_splits` all-reduces.
+        The batch all-reduce will consist of `num_splits` all-reduces. if None
+        or zero, tensors are not split or concatenated.
+      compact: If True, tensors are casted to fp16 during packing and casted
+        back to their original dtypes during unpacking.
     """
-    assert num_splits > 0
     self._num_splits = num_splits
-    self._next_method = 'concat'
+    self._compact = compact
+    self._before_compact_dtypes = []
 
-  _concat_tensor_state = namedtuple('_concat_tensor_state',
-                                    ['orig_shapes', 'orig_sizes'])
-
-  def _concat_tensors(self, device_tensors):
+  def maybe_concat_tensors(self, device_tensors):
     """Concatenate tensors into a single tensor."""
-    flat_tensors = [tf.reshape(t, [-1]) for t in device_tensors]
-    orig_shapes = [t.shape for t in device_tensors]
-    orig_sizes = [s.num_elements() for s in orig_shapes]
-    # All shapes must be fully defined.
-    assert None not in orig_sizes
-    concatenated_grad = tf.concat(flat_tensors, 0)
-    return concatenated_grad, self._concat_tensor_state(orig_shapes, orig_sizes)
+    if not self._num_splits:
+      return device_tensors
 
-  def _split_tensors(self, concatenated_tensor):
-    """Splits concatenated tensor into `num_splits` pieces."""
-    # TODO(zhengxq): it is possible to optimize away the additional
-    # data movement by copying along the original tensor boundary.
-    # TODO(zhengxq): it is also possible to optimize away all the concat
-    # as well.
+    flat_tensors = [tf.reshape(t, [-1]) for t in device_tensors]
+    self._orig_shapes = [t.shape for t in device_tensors]
+    self._orig_sizes = [s.num_elements() for s in self._orig_shapes]
+    # All shapes must be fully defined.
+    assert None not in self._orig_sizes
+    concatenated_grad = tf.concat(flat_tensors, 0)
+    return [concatenated_grad]
+
+  def maybe_split_tensors(self, concatenated_tensor):
+    """Split concatenated tensor into `num_splits` pieces."""
+    if not self._num_splits:
+      return concatenated_tensor
+
+    if len(concatenated_tensor) != 1:
+      raise RuntimeError('tensors must be concatenated via '
+                         'maybe_concat_tensors() before splitting')
+
+    concatenated_tensor = concatenated_tensor[0]
     total_tensor_size = concatenated_tensor.shape.num_elements()
     split_size = total_tensor_size // self._num_splits
     split_size_last = total_tensor_size - split_size * (self._num_splits - 1)
@@ -509,92 +572,56 @@ class _TensorPacker(object):
     tensor_packs = tf.split(concatenated_tensor, split_sizes)
     return tensor_packs
 
-  def _undo_split_tensors(self, tensor_packs):
-    """Undoes self._split_tensors()."""
-    return tf.concat(tensor_packs, 0)
+  def undo_maybe_split_tensors(self, tensor_packs):
+    """Undo maybe_split_tensors()."""
+    if not self._num_splits:
+      return tensor_packs
 
-  def _undo_concat_tensors(self, concatenated_tensor, concat_tensor_state):
-    """Undoes self._concat_tensors()."""
+    return [tf.concat(tensor_packs, 0)]
+
+  def undo_maybe_concat_tensors(self, concatenated_tensor):
+    """Undo maybe_concat_tensors()."""
+    if not self._num_splits:
+      return concatenated_tensor
+
+    if len(concatenated_tensor) != 1:
+      raise RuntimeError(
+          'undo_maybe_split_tensors() must be called before '
+          'undo_maybe_concat_tensors when num_splits is greater than 1')
+    concatenated_tensor = concatenated_tensor[0]
+
     tensors_with_sizes = tf.split(concatenated_tensor,
-                                  concat_tensor_state.orig_sizes)
+                                  self._orig_sizes)
     tensors_with_shapes = [
-        tf.reshape(grad, shape)
-        for grad, shape in zip(tensors_with_sizes,
-                               concat_tensor_state.orig_shapes)
+        tf.reshape(grad, shape) for grad, shape in zip(
+            tensors_with_sizes, self._orig_shapes)
     ]
     return tensors_with_shapes
 
-  def concat_all_device_tensors(self, all_device_tensors):
-    """For each device, concatenate the device's tensors into a single tensor.
+  def maybe_compact_tensors(self, device_tensors):
+    """Cast tensors to fp16 and store their original types."""
+    if not self._compact:
+      return device_tensors
 
-    Args:
-      all_device_tensors: A list of list of tensors. `all_device_tensors[i][j]`
-        is a tensor where `i` is the device index and `j` is the tensor index.
+    if self._before_compact_dtypes:
+      raise RuntimeError('maybe_compact_tensors can only be called once.')
 
-    Returns:
-      A list of list of tensors in a similar form as all_device_tensors, except
-      the tensors on each device have been concatenated. Each inner list
-      consists of a single concatenated tensor.
-    """
-    assert self._next_method == 'concat'
-    new_all_device_tensors = []
-    tensor_states = []
-    for device_tensors in all_device_tensors:
-      with tf.colocate_with(device_tensors[0]):
-        concat_tensor, tensor_state = self._concat_tensors(device_tensors)
-        new_all_device_tensors.append([concat_tensor])
-        tensor_states.append(tensor_state)
-    self._tensor_states = tensor_states
-    self._next_method = 'split'
-    return new_all_device_tensors
+    self._before_compact_dtypes = [t.dtype for t in device_tensors]
+    compact_tensors = [tf.cast(t, tf.float16) for t in device_tensors]
 
-  def split_all_device_tensors(self, all_device_tensors):
-    """Splits concatenated tensors into `num_splits` pieces.
+    return compact_tensors
 
-    `num_splits` is specified in the constructor.  In the case where the total
-    size of a concatenated tensor is not divisible by `num_splits`, the last
-    split tensor gets more elements.
+  def undo_maybe_compact_tensors(self, compact_tensors):
+    """Undo maybe_compact_tensors()."""
+    if not self._compact:
+      return compact_tensors
 
-    Args:
-      all_device_tensors: A list of list of tensors. `all_device_tensors[i][j]`
-        is a tensor where `i` is the device index and `j` is the tensor index.
-        For each i, `all_device_tensors[i]` must be a list of length 1 of a
-        single concatenated tensor.
+    if not self._before_compact_dtypes:
+      raise RuntimeError('maybe_compact_tensors() must be called before '
+                         'undo_maybe_compact_tensors()')
 
-    Returns:
-      A list of list of tensors in a similar form as all_device_tensors, except
-      the concatenated tensor on each device have been split. Each inner list
-      is a list of length `num_splits`.
-    """
-    assert self._next_method == 'split'
-    new_all_device_tensors = []
-    for [concat_tensor] in all_device_tensors:
-      with tf.colocate_with(concat_tensor):
-        new_all_device_tensors.append(self._split_tensors(concat_tensor))
-    self._orig_concat_all_device_tensors = all_device_tensors
-    self._next_method = 'undo_split'
-    return new_all_device_tensors
-
-  def undo_split_all_device_tensors(self, all_device_tensors):
-    """Undoes the effects of `split_all_device_tensors`."""
-    assert self._next_method == 'undo_split'
-    new_all_device_tensors = []
-    for i, device_tensors in enumerate(all_device_tensors):
-      [orig_tensor] = self._orig_concat_all_device_tensors[i]
-      with tf.colocate_with(orig_tensor):
-        new_all_device_tensors.append(
-            [self._undo_split_tensors(device_tensors)])
-    self._next_method = 'undo_concat'
-    return new_all_device_tensors
-
-  def undo_concat_all_device_tensors(self, all_device_tensors):
-    """Undoes the effects of `concat_all_device_tensors`."""
-    assert self._next_method == 'undo_concat'
-    new_all_device_tensors = []
-    for [concat_tensor], tensor_state in zip(all_device_tensors,
-                                             self._tensor_states):
-      with tf.colocate_with(concat_tensor):
-        new_all_device_tensors.append(self._undo_concat_tensors(concat_tensor,
-                                                                tensor_state))
-    self._next_method = None
-    return new_all_device_tensors
+    device_tensors = [
+        tf.cast(t, dtype)
+        for t, dtype in zip(compact_tensors, self._before_compact_dtypes)
+    ]
+    return device_tensors
