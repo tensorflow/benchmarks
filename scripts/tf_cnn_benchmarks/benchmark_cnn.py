@@ -3162,6 +3162,12 @@ def setup(params):
     ValueError: invalid parames combinations.
   """
 
+  # horovod needs to be initialized before create_config_proto() call since
+  # it will be used in config generation if enabled.
+  if params.variable_update == 'horovod':
+    import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
+    hvd.init()
+
   # Create a dummy session to initialize TF global variables using the input
   # params. See b/115772076#comment6 for more details.
   platforms_util.initialize(params, create_config_proto(params))
@@ -3235,10 +3241,6 @@ def setup(params):
       num_private_threads = max(
           cpu_count - total_gpu_thread_count - num_monitoring_threads, 1)
       params = params._replace(datasets_num_private_threads=num_private_threads)
-
-  if params.variable_update == 'horovod':
-    import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
-    hvd.init()
 
   return params
 
