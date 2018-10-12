@@ -113,8 +113,10 @@ class NcfModel(model.Model):
 
     return [users, items, labels]
 
-  def get_input_shapes(self):
+  def get_input_shapes(self, subset):
+    del subset
     return [[self.batch_size], [self.batch_size], [self.batch_size]]
 
-  def get_input_data_types(self):
+  def get_input_data_types(self, subset):
+    del subset
     return [self.int32, tf.int32, tf.int32]

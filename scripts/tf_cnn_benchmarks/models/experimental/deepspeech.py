@@ -269,12 +269,14 @@ class DeepSpeech2Model(model_lib.Model):
 
     return rnn_outputs
 
-  def get_input_data_types(self):
+  def get_input_data_types(self, subset):
     """Returns the list of data types of the inputs."""
+    del subset  # Same data types for both train and validation subsets.
     return [self.data_type, tf.int32, tf.int32, tf.int32]
 
-  def get_input_shapes(self):
+  def get_input_shapes(self, subset):
     """Returns the list of shapes of the padded inputs."""
+    del subset  # Same shapes for both train and validation subsets
     return [
         [self.batch_size, self.max_time_steps, self.num_feature_bins, 1],
         [self.batch_size, self.max_label_length],
@@ -283,8 +285,8 @@ class DeepSpeech2Model(model_lib.Model):
     ]
 
   def get_synthetic_inputs(self, input_name, nclass):
-    inputs = tf.random_uniform(
-        self.get_input_shapes()[0], dtype=self.get_input_data_types()[0])
+    inputs = tf.random_uniform(self.get_input_shapes('train')[0],
+                               dtype=self.get_input_data_types('train')[0])
     inputs = tf.contrib.framework.local_variable(inputs, name=input_name)
     labels = tf.convert_to_tensor(
         np.random.randint(28, size=[self.batch_size, self.max_label_length]))

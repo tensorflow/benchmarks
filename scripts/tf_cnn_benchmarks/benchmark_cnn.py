@@ -1299,10 +1299,6 @@ class BenchmarkCNN(object):
         raise ValueError('When --eval_during_training_every_n_steps is '
                          'specified, --use_multi_device_iterator=false must be '
                          'specified')
-      if params.model == 'ssd300':
-        # TODO(b/116627045): Support the SSD model.
-        raise ValueError('--eval_during_training_every_n_steps is currently '
-                         'not compatible with the ssd300 model.')
       if params.staged_vars:
         raise ValueError('--eval_during_training_every_n_steps is not '
                          'currently compatible with --staged_vars')
@@ -1839,6 +1835,8 @@ class BenchmarkCNN(object):
           summary_writer.add_summary(summary_str)
         else:
           results = sess.run(fetches)
+        # Make global_step available in results for postprocessing.
+        results['global_step'] = global_step
         results = self.model.postprocess(results)
         top_1_accuracy_sum += results['top_1_accuracy']
         top_5_accuracy_sum += results['top_5_accuracy']
@@ -2440,17 +2438,18 @@ class BenchmarkCNN(object):
     if self.datasets_use_prefetch:
       if self.params.use_multi_device_iterator:
         multi_device_iterator = (
-            self.input_preprocessor.build_multi_device_iterator(
+            input_preprocessor.build_multi_device_iterator(
                 self.batch_size, len(self.devices), self.cpu_device,
                 self.params, self.raw_devices, self.dataset, self._doing_eval))
         return input_processing_info._replace(
             multi_device_iterator_input=multi_device_iterator.get_next())
 
+      subset = 'validation' if self._doing_eval else 'train'
       function_buffering_resources = (
-          self.input_preprocessor.build_prefetch_input_processing(
-              self.batch_size, self.model.get_input_shapes(),
+          input_preprocessor.build_prefetch_input_processing(
+              self.batch_size, self.model.get_input_shapes(subset),
               len(self.devices), self.cpu_device, self.params, self.devices,
-              self.model.get_input_data_types(), self.dataset,
+              self.model.get_input_data_types(subset), self.dataset,
               self._doing_eval))
       return input_processing_info._replace(
           function_buffering_resources=function_buffering_resources)
@@ -2860,9 +2859,10 @@ class BenchmarkCNN(object):
                          'cannot be specified. Only one should be.')
       with tf.device(self.raw_devices[rel_device_num]):
         if function_buffering_resource is not None:
+          subset = 'validation' if self._doing_eval else 'train'
           input_list = prefetching_ops.function_buffering_resource_get_next(
               function_buffering_resource,
-              output_types=self.model.get_input_data_types())
+              output_types=self.model.get_input_data_types(subset))
         else:
           input_list = input_data
     else:
@@ -2900,7 +2900,8 @@ class BenchmarkCNN(object):
       with tf.device(device):
         return tf.reshape(tensor, shape=shape)
 
-    input_shapes = self.model.get_input_shapes()
+    subset = 'validation' if self._doing_eval else 'train'
+    input_shapes = self.model.get_input_shapes(subset)
     input_list = [
         device_aware_reshape(input_list[i], shape=input_shapes[i])
         for i in range(len(input_list))
@@ -3089,9 +3090,10 @@ class BenchmarkCNN(object):
     processor_class = self.dataset.get_input_preprocessor(
         self.params.input_preprocessor)
     assert processor_class
+    subset = 'validation' if self._doing_eval else 'train'
     return processor_class(
         self.batch_size * self.batch_group_size,
-        self.model.get_input_shapes(),
+        self.model.get_input_shapes(subset),
         len(self.devices) * self.batch_group_size,
         dtype=self.model.data_type,
         train=(not self._doing_eval),

@@ -62,7 +62,7 @@ def get_var_shapes(model):
   """Returns the list of variable shapes for a tf_cnn_benchmarks Model."""
   with tf.Graph().as_default():
     # The variable shapes do not depend on the batch size.
-    images = tf.placeholder(tf.float32, model.get_input_shapes()[0])
+    images = tf.placeholder(tf.float32, model.get_input_shapes('train')[0])
     model.build_network([images])
     return [[int(d) for d in v.shape.dims] for v in tf.trainable_variables()]
 

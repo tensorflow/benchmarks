@@ -83,12 +83,14 @@ class Model(object):
     del batch_size
     return self.learning_rate
 
-  def get_input_shapes(self):
+  def get_input_shapes(self, subset):
     """Returns the list of expected shapes of all the inputs to this model."""
+    del subset
     raise NotImplementedError('Must be implemented in derived classes')
 
-  def get_input_data_types(self):
+  def get_input_data_types(self, subset):
     """Returns the list of data types of all the inputs to this model."""
+    del subset
     raise NotImplementedError('Must be implemented in derived classes')
 
   def get_synthetic_inputs(self, input_name, nclass):
@@ -204,11 +206,14 @@ class CNNModel(Model):
     del cnn
     raise NotImplementedError('Must be implemented in derived classes')
 
-  def get_input_data_types(self):
-    # Data type of input and label.
+  def get_input_data_types(self, subset):
+    """Return data types of inputs for the specified subset."""
+    del subset  # Same types for both 'train' and 'validation' subsets.
     return [self.data_type, tf.int32]
 
-  def get_input_shapes(self):
+  def get_input_shapes(self, subset):
+    """Return data shapes of inputs for the specified subset."""
+    del subset  # Same shapes for both 'train' and 'validation' subsets.
     # Each input is of shape [batch_size, height, width, depth]
     # Each label is of shape [batch_size]
     return [[self.batch_size, self.image_size, self.image_size, self.depth],
@@ -216,7 +221,7 @@ class CNNModel(Model):
 
   def get_synthetic_inputs(self, input_name, nclass):
     # Synthetic input should be within [0, 255].
-    image_shape, label_shape = self.get_input_shapes()
+    image_shape, label_shape = self.get_input_shapes('train')
     inputs = tf.truncated_normal(
         image_shape,
         dtype=self.data_type,

@@ -79,6 +79,9 @@ class SSD300Model(model_lib.CNNModel):
     #   pred_scores: scores of classes in prediction
     self.predictions = {}
 
+    # Global step when predictions are collected.
+    self.eval_global_step = 0
+
     # The MLPerf reference uses a starting lr of 1e-3 at bs=32.
     self.base_lr_batch_size = 32
 
@@ -390,11 +393,14 @@ class SSD300Model(model_lib.CNNModel):
     for saver in self.backbone_savers:
       saver.restore(sess, backbone_model_path)
 
-  def get_input_shapes(self):
+  def get_input_data_types(self, subset):
+    if subset == 'validation':
+      return [self.data_type, tf.float32, tf.float32, tf.float32, tf.int32]
+    return [self.data_type, tf.float32, tf.float32, tf.float32]
+
+  def get_input_shapes(self, subset):
     """Return encoded tensor shapes for train and eval data respectively."""
-    # TODO(b/116627045): Instead of checking eval here, pass doing_eval to each
-    # model constructor.
-    if self.params.eval:
+    if subset == 'validation':
       # Validation data shapes:
       # 1. images
       # 2. ground truth locations of boxes
@@ -495,6 +501,16 @@ class SSD300Model(model_lib.CNNModel):
     source_id = results[ssd_constants.SOURCE_ID]
     raw_shape = results[ssd_constants.RAW_SHAPE]
 
+    # COCO evaluation requires processing COCO_NUM_VAL_IMAGES exactly once. Due
+    # to rounding errors (i.e., COCO_NUM_VAL_IMAGES % batch_size != 0), setting
+    # `num_eval_epochs` to 1 is not enough and will often miss some images. We
+    # expect user to set `num_eval_epochs` to >1, which will leave some unused
+    # images from previous steps in `predictions`. Here we check if we are doing
+    # eval at a new global step.
+    if results['global_step'] > self.eval_global_step:
+      self.eval_global_step = results['global_step']
+      self.predictions.clear()
+
     for i in range(self.get_batch_size()):
       self.predictions[int(source_id[i])] = {
           ssd_constants.PRED_BOXES: pred_boxes[i],
@@ -506,10 +522,13 @@ class SSD300Model(model_lib.CNNModel):
     # COCO metric calculates mAP only after a full epoch of evaluation. Return
     # dummy results for top_N_accuracy to be compatible with benchmar_cnn.py.
     if len(self.predictions) >= ssd_constants.COCO_NUM_VAL_IMAGES:
+      log_fn('Got results for all {:d} eval examples. Calculate mAP...'.format(
+          ssd_constants.COCO_NUM_VAL_IMAGES))
       annotation_file = os.path.join(self.params.data_dir,
                                      ssd_constants.ANNOTATION_FILE)
       eval_results = coco_metric.compute_map(self.predictions.values(),
                                              annotation_file)
+      self.predictions.clear()
       ret = {'top_1_accuracy': 0., 'top_5_accuracy': 0.}
       for metric_key, metric_value in eval_results.items():
         ret[constants.SIMPLE_VALUE_RESULT_PREFIX + metric_key] = metric_value
@@ -521,7 +540,8 @@ class SSD300Model(model_lib.CNNModel):
 
   def get_synthetic_inputs(self, input_name, nclass):
     """Generating synthetic data matching real data shape and type."""
-    inputs = tf.random_uniform(self.get_input_shapes()[0], dtype=self.data_type)
+    inputs = tf.random_uniform(
+        self.get_input_shapes('train')[0], dtype=self.data_type)
     inputs = tf.contrib.framework.local_variable(inputs, name=input_name)
     boxes = tf.random_uniform(
         [self.batch_size, ssd_constants.NUM_SSD_BOXES, 4], dtype=tf.float32)
