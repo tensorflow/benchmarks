@@ -3152,30 +3152,8 @@ def _print_os_env_ignored_warning(mkl_flag, flag_default_val, os_env_var):
       (os_env_var, os.environ[os_env_var], flag_default_val, mkl_flag))
 
 
-def setup(params):
-  """Sets up the environment that BenchmarkCNN should run in.
-
-  Args:
-    params: Params tuple, typically created by make_params or
-            make_params_from_flags.
-  Returns:
-    A potentially modified params.
-  Raises:
-    ValueError: invalid parames combinations.
-  """
-
-  # horovod needs to be initialized before create_config_proto() call since
-  # it will be used in config generation if enabled.
-  if params.variable_update == 'horovod':
-    import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
-    hvd.init()
-
-  # Create a dummy session to initialize TF global variables using the input
-  # params. See b/115772076#comment6 for more details.
-  platforms_util.initialize(params, create_config_proto(params))
-  with tf.Session(config=create_config_proto(params)) as sess:
-    del sess
-
+def _set_environ_vars(params):
+  """Sets up the environment variables that BenchmarkCNN should use."""
   if params.batchnorm_persistent:
     os.environ['TF_USE_CUDNN_BATCHNORM_SPATIAL_PERSISTENT'] = '1'
   else:
@@ -3243,6 +3221,44 @@ def setup(params):
       num_private_threads = max(
           cpu_count - total_gpu_thread_count - num_monitoring_threads, 1)
       params = params._replace(datasets_num_private_threads=num_private_threads)
+  return params
+
+
+def setup(params):
+  """Sets up the environment that BenchmarkCNN should run in.
+
+  Args:
+    params: Params tuple, typically created by make_params or
+      make_params_from_flags.
+
+  Returns:
+    A potentially modified params.
+  Raises:
+    ValueError: invalid parames combinations.
+  """
+  # Set up environment variables before doing any other global initialization to
+  # make sure it uses the appropriate environment variables.
+  params = _set_environ_vars(params)
+
+  # horovod needs to be initialized before create_config_proto() call since
+  # it will be used in config generation if enabled.
+  if params.variable_update == 'horovod':
+    import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
+    hvd.init()
+
+  platforms_util.initialize(params, create_config_proto(params))
+
+  if not params.job_name:
+    # Create a dummy session to initialize TF global variables using the input
+    # params. Otherwise, ListDevices function may create global devices using
+    # the default config instead of using the user provided config.
+    #
+    # TODO(hinsu): Find a way to achieve the same for distributed benchmark. It
+    # is not legal to create distributed session after local session. It is also
+    # not possible to create distributed session here as that results in
+    # multiple creation of ClusterManager and Server.
+    with tf.Session(config=create_config_proto(params)) as sess:
+      del sess
 
   return params
 
