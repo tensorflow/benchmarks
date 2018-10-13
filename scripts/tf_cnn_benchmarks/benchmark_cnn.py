@@ -273,8 +273,7 @@ flags.DEFINE_float('gpu_memory_frac_for_testing', 0,
                    'Useful for testing the benchmark script, as this allows '
                    'distributed mode to be run on a single machine. For '
                    'example, if there are two tasks, each can be allocated '
-                   '~40 percent of the memory on a single machine',
-                   lower_bound=0., upper_bound=1.)
+                   '~40 percent of the memory on a single machine')
 flags.DEFINE_boolean('use_tf_layers', True,
                      'If True, use tf.layers for neural network layers. This '
                      'should not affect performance or accuracy in any way.')
@@ -318,6 +317,8 @@ flags.DEFINE_boolean('force_gpu_compatible', False,
                      'whether to enable force_gpu_compatible in GPU_Options')
 flags.DEFINE_boolean('allow_growth', None,
                      'whether to enable allow_growth in GPU_Options')
+flags.DEFINE_boolean('use_unified_memory', None,
+                     'whether to enable use_unified_memory in GPU_Options')
 flags.DEFINE_boolean('xla', False, 'whether to enable XLA')
 flags.DEFINE_boolean('fuse_decode_and_crop', True,
                      'Fuse decode_and_crop for image preprocessing.')
@@ -629,6 +630,8 @@ def create_config_proto(params):
     config.gpu_options.visible_device_list = str(hvd.local_rank())
   if params.variable_update == 'collective_all_reduce':
     config.gpu_options.experimental.num_dev_to_dev_copy_streams = 2
+  if params.use_unified_memory:
+    config.gpu_options.experimental.use_unified_memory = params.use_unified_memory
 
   return config
 
