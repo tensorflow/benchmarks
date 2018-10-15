@@ -158,6 +158,10 @@ flags.DEFINE_float('num_epochs', None,
 flags.DEFINE_float('num_eval_epochs', None,
                    'number of eval epochs to run, excluding warmup. '
                    'Defaults to --num_epochs')
+flags.DEFINE_float('stop_at_top_1_accuracy', None,
+                   'If set, stops training after the evaluation accuracy hits '
+                   'this number. Can only be used with '
+                   '--eval_during_training_every_n_steps')
 flags.DEFINE_integer('num_warmup_batches', None,
                      'number of batches to run before timing')
 flags.DEFINE_integer('autotune_threshold', None,
@@ -1302,6 +1306,10 @@ class BenchmarkCNN(object):
       if params.staged_vars:
         raise ValueError('--eval_during_training_every_n_steps is not '
                          'currently compatible with --staged_vars')
+    if (params.stop_at_top_1_accuracy and
+        not params.eval_during_training_every_n_steps):
+      raise ValueError('--stop_at_top_1_accuracy is only supported with '
+                       '--eval_during_training_every_n_steps')
     if self.params.forward_only and self.params.freeze_when_forward_only:
       if self.params.train_dir is not None:
         raise ValueError('In forward_only mode, when --freeze_when_forward_only'
@@ -1879,6 +1887,7 @@ class BenchmarkCNN(object):
             tf.GraphKeys.GLOBAL_STEP, global_step,
         }
         self.benchmark_logger.log_evaluation_result(eval_result)
+      return accuracy_at_1, accuracy_at_5
 
   def _benchmark_train(self):
     """Run cnn in benchmark mode. Skip the backward pass if forward_only is on.
@@ -2164,6 +2173,7 @@ class BenchmarkCNN(object):
           sess = tf_debug.TensorBoardDebugWrapperSession(sess,
                                                          self.params.debugger)
       profiler = tf.profiler.Profiler() if self.params.tfprof_file else None
+      skip_final_eval = False
       loop_start_time = time.time()
       last_average_loss = None
       while not done_fn():
@@ -2213,10 +2223,18 @@ class BenchmarkCNN(object):
           python_global_step = sess.run(graph_info.global_step)
           log_fn('Running evaluation at global_step {}'.format(
               python_global_step))
-          self._eval_once(sess, summary_writer, eval_graph_info.fetches,
-                          eval_graph_info.summary_op, eval_image_producer,
-                          python_global_step)
-          log_fn('Resuming training')
+          accuracy_at_1, _ = self._eval_once(
+              sess, summary_writer, eval_graph_info.fetches,
+              eval_graph_info.summary_op, eval_image_producer,
+              python_global_step)
+          if (self.params.stop_at_top_1_accuracy and
+              accuracy_at_1 >= self.params.stop_at_top_1_accuracy):
+            log_fn('Stopping, as eval accuracy at least %s was reached' %
+                   self.params.stop_at_top_1_accuracy)
+            skip_final_eval = True
+            break
+          else:
+            log_fn('Resuming training')
       loop_end_time = time.time()
       # Waits for the global step to be done, regardless of done_fn.
       if global_step_watcher:
@@ -2247,7 +2265,7 @@ class BenchmarkCNN(object):
         log_fn('-' * 64)
       else:
         log_fn('Done with training')
-      if eval_graph_info:
+      if eval_graph_info and not skip_final_eval:
         python_global_step = sess.run(graph_info.global_step)
         log_fn('Running final evaluation at global_step {}'.format(
             python_global_step))

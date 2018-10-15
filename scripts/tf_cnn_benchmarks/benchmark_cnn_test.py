@@ -1120,6 +1120,30 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     self.assertAlmostEqual(bench_cnn.num_eval_epochs,
                            100 / datasets.IMAGENET_NUM_VAL_IMAGES)
 
+  def testEarlyStopping(self):
+    params = benchmark_cnn.make_params(
+        batch_size=2,
+        display_every=1,
+        num_batches=100,
+        eval_during_training_every_n_steps=2,
+        stop_at_top_1_accuracy=0.4,
+        use_multi_device_iterator=False
+    )
+    with mock.patch.object(benchmark_cnn.BenchmarkCNN, '_eval_once',
+                           side_effect=[(0.1, 0.1), (0.5, 0.5), (0.2, 0.2)]
+                          ) as mock_eval_once:
+      logs = []
+      bench_cnn = benchmark_cnn.BenchmarkCNN(params)
+      with test_util.monkey_patch(benchmark_cnn,
+                                  log_fn=test_util.print_and_add_to_list(logs)):
+        bench_cnn.run()
+      training_outputs = test_util.get_training_outputs_from_logs(
+          logs, print_training_accuracy=False)
+      # We should stop after the second evaluation, and we evaluate every 2
+      # steps. So there should be 2 * 2 = 4 training outputs.
+      self.assertEqual(len(training_outputs), 4)
+      self.assertEqual(mock_eval_once.call_count, 2)
+
   def testInvalidFlags(self):
     params = benchmark_cnn.make_params(device='cpu', data_format='NCHW')
     with self.assertRaises(ValueError):
