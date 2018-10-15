@@ -425,6 +425,10 @@ flags.DEFINE_boolean('use_resource_vars', False,
                      'Use resource variables instead of normal variables. '
                      'Resource variables are slower, but this option is useful '
                      'for debugging their performance.')
+flags.DEFINE_boolean('compute_lr_on_cpu', False,
+                     'If True, do computations related to learning rate on the '
+                     'CPU instead of the GPU. This will significantly improve '
+                     'XLA performance in some cases.')
 # Performance tuning specific to MKL.
 flags.DEFINE_boolean('mkl', False, 'If true, set MKL environment variables.')
 flags.DEFINE_integer('kmp_blocktime', 0,
@@ -2655,6 +2659,21 @@ class BenchmarkCNN(object):
     apply_gradient_devices, gradient_state = (
         self.variable_mgr.preprocess_device_grads(device_grads))
 
+    # TODO(reedwm): Greatly simplify the learning rate code.
+    if (self.params.variable_update == 'horovod' or
+        self.params.variable_update == 'collective_all_reduce'):
+      # Each worker independently increments global_step.
+      examples_per_step = self.batch_size * self.num_workers
+    else:
+      # global_step is shared by all workers, and so every iteration
+      # global_step is incremented by num_workers.
+      examples_per_step = self.batch_size
+    if self.params.compute_lr_on_cpu:
+      with tf.device(self.cpu_device):
+        learning_rate = get_learning_rate(self.params, global_step,
+                                          self.dataset.num_examples_per_epoch(),
+                                          self.model, examples_per_step)
+
     training_ops = []
     for d, device in enumerate(apply_gradient_devices):
       with tf.device(device):
@@ -2664,20 +2683,13 @@ class BenchmarkCNN(object):
           avg_grads = self.variable_mgr.get_gradients_to_apply(d,
                                                                gradient_state)
 
+        if not self.params.compute_lr_on_cpu:
+          # We compute the learning rate once for each device in
+          # `apply_gradient_devices`.
+          learning_rate = get_learning_rate(
+              self.params, global_step, self.dataset.num_examples_per_epoch(),
+              self.model, examples_per_step)
         gradient_clip = self.params.gradient_clip
-        # TODO(reedwm): Greatly simplify the learning rate code.
-        if (self.params.variable_update == 'horovod' or
-            self.params.variable_update == 'collective_all_reduce'):
-          # Each worker independently increments global_step.
-          examples_per_step = self.batch_size * self.num_workers
-        else:
-          # global_step is shared by all workers, and so every iteration
-          # global_step is incremented by num_workers.
-          examples_per_step = self.batch_size
-        learning_rate = get_learning_rate(self.params, global_step,
-                                          self.dataset.num_examples_per_epoch(),
-                                          self.model, examples_per_step)
-
         if gradient_clip is not None:
           with tf.name_scope('clip_gradients'):
             clipped_grads = [(tf.clip_by_value(grad, -gradient_clip,
