@@ -273,7 +273,10 @@ flags.DEFINE_float('gpu_memory_frac_for_testing', 0,
                    'Useful for testing the benchmark script, as this allows '
                    'distributed mode to be run on a single machine. For '
                    'example, if there are two tasks, each can be allocated '
-                   '~40 percent of the memory on a single machine')
+                   '~40 percent of the memory on a single machine. This is '
+                   'also useful for using unified memory, as this can be set '
+                   'above 1 to oversubscribe the GPU using unified memory.',
+                   lower_bound=0.)
 flags.DEFINE_boolean('use_tf_layers', True,
                      'If True, use tf.layers for neural network layers. This '
                      'should not affect performance or accuracy in any way.')
