@@ -65,7 +65,7 @@ def get_test_image_preprocessor(batch_size, params):
     labels = np.array([0] * half_batch_size + [1] * half_batch_size,
                       dtype=np.int32)
     preprocessor = preprocessing.TestImagePreprocessor(
-        227, 227, batch_size, params.num_gpus,
+        batch_size, [227, 227, 3], params.num_gpus,
         benchmark_cnn.get_data_type(params))
     preprocessor.set_fake_data(images, labels)
     preprocessor.expected_subset = 'validation' if params.eval else 'train'
@@ -85,7 +85,7 @@ def run_with_real_model(params):
     # pylint: disable=protected-access
     bench.dataset._queue_runner_required = True
     # pylint: enable=protected-access
-    bench.image_preprocessor = preprocessor
+    bench.input_preprocessor = preprocessor
   bench.run()
 
 
@@ -100,7 +100,7 @@ def run_with_test_model(params):
     # The test model does not use labels when computing loss, so the label
     # values do not matter as long as it's the right shape.
     labels = np.array([1] * inputs.shape[0])
-    bench.image_preprocessor.set_fake_data(inputs, labels)
+    bench.input_preprocessor.set_fake_data(inputs, labels)
     bench.run()
 
 

@@ -24,13 +24,14 @@ import os
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.platform import test
 import benchmark_cnn
 import cnn_util
 import datasets
 import preprocessing
 from models import model
 from platforms import util as platforms_util
+from test_data import tfrecord_image_generator
+from tensorflow.python.platform import test
 
 
 @contextmanager
@@ -40,12 +41,13 @@ def monkey_patch(obj, **kwargs):
   The attributes are patched back to their original value when the context
   manager exits.
 
-  For example, to replace cnn_util.loss_function with an identity function, do:
+  For example, to replace benchmark_cnn.get_data_type with an identity function,
+  do:
 
   ```
-  with monkey_patch(benchmark_cnn, loss_function=lambda x: x)
+  with monkey_patch(benchmark_cnn, get_data_type=lambda x: x)
     loss1 = benchmark_cnn.loss_function(1)  # loss1 will be 1
-  loss2 = benchmark_cnn.loss_function(2)  # Call the original function
+  loss2 = benchmark_cnn.loss_function(params)  # Call the original function
   ```
 
   Args:
@@ -138,27 +140,26 @@ def get_evaluation_outputs_from_logs(logs):
 
   Args:
     logs: A list of strings, each which is a line from the standard output of
-      tf_cnn_benchmarks from evaluation. Only the line in the form:
+      tf_cnn_benchmarks from evaluation. Only lines in the form:
         Accuracy @ 1 = 0.5000 Accuracy @ 5 = 1.0000 [80 examples]
-      is parsed. The log should only contain one such line.
+      is parsed.
   Returns:
-    An EvalOutput.
+    A list of EvalOutputs. Normally this list only has one EvalOutput, but can
+    contain multiple if training is done and
+    --eval_during_training_every_n_steps is specified.
   """
-  top_1_accuracy = None
-  top_5_accuracy = None
+  eval_outputs = []
   for log in logs:
     if 'Accuracy @ ' in log:
       # Example log:
       #   Accuracy @ 1 = 0.5000 Accuracy @ 5 = 1.0000 [80 examples]
       parts = log.split()
       assert len(parts) == 12
-      assert top_1_accuracy is None
-      assert top_5_accuracy is None
       top_1_accuracy = float(parts[4])
       top_5_accuracy = float(parts[9])
-  assert top_1_accuracy is not None
-  assert top_5_accuracy is not None
-  return EvalOutput(top_1_accuracy, top_5_accuracy)
+      eval_outputs.append(EvalOutput(top_1_accuracy, top_5_accuracy))
+  assert eval_outputs
+  return eval_outputs
 
 
 def check_training_outputs_are_reasonable(testcase, training_outputs,
@@ -290,7 +291,9 @@ def train_and_eval(testcase,
   eval_logs = run_fn('Evaluation', params)
   testcase.assertGreaterEqual(len(eval_logs), 1)
   for lines in eval_logs:
-    top_1_accuracy, top_5_accuracy = get_evaluation_outputs_from_logs(lines)
+    eval_outputs = get_evaluation_outputs_from_logs(lines)
+    assert len(eval_outputs) == 1
+    top_1_accuracy, top_5_accuracy = eval_outputs[0]
     if check_output_values:
       testcase.assertEqual(top_1_accuracy, 1.0)
       testcase.assertEqual(top_5_accuracy, 1.0)
@@ -299,6 +302,13 @@ def train_and_eval(testcase,
 def get_temp_dir(dir_name):
   dir_path = os.path.join(test.get_temp_dir(), dir_name)
   os.mkdir(dir_path)
+  return dir_path
+
+
+def create_black_and_white_images():
+  dir_path = get_temp_dir('black_and_white_images')
+  tfrecord_image_generator.write_black_and_white_tfrecord_data(dir_path,
+                                                               num_classes=1)
   return dir_path
 
 
@@ -446,6 +456,7 @@ class TestCNNModel(model.CNNModel):
   def __init__(self):
     super(TestCNNModel, self).__init__(
         'test_cnn_model', image_size=1, batch_size=1, learning_rate=1)
+    self.depth = 1
 
   VAR_A_INITIAL_VALUE = 1.
   VAR_B_INITIAL_VALUE = 2.
@@ -469,9 +480,9 @@ class TestCNNModel(model.CNNModel):
   def skip_final_affine_layer(self):
     return True
 
-  def loss_function(self, logits, labels, aux_logits):
-    del labels, aux_logits
-    return tf.reduce_mean(logits)
+  def loss_function(self, inputs, build_network_result):
+    del inputs
+    return tf.reduce_mean(build_network_result.logits)
 
   def manually_compute_losses(self, inputs, num_workers, params):
     with tf.Graph().as_default(), tf.device('/cpu:0'):
@@ -481,12 +492,20 @@ class TestCNNModel(model.CNNModel):
                                           (None, 1, 1, 1),
                                           name='inputs_placeholder')
       inputs_reshaped = tf.reshape(inputs_placeholder, (-1, 1))
-      loss = self.loss_function(inputs_reshaped * a * b, None, None)
+      loss = self.loss_function(
+          None,
+          model.BuildNetworkResult(logits=inputs_reshaped * a * b,
+                                   extra_info=None))
       return manually_compute_losses(inputs, inputs_placeholder, loss,
                                      num_workers, params)
 
+  def accuracy_function(self, inputs, logits):
+    del inputs
+    # Let the accuracy be the same as the loss function.
+    return {'top_1_accuracy': logits, 'top_5_accuracy': logits}
 
-class TestDataSet(datasets.Dataset):
+
+class TestDataSet(datasets.ImageDataset):
   """A Dataset consisting of 1x1 images with a depth of 1."""
 
   def __init__(self, height=1, width=1, depth=1):
@@ -498,8 +517,8 @@ class TestDataSet(datasets.Dataset):
     del subset
     return 1
 
-  def get_image_preprocessor(self, input_preprocessor='default'):
+  def get_input_preprocessor(self, input_preprocessor='default'):
     return preprocessing.TestImagePreprocessor
 
-  def use_synthetic_gpu_images(self):
+  def use_synthetic_gpu_inputs(self):
     return False

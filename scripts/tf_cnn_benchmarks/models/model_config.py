@@ -16,6 +16,8 @@
 """Model configurations for CNN benchmarks.
 """
 
+from functools import partial
+
 from models import alexnet_model
 from models import densenet_model
 from models import googlenet_model
@@ -26,8 +28,11 @@ from models import nasnet_model
 from models import official_resnet_model
 from models import overfeat_model
 from models import resnet_model
+from models import ssd_model
 from models import trivial_model
 from models import vgg_model
+from models.experimental import deepspeech
+from models.experimental import official_ncf_model
 
 
 _model_name_to_imagenet_model = {
@@ -42,29 +47,29 @@ _model_name_to_imagenet_model = {
     'inception3': inception_model.Inceptionv3Model,
     'inception4': inception_model.Inceptionv4Model,
     'official_resnet18_v2':
-    lambda: official_resnet_model.ImagenetResnetModel(18),
+        partial(official_resnet_model.ImagenetResnetModel, 18),
     'official_resnet34_v2':
-    lambda: official_resnet_model.ImagenetResnetModel(34),
+        partial(official_resnet_model.ImagenetResnetModel, 34),
     'official_resnet50_v2':
-    lambda: official_resnet_model.ImagenetResnetModel(50),
+        partial(official_resnet_model.ImagenetResnetModel, 50),
     'official_resnet101_v2':
-    lambda: official_resnet_model.ImagenetResnetModel(101),
+        partial(official_resnet_model.ImagenetResnetModel, 101),
     'official_resnet152_v2':
-    lambda: official_resnet_model.ImagenetResnetModel(152),
+        partial(official_resnet_model.ImagenetResnetModel, 152),
     'official_resnet200_v2':
-    lambda: official_resnet_model.ImagenetResnetModel(200),
+        partial(official_resnet_model.ImagenetResnetModel, 200),
     'official_resnet18':
-    lambda: official_resnet_model.ImagenetResnetModel(18, version=1),
+        partial(official_resnet_model.ImagenetResnetModel, 18, version=1),
     'official_resnet34':
-    lambda: official_resnet_model.ImagenetResnetModel(34, version=1),
+        partial(official_resnet_model.ImagenetResnetModel, 34, version=1),
     'official_resnet50':
-    lambda: official_resnet_model.ImagenetResnetModel(50, version=1),
+        partial(official_resnet_model.ImagenetResnetModel, 50, version=1),
     'official_resnet101':
-    lambda: official_resnet_model.ImagenetResnetModel(101, version=1),
+        partial(official_resnet_model.ImagenetResnetModel, 101, version=1),
     'official_resnet152':
-    lambda: official_resnet_model.ImagenetResnetModel(152, version=1),
+        partial(official_resnet_model.ImagenetResnetModel, 152, version=1),
     'official_resnet200':
-    lambda: official_resnet_model.ImagenetResnetModel(200, version=1),
+        partial(official_resnet_model.ImagenetResnetModel, 200, version=1),
     'resnet50': resnet_model.create_resnet50_model,
     'resnet50_v1.5': resnet_model.create_resnet50_v1_5_model,
     'resnet50_v2': resnet_model.create_resnet50_v2_model,
@@ -75,7 +80,7 @@ _model_name_to_imagenet_model = {
     'nasnet': nasnet_model.NasnetModel,
     'nasnetlarge': nasnet_model.NasnetLargeModel,
     'mobilenet': mobilenet_v2.MobilenetModel,
-
+    'ncf': official_ncf_model.NcfModel,
 }
 
 
@@ -99,23 +104,33 @@ _model_name_to_cifar_model = {
 }
 
 
+_model_name_to_object_detection_model = {
+    'ssd300': ssd_model.SSD300Model
+}
+
+
 def _get_model_map(dataset_name):
-  if 'cifar10' == dataset_name:
+  """Get name to model map for specified dataset."""
+  if dataset_name == 'cifar10':
     return _model_name_to_cifar_model
   elif dataset_name in ('imagenet', 'synthetic'):
     return _model_name_to_imagenet_model
+  elif dataset_name == 'librispeech':
+    return {'deepspeech2': deepspeech.DeepSpeech2Model}
+  elif dataset_name == 'coco':
+    return _model_name_to_object_detection_model
   else:
     raise ValueError('Invalid dataset name: %s' % dataset_name)
 
 
-def get_model_config(model_name, dataset):
+def get_model_config(model_name, dataset, params):
   """Map model name to model network configuration."""
   model_map = _get_model_map(dataset.name)
   if model_name not in model_map:
     raise ValueError('Invalid model name \'%s\' for dataset \'%s\'' %
                      (model_name, dataset.name))
   else:
-    return model_map[model_name]()
+    return model_map[model_name](params=params)
 
 
 def register_model(model_name, dataset_name, model_func):

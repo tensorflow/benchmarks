@@ -18,6 +18,7 @@
 
 from __future__ import print_function
 
+import contextlib
 import re
 
 import tensorflow as tf
@@ -41,6 +42,8 @@ class VariableMgr(object):
 
     # A variable for automatic loss scaling.
     self.grad_has_inf_nan = None
+
+    self._reuse_vars = False
 
   def each_tower_has_variables(self):
     """Returns True if each GPU tower of the model has separate variables."""
@@ -142,6 +145,26 @@ class VariableMgr(object):
       params = tf.trainable_variables()
     return params
 
+  @contextlib.contextmanager
+  def reuse_variables(self):
+    """Context manager that causes variables requested to be reused.
+
+    Variables requested under this context manager must already exist, and will
+    be reused instead of being created again. This should be used if the
+    evaluation model is being built after the training model has already been
+    built. This is because the evaluation model should reuse variables from the
+    training model.
+
+    Yields:
+      Nothing.
+    """
+    old_reuse_vars = self._reuse_vars
+    try:
+      self._reuse_vars = True
+      yield
+    finally:
+      self._reuse_vars = old_reuse_vars
+
 
 class VariableMgrIndependent(VariableMgr):
   """VariableMgr that implements the --independent mode for local jobs.
@@ -155,7 +178,7 @@ class VariableMgrIndependent(VariableMgr):
     return True
 
   def create_outer_variable_scope(self, device_num):
-    return tf.variable_scope('v%s' % device_num,
+    return tf.variable_scope('v%s' % device_num, reuse=self._reuse_vars,
                              use_resource=self.use_resource_vars)
 
   def preprocess_device_grads(self, device_grads):
@@ -192,7 +215,7 @@ class VariableMgrLocalFetchFromPS(VariableMgr):
     return False
 
   def create_outer_variable_scope(self, device_num):
-    return tf.variable_scope('v', reuse=bool(device_num),
+    return tf.variable_scope('v', reuse=bool(device_num) or self._reuse_vars,
                              use_resource=self.use_resource_vars)
 
   def preprocess_device_grads(self, device_grads):
@@ -246,8 +269,8 @@ class VariableMgrLocalFetchFromStagedPS(VariableMgrLocalFetchFromPS):
     self._custom_getter = variable_mgr_util.StagedVariableGetter(
         device_num, self.benchmark_cnn.raw_devices, None, self)
     return tf.variable_scope(
-        'v', reuse=bool(device_num), custom_getter=self._custom_getter,
-        use_resource=self.use_resource_vars)
+        'v', reuse=bool(device_num) or self._reuse_vars,
+        custom_getter=self._custom_getter, use_resource=self.use_resource_vars)
 
   def trainable_variables_on_device(self,
                                     rel_device_num,
@@ -288,7 +311,7 @@ class VariableMgrLocalReplicated(VariableMgr):
     return True
 
   def create_outer_variable_scope(self, device_num):
-    return tf.variable_scope('v%s' % device_num,
+    return tf.variable_scope('v%s' % device_num, reuse=self._reuse_vars,
                              use_resource=self.use_resource_vars)
 
   def preprocess_device_grads(self, device_grads):
@@ -300,7 +323,7 @@ class VariableMgrLocalReplicated(VariableMgr):
     algorithm = batch_allreduce.algorithm_from_params(self.benchmark_cnn.params)
     reduced_grads, self._warmup_ops = algorithm.batch_all_reduce(
         grads_to_reduce, self.benchmark_cnn.params.gradient_repacking,
-        compact_grads, defer_grads)
+        compact_grads, defer_grads, self.benchmark_cnn.params.xla_compile)
     if self.benchmark_cnn.enable_auto_loss_scale:
       # Check for infs or nans
       is_finite_list = []
@@ -391,7 +414,7 @@ class VariableMgrDistributedAllReduce(VariableMgr):
     Returns:
       the requested variable_scope
     """
-    return tf.variable_scope('v%s' % device_num,
+    return tf.variable_scope('v%s' % device_num, reuse=self._reuse_vars,
                              use_resource=self.use_resource_vars)
 
   def preprocess_device_grads(self, device_grads):
@@ -514,7 +537,7 @@ class VariableMgrCollectiveAllReduce(VariableMgr):
     Returns:
       the requested variable_scope
     """
-    return tf.variable_scope('v%s' % device_num)
+    return tf.variable_scope('v%s' % device_num, reuse=self._reuse_vars)
 
   def preprocess_device_grads(self, device_grads):
     reduced_grads = allreduce.sum_gradients_all_reduce(
@@ -627,8 +650,8 @@ class VariableMgrDistributedFetchFromPS(VariableMgr):
     custom_getter = variable_mgr_util.OverrideCachingDevice(
         caching_devices, self.benchmark_cnn.cpu_device, 1024 * 64)
     return tf.variable_scope(
-        'v', reuse=bool(device_num), custom_getter=custom_getter,
-        use_resource=self.use_resource_vars)
+        'v', reuse=bool(device_num) or self._reuse_vars,
+        custom_getter=custom_getter, use_resource=self.use_resource_vars)
 
   def preprocess_device_grads(self, device_grads):
     # Returns (gradient_devices, gradient_state)
@@ -670,8 +693,8 @@ class VariableMgrDistributedFetchFromStagedPS(
         device_num, self.benchmark_cnn.raw_devices,
         self.benchmark_cnn.cpu_device, self)
     return tf.variable_scope(
-        'v', reuse=bool(device_num), custom_getter=self._custom_getter,
-        use_resource=self.use_resource_vars)
+        'v', reuse=bool(device_num) or self._reuse_vars,
+        custom_getter=self._custom_getter, use_resource=self.use_resource_vars)
 
   def supports_staged_vars(self):
     return True
@@ -698,7 +721,7 @@ class VariableMgrDistributedReplicated(VariableMgr):
 
   def create_outer_variable_scope(self, device_num):
     return tf.variable_scope(
-        'v%s' % device_num,
+        'v%s' % device_num, reuse=self._reuse_vars,
         custom_getter=variable_mgr_util.OverrideToLocalVariableIfNotPsVar(),
         use_resource=self.use_resource_vars)
 

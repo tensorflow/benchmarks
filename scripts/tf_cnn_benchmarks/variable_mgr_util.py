@@ -23,6 +23,7 @@ import tensorflow as tf
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gradients_impl
 
 
 PS_SHADOW_VAR_PREFIX = 'ps_var'
@@ -145,6 +146,18 @@ class OverrideCachingDevice(object):
   Variables smaller than a certain threshold are cached on a single specific
   device, as specified in the constructor. All other variables are load balanced
   across a pool of devices, by caching each variable on the least loaded device.
+
+  Note that variable creation only happen when building the model graph on the
+  first device (see how it sets the 'reuse' parameter in
+  VariableMgr.*.create_outer_variable_scope()). That means, for all other
+  devices, the variable scope will reuse the variables created before, which
+  requires that we set the caching_device correctly as otherwise it may not be
+  able to find the previously created variable and will create a new one. This
+  requires when building the model graph on different devices, variables with
+  the same name should have same size.
+
+  TODO(laigd): consider adding tests or verification logic to enforce this, or
+  refactor it.
   """
 
   def __init__(self, devices, device_for_small_variables,
@@ -504,10 +517,14 @@ def aggregate_single_gradient_using_copy(grad_and_vars, use_mean,
       the first tower. The has_nan_or_inf indicates the grads has nan or inf.
   """
   grads = [g for g, _ in grad_and_vars]
-  grad = tf.add_n(grads)
+  if any(isinstance(g, tf.IndexedSlices) for g in grads):
+    # TODO(reedwm): All-reduce IndexedSlices more effectively.
+    grad = gradients_impl._AggregateIndexedSlicesGradients(grads)  # pylint: disable=protected-access
+  else:
+    grad = tf.add_n(grads)
 
   if use_mean and len(grads) > 1:
-    grad = tf.multiply(grad, 1.0 / len(grads))
+    grad = tf.scalar_mul(1.0 / len(grads), grad)
 
   v = grad_and_vars[0][1]
   if check_inf_nan:
