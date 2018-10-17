@@ -1054,7 +1054,6 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
                              init_learning_rate=0,
                              weight_decay=0,
                              eval_during_training_every_n_steps=2,
-                             use_multi_device_iterator=False,
                              distortions=False)
     bench_cnn = benchmark_cnn.BenchmarkCNN(params, model=model, dataset=dataset)
     with test_util.monkey_patch(benchmark_cnn,
@@ -1103,15 +1102,13 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     # Test --eval_during_training_every_n_steps runs with synthetic data.
     params = base_params._replace(
         variable_update='replicated', data_dir=None,
-        eval_during_training_every_n_steps=2, use_multi_device_iterator=False,
-        num_batches=2)
+        eval_during_training_every_n_steps=2, num_batches=2)
     benchmark_cnn.BenchmarkCNN(params).run()
 
   def testEvalDuringTrainingNumEpochs(self):
     params = benchmark_cnn.make_params(
         batch_size=1, eval_during_training_every_n_steps=1,
-        use_multi_device_iterator=False, num_batches=30,
-        num_eval_epochs=100 / datasets.IMAGENET_NUM_VAL_IMAGES)
+        num_batches=30, num_eval_epochs=100 / datasets.IMAGENET_NUM_VAL_IMAGES)
     bench_cnn = benchmark_cnn.BenchmarkCNN(params)
     self.assertEqual(bench_cnn.num_batches, 30)
     self.assertAlmostEqual(bench_cnn.num_epochs,
@@ -1127,7 +1124,6 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
         num_batches=100,
         eval_during_training_every_n_steps=2,
         stop_at_top_1_accuracy=0.4,
-        use_multi_device_iterator=False
     )
     with mock.patch.object(benchmark_cnn.BenchmarkCNN, '_eval_once',
                            side_effect=[(0.1, 0.1), (0.5, 0.5), (0.2, 0.2)]
@@ -1329,7 +1325,7 @@ class VariableUpdateTest(tf.test.TestCase):
     # TODO(reedwm): Test that the eval results are correct. This only tests that
     # training results are correct.
     params = test_util.get_var_update_params()._replace(
-        eval_during_training_every_n_steps=1, use_multi_device_iterator=False)
+        eval_during_training_every_n_steps=1)
     self._test_variable_updates(params, var_updates=('replicated',))
 
 

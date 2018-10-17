@@ -1302,11 +1302,6 @@ class BenchmarkCNN(object):
       if params.job_name:
         raise ValueError('--eval_during_training_every_n_steps is not yet '
                          'supported in distributed mode.')
-      if params.use_multi_device_iterator:
-        # TODO(b/116627045): Support --use_multi_device_iterator
-        raise ValueError('When --eval_during_training_every_n_steps is '
-                         'specified, --use_multi_device_iterator=false must be '
-                         'specified')
       if params.staged_vars:
         raise ValueError('--eval_during_training_every_n_steps is not '
                          'currently compatible with --staged_vars')
