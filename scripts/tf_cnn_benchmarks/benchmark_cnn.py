@@ -429,6 +429,11 @@ flags.DEFINE_boolean('compute_lr_on_cpu', False,
                      'If True, do computations related to learning rate on the '
                      'CPU instead of the GPU. This will significantly improve '
                      'XLA performance in some cases.')
+flags.DEFINE_boolean('sparse_to_dense_grads', False,
+                     'If True, convert all sparse gradients to dense gradients '
+                     'before passing them to the optimizer to update '
+                     'variables. Only affects models with sparse gradients, '
+                     'which currently is only the NCF model.')
 # Performance tuning specific to MKL.
 flags.DEFINE_boolean('mkl', False, 'If true, set MKL environment variables.')
 flags.DEFINE_integer('kmp_blocktime', 0,
@@ -3002,6 +3007,11 @@ class BenchmarkCNN(object):
       scaled_loss = (total_loss if self.loss_scale is None
                      else total_loss * self.loss_scale)
       grads = tf.gradients(scaled_loss, params, aggregation_method=aggmeth)
+      if self.params.sparse_to_dense_grads:
+        # Passing a sparse gradient to convert_to_tensor turns it into a dense
+        # gradient. A sparse gradient is an instance of tf.IndexedSlices.
+        # convert_to_tensor does not modify dense tensors.
+        grads = [tf.convert_to_tensor(g) for g in grads]
       if self.loss_scale is not None:
         # TODO(reedwm): If automatic loss scaling is not used, we could avoid
         # these multiplications by directly modifying the learning rate instead.

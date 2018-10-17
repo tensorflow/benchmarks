@@ -43,7 +43,14 @@ _NUM_ITEMS_20M = 26744
 
 
 class NcfModel(model.Model):
-  """A model.Model wrapper around the official NCF recommendation model."""
+  r"""A model.Model wrapper around the official NCF recommendation model.
+
+  To do an NCF run with synthetic data that roughly matches what the official
+  model does, run:
+
+  python tf_cnn_benchmarks.py --optimizer=adam --model=ncf --batch_size=65536 \
+      --weight_decay=0 --sparse_to_dense_grads
+  """
 
   def __init__(self, params=None):
     super(NcfModel, self).__init__(
