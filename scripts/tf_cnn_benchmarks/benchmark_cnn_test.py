@@ -1140,6 +1140,14 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
       self.assertEqual(len(training_outputs), 4)
       self.assertEqual(mock_eval_once.call_count, 2)
 
+  def testOutOfRangeErrorsAreNotIgnored(self):
+    error_msg = 'Fake OutOfRangeError error message'
+    with mock.patch.object(benchmark_cnn.BenchmarkCNN, 'benchmark_with_session',
+                           side_effect=tf.errors.OutOfRangeError(None, None,
+                                                                 error_msg)):
+      with self.assertRaisesRegexp(RuntimeError, error_msg):
+        benchmark_cnn.BenchmarkCNN(benchmark_cnn.make_params()).run()
+
   def testInvalidFlags(self):
     params = benchmark_cnn.make_params(device='cpu', data_format='NCHW')
     with self.assertRaises(ValueError):
