@@ -137,6 +137,19 @@ flags.DEFINE_integer('eval_during_training_every_n_steps', None,
                      'alone. It also may slightly slow down training, even '
                      'when not taking into account the additional time to '
                      'evaluate.', lower_bound=1)
+flags.DEFINE_float('eval_during_training_every_n_epochs', None,
+                   'After every n training epochs, pause training, run '
+                   'evaluation, then resume training. See '
+                   '--eval_during_training_every_n_steps for more information.')
+flags.DEFINE_list('eval_during_training_at_specified_steps', [],
+                  'Specify a list of training steps, pause training at each of '
+                  'these steps, run evaluation, then resume training. See '
+                  '--eval_during_training_every_n_steps for more information.')
+flags.DEFINE_list('eval_during_training_at_specified_epochs', [],
+                  'Specify a list of training epochs, pause training after '
+                  'each of these epochs, run evaluation, then resume training. '
+                  'See --eval_during_training_every_n_steps for more '
+                  'information.')
 flags.DEFINE_boolean('forward_only', False,
                      'whether use forward-only or training for benchmarking')
 flags.DEFINE_boolean('freeze_when_forward_only', False,
@@ -161,8 +174,8 @@ flags.DEFINE_float('num_eval_epochs', None,
                    'Defaults to --num_epochs')
 flags.DEFINE_float('stop_at_top_1_accuracy', None,
                    'If set, stops training after the evaluation accuracy hits '
-                   'this number. Can only be used with '
-                   '--eval_during_training_every_n_steps')
+                   'this number. Can only be used with one of the '
+                   '--eval_during_training_* flags.')
 flags.DEFINE_integer('num_warmup_batches', None,
                      'number of batches to run before timing')
 flags.DEFINE_integer('autotune_threshold', None,
@@ -751,13 +764,16 @@ def get_mode_from_params(params):
     raise ValueError('Only one of forward_only and eval parameters is true')
 
   if params.eval:
-    return 'evaluation'
+    return constants.BenchmarkMode.EVAL
   elif params.forward_only:
-    return 'forward-only'
-  elif params.eval_during_training_every_n_steps:
-    return 'training + evaluation'
+    return constants.BenchmarkMode.FORWARD_ONLY
+  elif (params.eval_during_training_every_n_steps or
+        params.eval_during_training_every_n_epochs or
+        params.eval_during_training_at_specified_steps or
+        params.eval_during_training_at_specified_epochs):
+    return constants.BenchmarkMode.TRAIN_AND_EVAL
   else:
-    return 'training'
+    return constants.BenchmarkMode.TRAIN
 
 
 # How many digits to show for the loss and accuracies during training.
@@ -1216,7 +1232,7 @@ class BenchmarkCNN(object):
       self._doing_eval = True
     else:
       # Note self._doing_eval can later switch to True in self._do_eval() if
-      # self.params.eval_during_training_every_n_steps is specified.
+      # self.params.eval_during_training_* is specified.
       self._doing_eval = False
     self.dataset = dataset or datasets.create_dataset(self.params.data_dir,
                                                       self.params.data_name)
@@ -1297,24 +1313,36 @@ class BenchmarkCNN(object):
       raise ValueError('At most one of --save_model_secs and '
                        '--save_model_steps can be specified')
 
-    if params.eval_during_training_every_n_steps is not None:
+    eval_during_training_flags = list(map(bool, [
+        params.eval_during_training_every_n_steps,
+        params.eval_during_training_every_n_epochs,
+        params.eval_during_training_at_specified_steps,
+        params.eval_during_training_at_specified_epochs,
+    ]))
+
+    if eval_during_training_flags.count(True) > 1:
+      raise ValueError('At most one flag with --eval_during_training_* prefix '
+                       'must be specified.')
+
+    eval_during_training_enabled = any(eval_during_training_flags)
+
+    if eval_during_training_enabled:
       if params.eval:
-        raise ValueError('At most one of --eval and '
-                         '--eval_during_training_every_n_steps must be '
-                         'specified')
+        raise ValueError('At most one of --eval and --eval_during_training_* '
+                         'must be specified')
       if params.forward_only:
-        raise ValueError('At most one of --eval and --forward_only must be '
-                         'specified')
+        raise ValueError('At most one of --forward_only and '
+                         '--eval_during_training_* must be specified')
       if params.job_name:
-        raise ValueError('--eval_during_training_every_n_steps is not yet '
-                         'supported in distributed mode.')
+        raise ValueError('--eval_during_training_* is not yet supported in '
+                         'distributed mode.')
       if params.staged_vars:
-        raise ValueError('--eval_during_training_every_n_steps is not '
-                         'currently compatible with --staged_vars')
-    if (params.stop_at_top_1_accuracy and
-        not params.eval_during_training_every_n_steps):
+        raise ValueError('--eval_during_training_* is not currently compatible '
+                         'with --staged_vars')
+
+    if params.stop_at_top_1_accuracy and not eval_during_training_enabled:
       raise ValueError('--stop_at_top_1_accuracy is only supported with '
-                       '--eval_during_training_every_n_steps')
+                       '--eval_during_training_*')
     if self.params.forward_only and self.params.freeze_when_forward_only:
       if self.params.train_dir is not None:
         raise ValueError('In forward_only mode, when --freeze_when_forward_only'
@@ -1347,6 +1375,7 @@ class BenchmarkCNN(object):
     self.loss_scale = None
     self.loss_scale_normal_steps = None
 
+    self.mode = get_mode_from_params(self.params)
     self.job_name = self.params.job_name  # "" for local training
 
     # PS server is used for distributed jobs not using all-reduce.
@@ -1420,7 +1449,8 @@ class BenchmarkCNN(object):
     self.num_batches, self.num_epochs = get_num_batches_and_epochs(
         params, self.batch_size * self.num_workers,
         self.dataset.num_examples_per_epoch(subset))
-    if params.eval or params.eval_during_training_every_n_steps:
+    if self.mode in (constants.BenchmarkMode.EVAL,
+                     constants.BenchmarkMode.TRAIN_AND_EVAL):
       # TODO(reedwm): Currently we do extra eval logic for num_eval_batches and
       # the preprocessor. We should encapsulate this logic into a shared
       # function or class.
@@ -1435,6 +1465,36 @@ class BenchmarkCNN(object):
           self.dataset.num_examples_per_epoch('validation'))
     else:
       self.num_eval_batches, self.num_eval_epochs = None, None
+
+    num_train_examples_per_epoch = self.dataset.num_examples_per_epoch('train')
+    if self.params.eval_during_training_every_n_epochs:
+      n_epochs = self.params.eval_during_training_every_n_epochs
+      self.eval_during_training_at_specified_steps = {
+          (int(e * num_train_examples_per_epoch + self.batch_size - 1) //
+           self.batch_size)
+          for e in np.arange(n_epochs, self.num_epochs, n_epochs)}
+
+    if self.params.eval_during_training_at_specified_steps:
+      try:
+        self.eval_during_training_at_specified_steps = set(map(
+            int, self.params.eval_during_training_at_specified_steps))
+      except ValueError:
+        raise ValueError('Param eval_during_training_at_specified_steps value '
+                         'of %s cannot be converted to a list of integers.' %
+                         (self.params.eval_during_training_at_specified_steps))
+
+    if self.params.eval_during_training_at_specified_epochs:
+      try:
+        n_epochs = map(
+            float, self.params.eval_during_training_at_specified_epochs)
+        self.eval_during_training_at_specified_steps = {
+            (int(e * num_train_examples_per_epoch + self.batch_size - 1) //
+             self.batch_size)
+            for e in n_epochs}
+      except ValueError:
+        raise ValueError('Param eval_during_training_at_specified_epochs value '
+                         'of %s cannot be converted to a list of floats.' %
+                         (self.params.eval_during_training_at_specified_epochs))
 
     if (self.params.staged_vars and
         self.params.variable_update != 'parameter_server'):
@@ -1511,7 +1571,8 @@ class BenchmarkCNN(object):
     if not self.dataset.use_synthetic_gpu_inputs():
       if not self.params.eval:
         self.input_preprocessor = self.get_input_preprocessor()
-      if self.params.eval or self.params.eval_during_training_every_n_steps:
+      if self.mode in (constants.BenchmarkMode.EVAL,
+                       constants.BenchmarkMode.TRAIN_AND_EVAL):
         with self._do_eval():
           self.eval_input_preprocessor = self.get_input_preprocessor()
     self.datasets_use_prefetch = (
@@ -1525,13 +1586,12 @@ class BenchmarkCNN(object):
 
     self._config_benchmark_logger()
 
-    self.mode = get_mode_from_params(self.params)
-    if params.eval_during_training_every_n_steps:
+    if self.mode == constants.BenchmarkMode.TRAIN_AND_EVAL:
       # Remove "eval" from params so it is not accidentally used. Since eval can
       # still occur despite params.eval being False, params.eval should never
       # be used. We cannot yet remove this unconditionally, because the SSD
       # model still uses params.eval, and hence does not work properly with
-      # --eval_during_training_every_n_steps.
+      # --eval_during_training_*.
       # TODO(b/116627045): We should also remove fields that have an eval
       # equivalent, like num_batches and num_eval_batches.
       self.params = remove_param_fields(self.params, {'eval'})
@@ -1878,7 +1938,7 @@ class BenchmarkCNN(object):
              (accuracy_at_1, accuracy_at_5, total_eval_count))
       elapsed_time = loop_end_time - loop_start_time
       images_per_sec = (self.num_batches * self.batch_size / elapsed_time)
-      if not self.params.eval_during_training_every_n_steps:
+      if self.mode != constants.BenchmarkMode.TRAIN_AND_EVAL:
         # Note that we compute the top 1 accuracy and top 5 accuracy for each
         # batch, which will have a slight performance impact.
         log_fn('-' * 64)
@@ -1904,7 +1964,7 @@ class BenchmarkCNN(object):
     graph = tf.Graph()
     with graph.as_default():
       build_result = self._build_graph()
-      if self.params.eval_during_training_every_n_steps:
+      if self.mode == constants.BenchmarkMode.TRAIN_AND_EVAL:
         with self.variable_mgr.reuse_variables():
           with tf.name_scope('Evaluation') as ns:
             eval_build_results = self._build_eval_graph(ns)
@@ -2001,7 +2061,7 @@ class BenchmarkCNN(object):
         contains all necessary information to benchmark the graph, including
         named tensors/ops list, fetches, etc.
       eval_graph_info: Similar to graph_info but for the eval graph if
-        --eval_during_training_every_n_steps is used. Otherwise, None.
+        --eval_during_training_* is used. Otherwise, None.
     Returns:
       Dictionary containing training statistics (num_workers, num_steps,
       average_wall_time, images_per_sec).
@@ -2263,9 +2323,8 @@ class BenchmarkCNN(object):
           is_chief):
         supervisor.saver.save(sess, supervisor.save_path,
                               supervisor.global_step)
-      if (eval_graph_info and
-          local_step % self.params.eval_during_training_every_n_steps == 0 and
-          local_step > 0):
+      if (eval_graph_info and local_step > 0 and not done_fn() and
+          self._should_eval_during_training(local_step)):
         python_global_step = sess.run(graph_info.global_step)
         log_fn('Running evaluation at global_step {}'.format(
             python_global_step))
@@ -2301,9 +2360,9 @@ class BenchmarkCNN(object):
                            if num_steps > 0 else 0)
       images_per_sec = num_steps * self.batch_size / elapsed_time
 
-    # We skip printing images/sec if --eval_during_training_every_n_steps is
-    # specified, because we are both processing training and evaluation
-    # images, so a singular "images/sec" value is meaningless.
+    # We skip printing images/sec if --eval_during_training_* is specified,
+    # because we are both processing training and evaluation images, so a
+    # singular "images/sec" value is meaningless.
     if not self.params.eval_during_training_every_n_steps:
       log_fn('-' * 64)
       # TODO(laigd): rename 'images' to maybe 'inputs'.
@@ -2346,6 +2405,18 @@ class BenchmarkCNN(object):
     if last_average_loss is not None:
       stats['last_average_loss'] = last_average_loss
     return stats
+
+  def _should_eval_during_training(self, step):
+    """Return True iff should run eval during training at current step."""
+
+    assert self.mode == constants.BenchmarkMode.TRAIN_AND_EVAL
+
+    if self.params.eval_during_training_every_n_steps:
+      return step % self.params.eval_during_training_every_n_steps == 0
+
+    # All other --eval_during_training_* flags are converted to step numbers
+    # at which the model should run evaluation during training.
+    return step in self.eval_during_training_at_specified_steps
 
   def _preprocess_graph(self, graph, graph_info):
     """Preprocess the graph before executing.
@@ -2658,7 +2729,7 @@ class BenchmarkCNN(object):
       if staging_delta_ops:
         enqueue_ops.append(tf.group(*(staging_delta_ops)))
 
-    if (self.params.eval_during_training_every_n_steps and
+    if (self.mode == constants.BenchmarkMode.TRAIN_AND_EVAL and
         self.params.variable_update == 'replicated'):
       # We need to get all the update ops instead of only those for the first
       # tower. This is because during evaluation, each tower will read from its

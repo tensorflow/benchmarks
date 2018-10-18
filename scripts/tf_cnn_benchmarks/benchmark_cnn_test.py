@@ -1010,7 +1010,7 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
       params = benchmark_cnn.make_params(num_batches=100, num_epochs=100)
       benchmark_cnn.get_num_batches_and_epochs(params, 1, 1)
 
-  def _testEvalDuringTrainingEveryNSteps(self, data_dir, params):
+  def _testEvalDuringTraining(self, params, expected_num_eval_batches_found):
     # The idea of this test is that all train images are black and all eval
     # images are white. We pass the images through the TestModel, and ensure
     # the outputs are as expected.
@@ -1045,16 +1045,8 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
           assert len(trainable_vars) == len(tf.trainable_variables())
 
     model = TestModel()
-    dataset = datasets.ImagenetDataset(data_dir)
+    dataset = datasets.ImagenetDataset(params.data_dir)
     logs = []
-    params = params._replace(num_warmup_batches=0,
-                             num_batches=7,
-                             num_eval_batches=2,
-                             display_every=1,
-                             init_learning_rate=0,
-                             weight_decay=0,
-                             eval_during_training_every_n_steps=2,
-                             distortions=False)
     bench_cnn = benchmark_cnn.BenchmarkCNN(params, model=model, dataset=dataset)
     with test_util.monkey_patch(benchmark_cnn,
                                 log_fn=test_util.print_and_add_to_list(logs)):
@@ -1077,27 +1069,71 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     for log in logs:
       if eval_batch_regex.match(log):
         num_eval_batches_found += 1
-    expected_num_eval_batches_found = (
-        (params.num_batches // params.eval_during_training_every_n_steps + 1) *
-        params.num_eval_batches)
     self.assertEqual(num_eval_batches_found, expected_num_eval_batches_found)
 
-  def testEvalDuringTrainingEveryNSteps(self):
+  def testEvalDuringTraining(self):
     data_dir = test_util.create_black_and_white_images()
-    base_params = test_util.get_params('testEvalDuringTrainingEveryNSteps')
+    base_params = test_util.get_params('testEvalDuringTraining')
     train_dir = base_params.train_dir
-
     base_params = base_params._replace(
-        train_dir=None, print_training_accuracy=False)
-    self._testEvalDuringTrainingEveryNSteps(data_dir, base_params._replace(
-        variable_update='parameter_server'))
-    self._testEvalDuringTrainingEveryNSteps(data_dir, base_params._replace(
-        variable_update='replicated'))
-    self._testEvalDuringTrainingEveryNSteps(data_dir, base_params._replace(
-        variable_update='replicated', summary_verbosity=2,
-        save_summaries_steps=2, datasets_use_prefetch=False))
-    self._testEvalDuringTrainingEveryNSteps(data_dir, base_params._replace(
-        variable_update='replicated', use_fp16=True, train_dir=train_dir))
+        train_dir=None, print_training_accuracy=False, num_warmup_batches=0,
+        num_batches=7, num_eval_batches=2, display_every=1,
+        init_learning_rate=0, weight_decay=0,
+        distortions=False, data_dir=data_dir)
+    expected_num_eval_batches_found = (
+        base_params.num_eval_batches * (base_params.num_batches // 2 + 1))
+
+    # Test --eval_during_training_every_n_steps
+    self._testEvalDuringTraining(
+        base_params._replace(eval_during_training_every_n_steps=2,
+                             variable_update='parameter_server'),
+        expected_num_eval_batches_found)
+    self._testEvalDuringTraining(
+        base_params._replace(eval_during_training_every_n_steps=2,
+                             variable_update='replicated'),
+        expected_num_eval_batches_found)
+    self._testEvalDuringTraining(
+        base_params._replace(eval_during_training_every_n_steps=2,
+                             variable_update='replicated',
+                             summary_verbosity=2,
+                             save_summaries_steps=2,
+                             datasets_use_prefetch=False),
+        expected_num_eval_batches_found)
+    self._testEvalDuringTraining(
+        base_params._replace(eval_during_training_every_n_steps=2,
+                             variable_update='replicated',
+                             use_fp16=True, train_dir=train_dir),
+        expected_num_eval_batches_found)
+
+    # Test --eval_during_training_every_n_epochs
+    every_n_epochs = (2 * base_params.batch_size * base_params.num_gpus /
+                      datasets.IMAGENET_NUM_TRAIN_IMAGES)
+    self._testEvalDuringTraining(
+        base_params._replace(eval_during_training_every_n_epochs=every_n_epochs,
+                             variable_update='replicated'),
+        expected_num_eval_batches_found)
+
+    # Test --eval_during_training_at_specified_steps
+    list_steps = [2, 3, 5, 7, 1000]
+    num_eval_steps = 1 + sum(1 for step in list_steps
+                             if step < base_params.num_batches)
+    expected_num_eval_batches_found = (
+        base_params.num_eval_batches * num_eval_steps)
+
+    self._testEvalDuringTraining(
+        base_params._replace(eval_during_training_at_specified_steps=list_steps,
+                             variable_update='replicated'),
+        expected_num_eval_batches_found)
+
+    # Test --eval_during_training_at_specified_epochs
+    list_epochs = [(step * base_params.batch_size * base_params.num_gpus /
+                    datasets.IMAGENET_NUM_TRAIN_IMAGES)
+                   for step in list_steps]
+    self._testEvalDuringTraining(
+        base_params._replace(
+            eval_during_training_at_specified_epochs=list_epochs,
+            variable_update='replicated'),
+        expected_num_eval_batches_found)
 
     # Test --eval_during_training_every_n_steps runs with synthetic data.
     params = base_params._replace(

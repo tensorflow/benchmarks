@@ -10,6 +10,14 @@ UNREDUCED_ACCURACY_OP_PREFIX = "tensor:"
 SIMPLE_VALUE_RESULT_PREFIX = "simple_value:"
 
 
+class BenchmarkMode(str, Enum):
+  """Benchmark running mode."""
+  TRAIN = "training"
+  EVAL = "evaluation"
+  TRAIN_AND_EVAL = "training + evaluation"
+  FORWARD_ONLY = "forward only"
+
+
 class NetworkTopology(str, Enum):
   """Network topology describes how multiple GPUs are inter-connected.
   """
