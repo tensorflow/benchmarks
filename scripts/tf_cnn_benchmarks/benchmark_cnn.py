@@ -158,6 +158,7 @@ flags.DEFINE_boolean('print_training_accuracy', False,
                      'whether to calculate and print training accuracy during '
                      'training')
 flags.DEFINE_integer('batch_size', 0, 'batch size per compute device')
+flags.DEFINE_integer('eval_batch_size', 0, 'eval batch size per compute device')
 flags.DEFINE_integer('batch_group_size', 1,
                      'number of groups of batches processed in the image '
                      'producer.')
@@ -1363,19 +1364,28 @@ class BenchmarkCNN(object):
                          '--forward_only and --freeze_when_forward_only is set '
                          'to False')
 
+    self.mode = get_mode_from_params(self.params)
+
     # Use the batch size from the command line if specified, otherwise use the
     # model's default batch size.  Scale the benchmark's batch size by the
     # number of GPUs.
     if self.params.batch_size > 0:
       self.model.set_batch_size(self.params.batch_size)
     self.batch_size = self.model.get_batch_size() * self.num_gpus
+    if self.mode in (constants.BenchmarkMode.EVAL,
+                     constants.BenchmarkMode.TRAIN_AND_EVAL):
+      if self.params.eval_batch_size > 0:
+        self.eval_batch_size = self.params.eval_batch_size * self.num_gpus
+      else:
+        self.eval_batch_size = self.batch_size
+    else:
+      self.eval_batch_size = None
     self.batch_group_size = self.params.batch_group_size
     self.enable_auto_loss_scale = (
         self.params.use_fp16 and self.params.fp16_enable_auto_loss_scale)
     self.loss_scale = None
     self.loss_scale_normal_steps = None
 
-    self.mode = get_mode_from_params(self.params)
     self.job_name = self.params.job_name  # "" for local training
 
     # PS server is used for distributed jobs not using all-reduce.
@@ -1461,7 +1471,7 @@ class BenchmarkCNN(object):
             num_batches=self.params.num_eval_batches,
             num_epochs=self.params.num_eval_epochs)
       self.num_eval_batches, self.num_eval_epochs = get_num_batches_and_epochs(
-          eval_params, self.batch_size * self.num_workers,
+          eval_params, self.eval_batch_size * self.num_workers,
           self.dataset.num_examples_per_epoch('validation'))
     else:
       self.num_eval_batches, self.num_eval_epochs = None, None
@@ -1613,15 +1623,20 @@ class BenchmarkCNN(object):
     old_doing_eval = self._doing_eval
     old_num_batches = self.num_batches
     old_num_epochs = self.num_epochs
+    old_batch_size = self.batch_size
     try:
       self._doing_eval = True
       self.num_batches = self.num_eval_batches
       self.num_epochs = self.num_eval_epochs
+      self.batch_size = self.eval_batch_size
+      self.model.set_batch_size(self.eval_batch_size // self.num_gpus)
       yield
     finally:
       self._doing_eval = old_doing_eval
       self.num_batches = old_num_batches
       self.num_epochs = old_num_epochs
+      self.batch_size = old_batch_size
+      self.model.set_batch_size(old_batch_size // self.num_gpus)
 
   def _config_benchmark_logger(self):
     """Config the model garden benchmark logger."""

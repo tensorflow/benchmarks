@@ -1007,6 +1007,9 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     # images are white. We pass the images through the TestModel, and ensure
     # the outputs are as expected.
 
+    batch_size = params.batch_size
+    eval_batch_size = params.eval_batch_size or params.batch_size
+
     class TestModel(test_util.TestCNNModel):
 
       def __init__(self):
@@ -1018,6 +1021,9 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
           # This will allow us to test that 100 is only added during training
           # and not during eval.
           cnn.top_layer += 100
+          assert cnn.top_layer.shape[0] == batch_size
+        else:
+          assert cnn.top_layer.shape[0] == eval_batch_size
 
         # Reduce the image to a single number. The number should be (-1 + 100)
         # during training and 1 during testing.
@@ -1094,7 +1100,8 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     self._testEvalDuringTraining(
         base_params._replace(eval_during_training_every_n_steps=2,
                              variable_update='replicated',
-                             use_fp16=True, train_dir=train_dir),
+                             use_fp16=True, train_dir=train_dir,
+                             eval_batch_size=base_params.batch_size + 2),
         expected_num_eval_batches_found)
 
     # Test --eval_during_training_every_n_epochs
@@ -1135,13 +1142,13 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
 
   def testEvalDuringTrainingNumEpochs(self):
     params = benchmark_cnn.make_params(
-        batch_size=1, eval_during_training_every_n_steps=1,
+        batch_size=1, eval_batch_size=2, eval_during_training_every_n_steps=1,
         num_batches=30, num_eval_epochs=100 / datasets.IMAGENET_NUM_VAL_IMAGES)
     bench_cnn = benchmark_cnn.BenchmarkCNN(params)
     self.assertEqual(bench_cnn.num_batches, 30)
     self.assertAlmostEqual(bench_cnn.num_epochs,
                            30 / datasets.IMAGENET_NUM_TRAIN_IMAGES)
-    self.assertAlmostEqual(bench_cnn.num_eval_batches, 100)
+    self.assertAlmostEqual(bench_cnn.num_eval_batches, 50)
     self.assertAlmostEqual(bench_cnn.num_eval_epochs,
                            100 / datasets.IMAGENET_NUM_VAL_IMAGES)
 
