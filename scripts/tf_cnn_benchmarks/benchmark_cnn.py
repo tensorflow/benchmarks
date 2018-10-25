@@ -41,6 +41,7 @@ import cnn_util
 import constants
 import datasets
 import flags
+import mlperf
 import variable_mgr
 import variable_mgr_util
 from cnn_util import log_fn
@@ -1164,15 +1165,21 @@ def get_learning_rate(params, global_step, num_examples_per_epoch, model,
       learning_rate = tf.cond(global_step < warmup_steps,
                               lambda: warmup_lr, lambda: learning_rate)
 
+    mlperf.logger.log_deferred_tensor_value(mlperf.tags.OPT_LR, learning_rate,
+                                            every_n=100)
   return learning_rate
 
 
 def get_optimizer(params, learning_rate):
   """Returns the optimizer that should be used based on params."""
   if params.optimizer == 'momentum':
+    mlperf.logger.log(key=mlperf.tags.OPT_NAME,
+                      value=mlperf.tags.SGD_WITH_MOMENTUM)
+    mlperf.logger.log(key=mlperf.tags.OPT_MOMENTUM, value=params.momentum)
     opt = tf.train.MomentumOptimizer(
         learning_rate, params.momentum, use_nesterov=True)
   elif params.optimizer == 'sgd':
+    mlperf.logger.log(key=mlperf.tags.OPT_NAME, value=mlperf.tags.SGD)
     opt = tf.train.GradientDescentOptimizer(learning_rate)
   elif params.optimizer == 'rmsprop':
     opt = tf.train.RMSPropOptimizer(
@@ -1228,6 +1235,7 @@ class BenchmarkCNN(object):
     Raises:
       ValueError: Unsupported params settings.
     """
+    mlperf.logger.log(key=mlperf.tags.RUN_START)
     self.params = params
     if params.eval:
       self._doing_eval = True
@@ -1505,6 +1513,10 @@ class BenchmarkCNN(object):
         raise ValueError('Param eval_during_training_at_specified_epochs value '
                          'of %s cannot be converted to a list of floats.' %
                          (self.params.eval_during_training_at_specified_epochs))
+
+    if (self.params.eval_during_training_every_n_epochs or
+        self.params.eval_during_training_every_n_steps):
+      mlperf.logger.log(key=mlperf.tags.EVAL_EPOCH_OFFSET, value=0)
 
     if (self.params.staged_vars and
         self.params.variable_update != 'parameter_server'):
@@ -1910,6 +1922,7 @@ class BenchmarkCNN(object):
                  image_producer, global_step):
     """Evaluate the model using the validation dataset."""
     with self._do_eval():
+      mlperf.logger.log(key=mlperf.tags.EVAL_START)
       loop_start_time = start_time = time.time()
       # TODO(laigd): refactor the part to compute/report the accuracy. Currently
       # it only works for image models.
@@ -1967,6 +1980,13 @@ class BenchmarkCNN(object):
             tf.GraphKeys.GLOBAL_STEP, global_step,
         }
         self.benchmark_logger.log_evaluation_result(eval_result)
+      mlperf.logger.log(key=mlperf.tags.EVAL_STOP)
+      mlperf.logger.log(key=mlperf.tags.EVAL_SIZE,
+                        value=self.num_batches * self.batch_size)
+      mlperf.logger.log(key=mlperf.tags.EVAL_ACCURACY, value=accuracy_at_1)
+      if self.params.stop_at_top_1_accuracy:
+        mlperf.logger.log(key=mlperf.tags.EVAL_TARGET,
+                          value=self.params.stop_at_top_1_accuracy)
       return accuracy_at_1, accuracy_at_5
 
   def _benchmark_train(self):
@@ -2293,7 +2313,11 @@ class BenchmarkCNN(object):
         log_fn('The TensorBoard debugger plugin will be used.')
         sess = tf_debug.TensorBoardDebugWrapperSession(sess,
                                                        self.params.debugger)
+    mlperf.logger.log(key=mlperf.tags.TRAIN_LOOP)
+    mlperf.logger.log_train_epochs(self.num_epochs)
     skip_final_eval = False
+    accuracy_at_1 = None
+    last_eval_step = local_step
     loop_start_time = time.time()
     last_average_loss = None
     while not done_fn():
@@ -2341,12 +2365,17 @@ class BenchmarkCNN(object):
       if (eval_graph_info and local_step > 0 and not done_fn() and
           self._should_eval_during_training(local_step)):
         python_global_step = sess.run(graph_info.global_step)
+        num_steps_since_last_eval = local_step - last_eval_step
+        mlperf.logger.log(
+            key=mlperf.tags.INPUT_SIZE,
+            value=num_steps_since_last_eval * self.batch_size)
         log_fn('Running evaluation at global_step {}'.format(
             python_global_step))
         accuracy_at_1, _ = self._eval_once(
             sess, summary_writer, eval_graph_info.fetches,
             eval_graph_info.summary_op, eval_image_producer,
             python_global_step)
+        last_eval_step = local_step
         if (self.params.stop_at_top_1_accuracy and
             accuracy_at_1 >= self.params.stop_at_top_1_accuracy):
           log_fn('Stopping, as eval accuracy at least %s was reached' %
@@ -2385,13 +2414,17 @@ class BenchmarkCNN(object):
       log_fn('-' * 64)
     else:
       log_fn('Done with training')
+    num_steps_since_last_eval = local_step - last_eval_step
+    mlperf.logger.log(
+        key=mlperf.tags.INPUT_SIZE,
+        value=num_steps_since_last_eval * self.batch_size)
     if eval_graph_info and not skip_final_eval:
       python_global_step = sess.run(graph_info.global_step)
       log_fn('Running final evaluation at global_step {}'.format(
           python_global_step))
-      self._eval_once(sess, summary_writer, eval_graph_info.fetches,
-                      eval_graph_info.summary_op, eval_image_producer,
-                      python_global_step)
+      accuracy_at_1, _ = self._eval_once(
+          sess, summary_writer, eval_graph_info.fetches,
+          eval_graph_info.summary_op, eval_image_producer, python_global_step)
     if image_producer is not None:
       image_producer.done()
     if eval_image_producer is not None:
@@ -2419,6 +2452,10 @@ class BenchmarkCNN(object):
     }
     if last_average_loss is not None:
       stats['last_average_loss'] = last_average_loss
+    success = bool(accuracy_at_1 and self.params.stop_at_top_1_accuracy and
+                   accuracy_at_1 >= self.params.stop_at_top_1_accuracy)
+    mlperf.logger.log(key=mlperf.tags.RUN_STOP, value={'success': success})
+    mlperf.logger.log(key=mlperf.tags.RUN_FINAL)
     return stats
 
   def _should_eval_during_training(self, step):
@@ -2569,6 +2606,10 @@ class BenchmarkCNN(object):
         function_buffering_resources=None,
         multi_device_iterator_input=None)
 
+    mlperf.logger.log(key=mlperf.tags.INPUT_ORDER)
+    if not self._doing_eval:
+      mlperf.logger.log(key=mlperf.tags.INPUT_BATCH_SIZE, value=self.batch_size)
+
     # If using synthetic gpu inputs, do nothing on the cpu side.
     if self.dataset.use_synthetic_gpu_inputs():
       assert not self.datasets_use_prefetch
@@ -2576,8 +2617,12 @@ class BenchmarkCNN(object):
 
     if self._doing_eval:
       input_preprocessor = self.eval_input_preprocessor
+      mlperf.logger.log(key=mlperf.tags.PREPROC_NUM_EVAL_EXAMPLES,
+                        value=self.dataset.num_examples_per_epoch('validation'))
     else:
       input_preprocessor = self.input_preprocessor
+      mlperf.logger.log(key=mlperf.tags.PREPROC_NUM_TRAIN_EXAMPLES,
+                        value=self.dataset.num_examples_per_epoch('train'))
 
     # Use prefetching mechanism provided by dataset input pipeline.
     if self.datasets_use_prefetch:
@@ -2661,7 +2706,11 @@ class BenchmarkCNN(object):
       seed_adjustment = hvd.rank()
     else:
       seed_adjustment = 0
+    mlperf.logger.log(key=mlperf.tags.RUN_SET_RANDOM_SEED,
+                      value=self.params.tf_random_seed + seed_adjustment)
     tf.set_random_seed(self.params.tf_random_seed + seed_adjustment)
+    mlperf.logger.log(key=mlperf.tags.RUN_SET_RANDOM_SEED,
+                      value=4321 + seed_adjustment)
     np.random.seed(4321 + seed_adjustment)
     phase_train = not (self._doing_eval or self.params.forward_only)
 
@@ -3124,6 +3173,10 @@ class BenchmarkCNN(object):
       weight_decay = self.params.weight_decay
       if (weight_decay is not None and weight_decay != 0. and
           l2_loss is not None):
+        mlperf.logger.log(key=mlperf.tags.MODEL_EXCLUDE_BN_FROM_L2,
+                          value=False)
+        mlperf.logger.log(key=mlperf.tags.MODEL_L2_REGULARIZATION,
+                          value=weight_decay)
         total_loss += len(self.devices) * weight_decay * l2_loss
 
       aggmeth = tf.AggregationMethod.DEFAULT

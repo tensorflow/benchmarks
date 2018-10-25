@@ -19,6 +19,7 @@ from collections import namedtuple
 import tensorflow as tf
 
 import convnet_builder
+import mlperf
 
 # BuildNetworkResult encapsulate the result (e.g. logits) of a
 # Model.build_network() call.
@@ -288,6 +289,7 @@ class CNNModel(Model):
     # and once with the aux logits.
     aux_logits = build_network_result.extra_info
     with tf.name_scope('xentropy'):
+      mlperf.logger.log(key=mlperf.tags.MODEL_HP_LOSS_FN, value=mlperf.tags.CCE)
       cross_entropy = tf.losses.sparse_softmax_cross_entropy(
           logits=logits, labels=labels)
       loss = tf.reduce_mean(cross_entropy, name='xentropy_mean')

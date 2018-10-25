@@ -35,6 +35,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import gfile
+import mlperf
 
 
 def parse_example_proto(example_serialized):
@@ -187,6 +188,7 @@ def normalized_image(images):
   # Rescale from [0, 255] to [0, 2]
   images = tf.multiply(images, 1. / 127.5)
   # Rescale to [-1, 1]
+  mlperf.logger.log(key=mlperf.tags.INPUT_MEAN_SUBTRACTION, value=[1.0] * 3)
   return tf.subtract(images, 1.0)
 
 
@@ -246,6 +248,8 @@ def eval_image(image,
                             tf.int32)
     resize_width = tf.cast(image_width_float * max_ratio * scale_factor,
                            tf.int32)
+    mlperf.logger.log_input_resize_aspect_preserving(height, width,
+                                                     scale_factor)
 
     # Resize the image to shape (`resize_height`, `resize_width`)
     image_resize_method = get_image_resize_method(resize_method, batch_position)
@@ -255,6 +259,9 @@ def eval_image(image,
                                              align_corners=False)
 
     # Do a central crop of the image to size (height, width).
+    # MLPerf requires us to log (height, width) with two different keys.
+    mlperf.logger.log(key=mlperf.tags.INPUT_CENTRAL_CROP, value=[height, width])
+    mlperf.logger.log(key=mlperf.tags.INPUT_RESIZE, value=[height, width])
     total_crop_height = (resize_height - height)
     crop_top = total_crop_height // 2
     total_crop_width = (resize_width - width)
@@ -317,13 +324,26 @@ def train_image(image_buffer,
     # allowed range of aspect ratios, sizes and overlap with the human-annotated
     # bounding box. If no box is supplied, then we assume the bounding box is
     # the entire image.
+    min_object_covered = 0.1
+    aspect_ratio_range = [0.75, 1.33]
+    area_range = [0.05, 1.0]
+    max_attempts = 100
+    mlperf.logger.log(key=mlperf.tags.INPUT_DISTORTED_CROP_MIN_OBJ_COV,
+                      value=min_object_covered)
+    mlperf.logger.log(key=mlperf.tags.INPUT_DISTORTED_CROP_RATIO_RANGE,
+                      value=aspect_ratio_range)
+    mlperf.logger.log(key=mlperf.tags.INPUT_DISTORTED_CROP_AREA_RANGE,
+                      value=area_range)
+    mlperf.logger.log(key=mlperf.tags.INPUT_DISTORTED_CROP_MAX_ATTEMPTS,
+                      value=max_attempts)
+
     sample_distorted_bounding_box = tf.image.sample_distorted_bounding_box(
         tf.image.extract_jpeg_shape(image_buffer),
         bounding_boxes=bbox,
-        min_object_covered=0.1,
-        aspect_ratio_range=[0.75, 1.33],
-        area_range=[0.05, 1.0],
-        max_attempts=100,
+        min_object_covered=min_object_covered,
+        aspect_ratio_range=aspect_ratio_range,
+        area_range=area_range,
+        max_attempts=max_attempts,
         use_image_if_no_bounding_boxes=True)
     bbox_begin, bbox_size, distort_bbox = sample_distorted_bounding_box
     if summary_verbosity >= 3:
@@ -348,10 +368,12 @@ def train_image(image_buffer,
                                    dct_method='INTEGER_FAST')
       image = tf.slice(image, bbox_begin, bbox_size)
 
+    mlperf.logger.log(key=mlperf.tags.INPUT_RANDOM_FLIP)
     distorted_image = tf.image.random_flip_left_right(image)
 
     # This resizing operation may distort the images because the aspect
     # ratio is not respected.
+    mlperf.logger.log(key=mlperf.tags.INPUT_RESIZE, value=[height, width])
     image_resize_method = get_image_resize_method(resize_method, batch_position)
     distorted_image = tf.image.resize_images(
         distorted_image, [height, width],

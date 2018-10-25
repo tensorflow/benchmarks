@@ -27,6 +27,7 @@ from tensorflow.python.layers import convolutional as conv_layers
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.layers import pooling as pooling_layers
 from tensorflow.python.training import moving_averages
+import mlperf
 
 
 class ConvNetBuilder(object):
@@ -199,6 +200,7 @@ class ConvNetBuilder(object):
                                    kernel_initializer=kernel_initializer)
       if use_batch_norm is None:
         use_batch_norm = self.use_batch_norm
+      added_bias = False
       if not use_batch_norm:
         if bias is not None:
           biases = self.get_variable('biases', [num_out_channels],
@@ -207,13 +209,20 @@ class ConvNetBuilder(object):
           biased = tf.reshape(
               tf.nn.bias_add(conv, biases, data_format=self.data_format),
               conv.get_shape())
+          added_bias = True
         else:
           biased = conv
       else:
         self.top_layer = conv
         self.top_size = num_out_channels
         biased = self.batch_norm(**self.batch_norm_config)
+      mlperf.logger.log_conv2d(input_tensor=input_layer, output_tensor=conv,
+                               stride_height=d_height, stride_width=d_width,
+                               filters=num_out_channels,
+                               initializer=kernel_initializer,
+                               use_bias=added_bias)
       if activation == 'relu':
+        mlperf.logger.log(key=mlperf.tags.MODEL_HP_RELU)
         conv1 = tf.nn.relu(biased)
       elif activation == 'linear' or activation is None:
         conv1 = biased
@@ -257,6 +266,9 @@ class ConvNetBuilder(object):
         strides = [1, 1, d_height, d_width]
       pool = tf.nn.max_pool(input_layer, ksize, strides, padding=mode,
                             data_format=self.data_format, name=name)
+    if pool_name == 'mpool':
+      mlperf.logger.log_max_pool(input_tensor=input_layer,
+                                 output_tensor=pool)
     self.top_layer = pool
     return pool
 
@@ -315,8 +327,11 @@ class ConvNetBuilder(object):
       biases = self.get_variable('biases', [num_out_channels],
                                  self.variable_dtype, self.dtype,
                                  initializer=tf.constant_initializer(bias))
+      mlperf.logger.log(key=mlperf.tags.MODEL_HP_DENSE,
+                        value=num_out_channels)
       logits = tf.nn.xw_plus_b(input_layer, kernel, biases)
       if activation == 'relu':
+        mlperf.logger.log(key=mlperf.tags.MODEL_HP_RELU)
         affine1 = tf.nn.relu(logits, name=name)
       elif activation == 'linear' or activation is None:
         affine1 = logits
@@ -441,6 +456,7 @@ class ConvNetBuilder(object):
     name = 'batchnorm' + str(self.counts['batchnorm'])
     self.counts['batchnorm'] += 1
 
+    center = True
     with tf.variable_scope(name) as scope:
       if self.use_tf_layers:
         bn = tf.contrib.layers.batch_norm(
@@ -451,12 +467,16 @@ class ConvNetBuilder(object):
             is_training=self.phase_train,
             fused=True,
             data_format=self.data_format,
-            scope=scope)
+            scope=scope,
+            center=center)
       else:
         bn = self._batch_norm_without_layers(input_layer, decay, scale, epsilon)
     self.top_layer = bn
     self.top_size = bn.shape[3] if self.data_format == 'NHWC' else bn.shape[1]
     self.top_size = int(self.top_size)
+    mlperf.logger.log_batch_norm(
+        input_tensor=input_layer, output_tensor=bn, momentum=decay,
+        epsilon=epsilon, center=center, scale=scale, training=self.phase_train)
     return bn
 
   def lrn(self, depth_radius, bias, alpha, beta):

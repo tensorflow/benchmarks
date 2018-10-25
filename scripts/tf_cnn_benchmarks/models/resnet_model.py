@@ -36,6 +36,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 import datasets
+import mlperf
 from models import model as model_lib
 
 
@@ -62,6 +63,8 @@ def bottleneck_block_v1(cnn, depth, depth_bottleneck, stride):
         shortcut = cnn.apool(
             1, 1, stride, stride, input_layer=input_layer,
             num_channels_in=in_size)
+        mlperf.logger.log_projection(input_tensor=input_layer,
+                                     output_tensor=shortcut)
     else:
       shortcut = cnn.conv(
           depth, 1, 1, stride, stride, activation=None,
@@ -74,6 +77,8 @@ def bottleneck_block_v1(cnn, depth, depth_bottleneck, stride):
              use_batch_norm=True, bias=None)
     res = cnn.conv(depth, 1, 1, 1, 1, activation=None,
                    use_batch_norm=True, bias=None)
+    mlperf.logger.log(key=mlperf.tags.MODEL_HP_SHORTCUT_ADD)
+    mlperf.logger.log(key=mlperf.tags.MODEL_HP_RELU)
     output = tf.nn.relu(shortcut + res)
     cnn.top_layer = output
     cnn.top_size = depth
@@ -110,6 +115,8 @@ def bottleneck_block_v1_5(cnn, depth, depth_bottleneck, stride):
         shortcut = cnn.apool(
             1, 1, stride, stride, input_layer=input_layer,
             num_channels_in=in_size)
+        mlperf.logger.log_projection(input_tensor=input_layer,
+                                     output_tensor=shortcut)
     else:
       shortcut = cnn.conv(
           depth, 1, 1, stride, stride, activation=None,
@@ -122,6 +129,8 @@ def bottleneck_block_v1_5(cnn, depth, depth_bottleneck, stride):
              use_batch_norm=True, bias=None)
     res = cnn.conv(depth, 1, 1, 1, 1, activation=None,
                    use_batch_norm=True, bias=None)
+    mlperf.logger.log(key=mlperf.tags.MODEL_HP_SHORTCUT_ADD)
+    mlperf.logger.log(key=mlperf.tags.MODEL_HP_RELU)
     output = tf.nn.relu(shortcut + res)
     cnn.top_layer = output
     cnn.top_size = depth
@@ -147,6 +156,7 @@ def bottleneck_block_v2(cnn, depth, depth_bottleneck, stride):
   cnn.counts[name_key] += 1
 
   preact = cnn.batch_norm()
+  mlperf.logger.log(key=mlperf.tags.MODEL_HP_RELU)
   preact = tf.nn.relu(preact)
   with tf.variable_scope(name):
     if depth == in_size:
@@ -156,6 +166,8 @@ def bottleneck_block_v2(cnn, depth, depth_bottleneck, stride):
         shortcut = cnn.apool(
             1, 1, stride, stride, input_layer=input_layer,
             num_channels_in=in_size)
+        mlperf.logger.log_projection(input_tensor=input_layer,
+                                     output_tensor=shortcut)
     else:
       shortcut = cnn.conv(
           depth, 1, 1, stride, stride, activation=None, use_batch_norm=False,
@@ -167,6 +179,7 @@ def bottleneck_block_v2(cnn, depth, depth_bottleneck, stride):
              use_batch_norm=True, bias=None)
     res = cnn.conv(depth, 1, 1, 1, 1, activation=None,
                    use_batch_norm=False, bias=None)
+    mlperf.logger.log(key=mlperf.tags.MODEL_HP_SHORTCUT_ADD)
     output = shortcut + res
     cnn.top_layer = output
     cnn.top_size = depth
@@ -182,12 +195,15 @@ def bottleneck_block(cnn, depth, depth_bottleneck, stride, version):
     stride: Stride used in the first layer of the bottleneck block.
     version: version of ResNet to build.
   """
+  mlperf.logger.log_begin_block(
+      input_tensor=cnn.top_layer, block_type=mlperf.tags.BOTTLENECK_BLOCK)
   if version == 'v2':
     bottleneck_block_v2(cnn, depth, depth_bottleneck, stride)
   elif version == 'v1.5':
     bottleneck_block_v1_5(cnn, depth, depth_bottleneck, stride)
   else:
     bottleneck_block_v1(cnn, depth, depth_bottleneck, stride)
+  mlperf.logger.log_end_block(output_tensor=cnn.top_layer)
 
 
 def residual_block(cnn, depth, stride, version, projection_shortcut=False):
@@ -274,6 +290,9 @@ class ResnetModel(model_lib.CNNModel):
   def add_inference(self, cnn):
     if self.layer_counts is None:
       raise ValueError('Layer counts not specified for %s' % self.get_model())
+    # Drop batch size from shape logging.
+    mlperf.logger.log(key=mlperf.tags.MODEL_HP_INITIAL_SHAPE,
+                      value=cnn.top_layer.shape.as_list()[1:])
     cnn.use_batch_norm = True
     cnn.batch_norm_config = {'decay': 0.9, 'epsilon': 1e-5, 'scale': True}
     cnn.conv(64, 7, 7, 2, 2, mode='SAME_RESNET', use_batch_norm=True)
@@ -293,6 +312,8 @@ class ResnetModel(model_lib.CNNModel):
       cnn.batch_norm()
       cnn.top_layer = tf.nn.relu(cnn.top_layer)
     cnn.spatial_mean()
+    mlperf.logger.log(key=mlperf.tags.MODEL_HP_FINAL_SHAPE,
+                      value=cnn.top_layer.shape.as_list()[1:])
 
   def get_learning_rate(self, global_step, batch_size):
     rescaled_lr = self.get_scaled_base_learning_rate(batch_size)
