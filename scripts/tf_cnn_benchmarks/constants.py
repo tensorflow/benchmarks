@@ -10,7 +10,7 @@ UNREDUCED_ACCURACY_OP_PREFIX = "tensor:"
 SIMPLE_VALUE_RESULT_PREFIX = "simple_value:"
 
 
-class BenchmarkMode(str, Enum):
+class BenchmarkMode(object):
   """Benchmark running mode."""
   TRAIN = "training"
   EVAL = "evaluation"
