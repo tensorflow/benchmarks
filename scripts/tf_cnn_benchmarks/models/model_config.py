@@ -105,7 +105,8 @@ _model_name_to_cifar_model = {
 
 
 _model_name_to_object_detection_model = {
-    'ssd300': ssd_model.SSD300Model
+    'ssd300': ssd_model.SSD300Model,
+    'trivial': trivial_model.TrivialSSD300Model,
 }
 
 

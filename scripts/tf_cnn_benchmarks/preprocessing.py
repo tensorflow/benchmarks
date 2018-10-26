@@ -964,10 +964,11 @@ class COCOPreprocessor(BaseImagePreprocessor):
                         'master/research/object_detection/g3doc/installation.md'
                         '#protobuf-compilation')
     source_id = tf.string_to_number(data['source_id'])
-    image = tf.image.convert_image_dtype(data['image'], dtype=tf.float32)
+    image = data['image']  # dtype uint8
     raw_shape = tf.shape(image)
     boxes = data['groundtruth_boxes']
     classes = tf.reshape(data['groundtruth_classes'], [-1, 1])
+    ssd_encoder = ssd_dataloader.Encoder()
 
     # Only 80 of the 90 COCO classes are used.
     class_map = tf.convert_to_tensor(ssd_constants.CLASS_MAP)
@@ -976,6 +977,12 @@ class COCOPreprocessor(BaseImagePreprocessor):
 
     if self.train:
       image, boxes, classes = ssd_dataloader.ssd_crop(image, boxes, classes)
+      # ssd_crop resizes and returns image of dtype float32 and does not change
+      # its range (i.e., value in between 0--255). Divide by 255. converts it
+      # to [0, 1] range. Not doing this before cropping to avoid dtype cast
+      # (which incurs additional memory copy).
+      image /= 255.
+
       image, boxes = preprocessor.random_horizontal_flip(
           image=image, boxes=boxes)
 
@@ -984,7 +991,7 @@ class COCOPreprocessor(BaseImagePreprocessor):
       image = ssd_dataloader.normalize_image(image)
       image = tf.cast(image, self.dtype)
 
-      encoded_returns = ssd_dataloader.encode_labels(boxes, classes)
+      encoded_returns = ssd_encoder.encode_labels(boxes, classes)
       encoded_classes, encoded_boxes, num_matched_boxes = encoded_returns
 
       # Shape of image: [width, height, channel]
@@ -995,9 +1002,10 @@ class COCOPreprocessor(BaseImagePreprocessor):
 
     else:
       image = tf.image.resize_images(
-          image[tf.newaxis, :, :, :],
-          size=(ssd_constants.IMAGE_SIZE, ssd_constants.IMAGE_SIZE)
-      )[0, :, :, :]
+          image, size=(ssd_constants.IMAGE_SIZE, ssd_constants.IMAGE_SIZE))
+      # resize_image returns image of dtype float32 and does not change its
+      # range. Divide by 255 to convert image to [0, 1] range.
+      image /= 255.
 
       image = ssd_dataloader.normalize_image(image)
       image = tf.cast(image, self.dtype)
@@ -1052,6 +1060,11 @@ class COCOPreprocessor(BaseImagePreprocessor):
                        .format(glob_pattern))
 
     ds = tf.data.TFRecordDataset.list_files(file_names)
+    # TODO(haoyuzhang): Enable map+filter fusion after cl/218399112 in release
+    # options = tf.data.Options()
+    # options.experimental_map_and_filter_fusion = True
+    # ds = ds.with_options(options)
+
     ds = ds.apply(
         interleave_ops.parallel_interleave(
             tf.data.TFRecordDataset,
@@ -1076,7 +1089,7 @@ class COCOPreprocessor(BaseImagePreprocessor):
             map_func=self.preprocess,
             batch_size=batch_size_per_split,
             num_parallel_batches=num_splits,
-            drop_remainder=True))
+            drop_remainder=train))
     ds = ds.prefetch(buffer_size=num_splits)
     if num_threads:
       ds = threadpool.override_threadpool(

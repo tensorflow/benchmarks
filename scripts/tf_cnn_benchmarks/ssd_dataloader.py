@@ -78,36 +78,34 @@ class DefaultBoxes(object):
     if order == 'xywh': return self.default_boxes
 
 
-def calc_iou_tensor(box1, box2):
-  """ Calculation of IoU based on two boxes tensor,
-      Reference to https://github.com/kuangliu/pytorch-ssd
-      input:
-          box1 (N, 4)
-          box2 (M, 4)
-      output:
-          IoU (N, M)
+def calc_iou_tensor(boxes1, boxes2):
+  """Calculation of IoU based on two boxes tensor.
+
+  Reference to https://github.com/kuangliu/pytorch-ssd
+
+  Args:
+    boxes1: shape (N, 4), four coordinates of N boxes
+    boxes2: shape (M, 4), four coordinates of M boxes
+  Returns:
+    IoU: shape (N, M), IoU of the i-th box in `boxes1` and j-th box in `boxes2`
   """
-  N = tf.shape(box1)[0]
-  M = tf.shape(box2)[0]
+  b1_left, b1_top, b1_right, b1_bottom = tf.split(boxes1, 4, axis=1)
+  b2_left, b2_top, b2_right, b2_bottom = tf.split(boxes2, 4, axis=1)
 
-  be1 = tf.tile(tf.expand_dims(box1, axis=1), (1, M, 1))
-  be2 = tf.tile(tf.expand_dims(box2, axis=0), (N, 1, 1))
+  # Shape of intersect_* (N, M)
+  intersect_left = tf.maximum(b1_left, tf.transpose(b2_left))
+  intersect_top = tf.maximum(b1_top, tf.transpose(b2_top))
+  intersect_right = tf.minimum(b1_right, tf.transpose(b2_right))
+  intersect_bottom = tf.minimum(b1_bottom, tf.transpose(b2_bottom))
 
-  # Left Top & Right Bottom
-  lt = tf.maximum(be1[:, :, :2], be2[:, :, :2])
+  boxes1_area = (b1_right - b1_left) * (b1_bottom - b1_top)
+  boxes2_area = (b2_right - b2_left) * (b2_bottom - b2_top)
 
-  rb = tf.minimum(be1[:, :, 2:], be2[:, :, 2:])
+  intersect = tf.multiply(tf.maximum((intersect_right - intersect_left), 0),
+                          tf.maximum((intersect_bottom - intersect_top), 0))
+  union = boxes1_area + tf.transpose(boxes2_area) - intersect
+  iou = intersect / union
 
-  delta = tf.maximum(rb - lt, 0)
-
-  intersect = delta[:, :, 0] * delta[:, :, 1]
-
-  delta1 = be1[:, :, 2:] - be1[:, :, :2]
-  area1 = delta1[:, :, 0] * delta1[:, :, 1]
-  delta2 = be2[:, :, 2:] - be2[:, :, :2]
-  area2 = delta2[:, :, 0] * delta2[:, :, 1]
-
-  iou = intersect/(area1 + area2 - intersect)
   return iou
 
 
@@ -159,7 +157,7 @@ def ssd_crop(image, boxes, classes):
 
     # Checks of whether a crop is valid.
     valid_aspect = tf.logical_and(tf.less(height/width, 2),
-                                  tf.less(height/width, 2))
+                                  tf.less(width/height, 2))
     valid_ious = tf.reduce_all(tf.greater(ious, min_iou), axis=1, keepdims=True)
     valid_masks = tf.reduce_any(masks, axis=1, keepdims=True)
 
@@ -244,47 +242,42 @@ def color_jitter(image, brightness=0, contrast=0, saturation=0, hue=0):
 
 
 def normalize_image(image):
-  """Normalize the image to zero mean and unit variance."""
-  image -= tf.constant(
-      ssd_constants.NORMALIZATION_MEAN)[tf.newaxis, tf.newaxis, :]
+  """Normalize the image to zero mean and unit variance.
 
-  image /= tf.constant(
-      ssd_constants.NORMALIZATION_STD)[tf.newaxis, tf.newaxis, :]
-
+  Args:
+    image: 3D tensor of type float32, value in [0, 1]
+  Returns:
+    image normalized by mean and stdev.
+  """
+  image = tf.subtract(image, ssd_constants.NORMALIZATION_MEAN)
+  image = tf.divide(image, ssd_constants.NORMALIZATION_STD)
   return image
 
 
-def encode_labels(gt_boxes, gt_labels):
-  """Labels anchors with ground truth inputs.
+class Encoder(object):
+  """Encoder for SSD boxes and labels."""
 
-  Args:
-    gt_boxes: A float tensor with shape [N, 4] representing groundtruth boxes.
-      For each row, it stores [y0, x0, y1, x1] for four corners of a box.
-    gt_labels: A integer tensor with shape [N, 1] representing groundtruth
-      classes.
-  Returns:
-    encoded_classes: a tensor with shape [num_anchors, 1].
-    encoded_boxes: a tensor with shape [num_anchors, 4].
-    num_positives: scalar tensor storing number of positives in an image.
-  """
-  similarity_calc = region_similarity_calculator.IouSimilarity()
-  matcher = argmax_matcher.ArgMaxMatcher(
-      matched_threshold=ssd_constants.MATCH_THRESHOLD,
-      unmatched_threshold=ssd_constants.MATCH_THRESHOLD,
-      negatives_lower_than_unmatched=True,
-      force_match_for_each_row=True)
+  def __init__(self):
+    similarity_calc = region_similarity_calculator.IouSimilarity()
+    matcher = argmax_matcher.ArgMaxMatcher(
+        matched_threshold=ssd_constants.MATCH_THRESHOLD,
+        unmatched_threshold=ssd_constants.MATCH_THRESHOLD,
+        negatives_lower_than_unmatched=True,
+        force_match_for_each_row=True)
 
-  box_coder = faster_rcnn_box_coder.FasterRcnnBoxCoder(
-      scale_factors=ssd_constants.BOX_CODER_SCALES)
+    box_coder = faster_rcnn_box_coder.FasterRcnnBoxCoder(
+        scale_factors=ssd_constants.BOX_CODER_SCALES)
 
-  default_boxes = box_list.BoxList(tf.convert_to_tensor(DefaultBoxes()('ltrb')))
-  target_boxes = box_list.BoxList(gt_boxes)
+    self.default_boxes = DefaultBoxes()('ltrb')
+    self.default_boxes = box_list.BoxList(
+        tf.convert_to_tensor(self.default_boxes))
+    self.assigner = target_assigner.TargetAssigner(
+        similarity_calc, matcher, box_coder)
 
-  assigner = target_assigner.TargetAssigner(
-      similarity_calc, matcher, box_coder)
-
-  encoded_classes, _, encoded_boxes, _, matches = assigner.assign(
-      default_boxes, target_boxes, gt_labels)
-  num_matched_boxes = tf.reduce_sum(
-      tf.cast(tf.not_equal(matches.match_results, -1), tf.float32))
-  return encoded_classes, encoded_boxes, num_matched_boxes
+  def encode_labels(self, gt_boxes, gt_labels):
+    target_boxes = box_list.BoxList(gt_boxes)
+    encoded_classes, _, encoded_boxes, _, matches = self.assigner.assign(
+        self.default_boxes, target_boxes, gt_labels)
+    num_matched_boxes = tf.reduce_sum(
+        tf.cast(tf.not_equal(matches.match_results, -1), tf.float32))
+    return encoded_classes, encoded_boxes, num_matched_boxes
