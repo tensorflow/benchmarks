@@ -511,8 +511,8 @@ class SSD300Model(model_lib.CNNModel):
       self.eval_global_step = results['global_step']
       self.predictions.clear()
 
-    for i in range(self.get_batch_size()):
-      self.predictions[int(source_id[i])] = {
+    for i, sid in enumerate(source_id):
+      self.predictions[int(sid)] = {
           ssd_constants.PRED_BOXES: pred_boxes[i],
           ssd_constants.PRED_SCORES: pred_scores[i],
           ssd_constants.SOURCE_ID: source_id[i],

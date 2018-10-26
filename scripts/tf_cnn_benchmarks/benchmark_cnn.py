@@ -2818,7 +2818,8 @@ class BenchmarkCNN(object):
       # For fetches that starts with 'tensor:', keep dimension and skip reducing
       # them to scalars.
       if name.startswith(constants.UNREDUCED_ACCURACY_OP_PREFIX):
-        fetches[name[len(constants.UNREDUCED_ACCURACY_OP_PREFIX):]] = ops[0]
+        key = name[len(constants.UNREDUCED_ACCURACY_OP_PREFIX):]
+        fetches[key] = tf.concat(ops, 0)
       else:
         fetches[name] = tf.reduce_sum(ops) / self.batch_size
         if self.task_index == 0 and self.params.summary_verbosity >= 1:
