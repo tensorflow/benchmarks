@@ -324,6 +324,9 @@ flags.DEFINE_float('minimum_learning_rate', 0,
                    'never decay past this value. Requires `learning_rate`, '
                    '`num_epochs_per_decay` and `learning_rate_decay_factor` to '
                    'be set.')
+flags.DEFINE_float('resnet_base_lr', None, "Base learning rate at bs=256. Only "
+                   "relevant when training ResNet and utilizing the model's "
+                   "learning rate heuristic (get_learning_rate).")
 flags.DEFINE_float('momentum', 0.9, 'Momentum for training.')
 flags.DEFINE_float('rmsprop_decay', 0.9, 'Decay term for RMSProp.')
 flags.DEFINE_float('rmsprop_momentum', 0.9, 'Momentum in RMSProp.')
@@ -1191,8 +1194,8 @@ def get_optimizer(params, learning_rate):
     opt = tf.train.AdamOptimizer(learning_rate, params.adam_beta1,
                                  params.adam_beta2, params.adam_epsilon)
   else:
-    raise ValueError('Optimizer "%s" was not recognized',
-                     params.optimizer)
+    raise ValueError('Optimizer "{}" was not recognized'.
+                     format(params.optimizer))
   return opt
 
 

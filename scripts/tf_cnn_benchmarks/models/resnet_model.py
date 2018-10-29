@@ -278,7 +278,11 @@ class ResnetModel(model_lib.CNNModel):
     batch_size = default_batch_sizes.get(model, 32)
     # The ResNet paper uses a starting lr of .1 at bs=256.
     self.base_lr_batch_size = 256
-    super(ResnetModel, self).__init__(model, 224, batch_size, .128,
+    base_lr = 0.128
+    if params and params.resnet_base_lr:
+      base_lr = params.resnet_base_lr
+
+    super(ResnetModel, self).__init__(model, 224, batch_size, base_lr,
                                       layer_counts, params=params)
     if 'v2' in model:
       self.version = 'v2'

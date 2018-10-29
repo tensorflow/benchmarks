@@ -25,6 +25,14 @@ from models import resnet_model
 
 class ResNetModelTest(tf.test.TestCase):
 
+  def testGetScaledBaseLearningRateOneGpuLrFromParams(self):
+    """Verifies setting params.resnet_base_lr pipes through."""
+    lr = self._get_scaled_base_learning_rate(1,
+                                             'parameter_server',
+                                             256,
+                                             base_lr=.050)
+    self.assertEquals(lr, .050)
+
   def testGetScaledBaseLearningRateOneGpu(self):
     lr = self._get_scaled_base_learning_rate(1, 'parameter_server', 128)
     self.assertEquals(lr, .064)
@@ -44,13 +52,15 @@ class ResNetModelTest(tf.test.TestCase):
   def _get_scaled_base_learning_rate(self,
                                      num_gpus,
                                      variable_update,
-                                     batch_size):
+                                     batch_size,
+                                     base_lr=None):
     """Simplifies testing different learning rate calculations.
 
     Args:
       num_gpus: Number of GPUs to be used.
       variable_update: Type of variable update used.
       batch_size: Total batch size.
+      base_lr: Base learning rate before scaling.
 
     Returns:
       Base learning rate that would be used to create lr schedule.
@@ -58,6 +68,8 @@ class ResNetModelTest(tf.test.TestCase):
     params = mock.Mock()
     params.num_gpus = num_gpus
     params.variable_update = variable_update
+    if base_lr:
+      params.resnet_base_lr = base_lr
     resnet50_model = resnet_model.ResnetModel('resnet50', 50, params=params)
     return resnet50_model.get_scaled_base_learning_rate(batch_size)
 
