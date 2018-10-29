@@ -49,6 +49,10 @@ class _MlPerfTestModel(model.CNNModel):
     cnn.reshape([-1, 224 * 224])
     cnn.affine(1, activation=None)
 
+    # Assert that the batch norm variables are filtered out for L2 loss.
+    variables = tf.global_variables() + tf.local_variables()
+    assert len(variables) > len(self.filter_l2_loss_vars(variables))
+
 
 class MlPerfComplianceTest(tf.test.TestCase):
   """Tests the MLPerf compliance logs.
@@ -85,12 +89,10 @@ class MlPerfComplianceTest(tf.test.TestCase):
       mlperf.tags.INPUT_RANDOM_FLIP + '.*': 1,
       r'%s: \[224, 224\].*' % mlperf.tags.INPUT_CENTRAL_CROP: 1,
 
-      # FIXME
-      # r"%s: \[123.68, 116.78, 103.94\].*" %
-      #     mlperf.tags.INPUT_MEAN_SUBTRACTION: 1,
+      r'%s: \[123.68, 116.78, 103.94\].*' % mlperf.tags.INPUT_MEAN_SUBTRACTION:
+          2,
 
-      # FIXME: The 257 needs to be 256 for compliance
-      r'%s: {"min": 257}.*' % mlperf.tags.INPUT_RESIZE_ASPECT_PRESERVING: 1,
+      r'%s: {"min": 256}.*' % mlperf.tags.INPUT_RESIZE_ASPECT_PRESERVING: 1,
 
       # 1 for training, 1 for eval
       r'%s: \[224, 224\].*' % mlperf.tags.INPUT_RESIZE: 2,
@@ -110,8 +112,9 @@ class MlPerfComplianceTest(tf.test.TestCase):
 
       r'%s: "categorical_cross_entropy".*' % mlperf.tags.MODEL_HP_LOSS_FN: 1,
 
-      # FIXME
-      # r'%s: true' % mlperf.tags.MODEL_EXCLUDE_BN_FROM_L2: 1,
+      # 1 for training, 2 because the _MlPerfTestModel calls this when building
+      # the model for both training and eval
+      r'%s: true' % mlperf.tags.MODEL_EXCLUDE_BN_FROM_L2: 3,
 
       r'%s: 0.5.*' % mlperf.tags.MODEL_L2_REGULARIZATION: 1,
 
@@ -156,7 +159,8 @@ class MlPerfComplianceTest(tf.test.TestCase):
                                          optimizer='momentum',
                                          momentum=0.5,
                                          stop_at_top_1_accuracy=2.0,
-                                         tf_random_seed=9876)
+                                         tf_random_seed=9876,
+                                         ml_perf=True)
       with mlperf.mlperf_logger(use_mlperf_logger=True, model='resnet50'):
         bench_cnn = benchmark_cnn.BenchmarkCNN(params, model=_MlPerfTestModel())
         bench_cnn.run()

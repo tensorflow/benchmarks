@@ -363,6 +363,17 @@ flags.DEFINE_string('debugger', None,
 flags.DEFINE_boolean('use_python32_barrier', False,
                      'When on, use threading.Barrier at Python 3.2.')
 
+flags.DEFINE_boolean('ml_perf', False,
+                     'When True, change how the Imagenet input pipeline works '
+                     'slightly to meet the MLPerf compliance rules. This slows '
+                     'down the input pipeline. Without this option, at the end '
+                     'of the input pipeline, the image is divided by 127.5, '
+                     'then 1.0 is subtracted from it, bringing the image '
+                     'values from [0, 255] to [-1.0, 1.0]. With this option, '
+                     'each of the three channels (red, green, blue) have the '
+                     'average channel value among all image subtracted from '
+                     'it, and no division is done.')
+
 flags.DEFINE_boolean('datasets_use_prefetch', True,
                      'Enable use of prefetched datasets for input pipeline. '
                      'This option is meaningless if use_datasets=False.')
@@ -3156,6 +3167,7 @@ class BenchmarkCNN(object):
           # TODO(b/36217816): Once the bug is fixed, investigate if we should do
           # this reduction in fp16.
           fp32_params = (tf.cast(p, tf.float32) for p in params)
+        filtered_params = self.model.filter_l2_loss_vars(fp32_params)
         if rel_device_num == len(self.devices) - 1:
           # We compute the L2 loss for only one device instead of all of them,
           # because the L2 loss for each device is the same. To adjust for this,
@@ -3163,22 +3175,17 @@ class BenchmarkCNN(object):
           # last device because for some reason, on a Volta DGX1, the first four
           # GPUs take slightly longer to complete a step than the last four.
           # TODO(reedwm): Shard the L2 loss computations across GPUs.
-          custom_l2_loss = self.model.custom_l2_loss(fp32_params)
-          if custom_l2_loss is not None:
-            l2_loss = custom_l2_loss
-          elif self.params.single_l2_loss_op:
+          if self.params.single_l2_loss_op:
             # TODO(reedwm): If faster, create a fused op that does the L2 loss
             # on multiple tensors, and use that instead of concatenating
             # tensors.
-            reshaped_params = [tf.reshape(p, (-1,)) for p in fp32_params]
+            reshaped_params = [tf.reshape(p, (-1,)) for p in filtered_params]
             l2_loss = tf.nn.l2_loss(tf.concat(reshaped_params, axis=0))
           else:
-            l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in fp32_params])
+            l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in filtered_params])
       weight_decay = self.params.weight_decay
       if (weight_decay is not None and weight_decay != 0. and
           l2_loss is not None):
-        mlperf.logger.log(key=mlperf.tags.MODEL_EXCLUDE_BN_FROM_L2,
-                          value=False)
         mlperf.logger.log(key=mlperf.tags.MODEL_L2_REGULARIZATION,
                           value=weight_decay)
         total_loss += len(self.devices) * weight_decay * l2_loss
@@ -3318,7 +3325,8 @@ class BenchmarkCNN(object):
         shift_ratio=shift_ratio,
         summary_verbosity=self.params.summary_verbosity,
         distort_color_in_yiq=self.params.distort_color_in_yiq,
-        fuse_decode_and_crop=self.params.fuse_decode_and_crop)
+        fuse_decode_and_crop=self.params.fuse_decode_and_crop,
+        match_mlperf=self.params.ml_perf)
 
   def add_sync_queues_and_barrier(self, name_prefix, enqueue_after_list):
     """Adds ops to enqueue on all worker queues.

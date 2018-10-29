@@ -111,7 +111,9 @@ class MlPerfLogger(object):
           '--ml_perf_compliance_logging does not support convolutions where '
           'the stride height is not equal to the stride width. '
           'stride_height=%d, stride_width=%d' % (stride_height, stride_width))
-      if isinstance(initializer, tf.truncated_normal_initializer):
+      if isinstance(initializer, tf.truncated_normal_initializer) or (
+          isinstance(initializer, tf.variance_scaling_initializer) and
+          initializer.distribution == 'truncated_normal'):
         initializer = tags.TRUNCATED_NORMAL
       elif (isinstance(initializer, tf.glorot_uniform_initializer) or
             initializer is None):

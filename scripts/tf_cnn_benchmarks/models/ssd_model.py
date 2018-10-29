@@ -88,11 +88,6 @@ class SSD300Model(model_lib.CNNModel):
   def skip_final_affine_layer(self):
     return True
 
-  def custom_l2_loss(self, fp32_params):
-    # TODO(haoyuzhang): check compliance with MLPerf rules
-    return tf.add_n([tf.nn.l2_loss(v) for v in fp32_params
-                     if 'batchnorm' not in v.name])
-
   def add_backbone_model(self, cnn):
     # --------------------------------------------------------------------------
     # Resnet-34 backbone model -- modified for SSD

@@ -184,6 +184,12 @@ def decode_jpeg(image_buffer, scope=None):  # , dtype=tf.float32):
     return image
 
 
+_R_MEAN = 123.68
+_G_MEAN = 116.78
+_B_MEAN = 103.94
+_CHANNEL_MEANS = [_R_MEAN, _G_MEAN, _B_MEAN]
+
+
 def normalized_image(images):
   # Rescale from [0, 255] to [0, 2]
   images = tf.multiply(images, 1. / 127.5)
@@ -201,10 +207,10 @@ def eval_image(image,
   """Get the image for model evaluation.
 
   We preprocess the image simiarly to Slim, see
-  https://github.com/tensorflow/models/blob/master/slim/preprocessing/vgg_preprocessing.py
+  https://github.com/tensorflow/models/blob/master/research/slim/preprocessing/vgg_preprocessing.py
   Validation images do not have bounding boxes, so to crop the image, we first
   resize the image such that the aspect ratio is maintained and the resized
-  height and width are both at least 1.15 times `height` and `width`
+  height and width are both at least 1.145 times `height` and `width`
   respectively. Then, we do a central crop to size (`height`, `width`).
 
   Args:
@@ -235,7 +241,10 @@ def eval_image(image,
     image_height_float = tf.cast(image_height, tf.float32)
     image_width_float = tf.cast(image_width, tf.float32)
 
-    scale_factor = 1.15
+    # This value is chosen so that in resnet, images are cropped to a size of
+    # 256 x 256, which matches what other implementations do. The final image
+    # size for resnet is 224 x 224, and floor(224 * 1.145) = 256.
+    scale_factor = 1.145
 
     # Compute resize_height and resize_width to be the minimum values such that
     #   1. The aspect ratio is maintained (i.e. resize_height / resize_width is
@@ -633,7 +642,8 @@ class BaseImagePreprocessor(InputPreprocessor):
                shift_ratio=-1,
                summary_verbosity=0,
                distort_color_in_yiq=True,
-               fuse_decode_and_crop=True):
+               fuse_decode_and_crop=True,
+               match_mlperf=False):
     super(BaseImagePreprocessor, self).__init__(batch_size, output_shapes)
     image_shape = output_shapes[0]
     # image_shape is in form (batch_size, height, width, depth)
@@ -655,6 +665,7 @@ class BaseImagePreprocessor(InputPreprocessor):
           (self.batch_size, self.num_splits))
     self.batch_size_per_split = self.batch_size // self.num_splits
     self.summary_verbosity = summary_verbosity
+    self.match_mlperf = match_mlperf
 
   def parse_and_preprocess(self, value, batch_position):
     assert self.supports_datasets()
@@ -740,7 +751,12 @@ class RecordInputImagePreprocessor(BaseImagePreprocessor):
 
     # image = tf.cast(image, tf.uint8) # HACK TESTING
 
-    normalized = normalized_image(image)
+    if self.match_mlperf:
+      mlperf.logger.log(key=mlperf.tags.INPUT_MEAN_SUBTRACTION,
+                        value=_CHANNEL_MEANS)
+      normalized = image - _CHANNEL_MEANS
+    else:
+      normalized = normalized_image(image)
     return tf.cast(normalized, self.dtype)
 
   def minibatch(self,
@@ -1123,12 +1139,13 @@ class TestImagePreprocessor(BaseImagePreprocessor):
                shift_ratio=0,
                summary_verbosity=0,
                distort_color_in_yiq=False,
-               fuse_decode_and_crop=False):
+               fuse_decode_and_crop=False,
+               match_mlperf=False):
     super(TestImagePreprocessor, self).__init__(
         batch_size, output_shapes, num_splits, dtype, train, distortions,
         resize_method, shift_ratio, summary_verbosity=summary_verbosity,
         distort_color_in_yiq=distort_color_in_yiq,
-        fuse_decode_and_crop=fuse_decode_and_crop)
+        fuse_decode_and_crop=fuse_decode_and_crop, match_mlperf=match_mlperf)
     self.expected_subset = None
 
   def set_fake_data(self, fake_images, fake_labels):

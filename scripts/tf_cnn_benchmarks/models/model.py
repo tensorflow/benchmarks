@@ -74,10 +74,21 @@ class Model(object):
   def get_fp16_loss_scale(self):
     return self.fp16_loss_scale
 
-  def custom_l2_loss(self, fp32_params):
-    """Returns model specific L2 loss function; returns None to use default."""
-    del fp32_params
-    return None
+  def filter_l2_loss_vars(self, variables):
+    """Filters out variables that the L2 loss should not be computed for.
+
+    By default, this filters out batch normalization variables and keeps all
+    other variables. This behavior can be overridden by subclasses.
+
+    Args:
+      variables: A list of the trainable variables.
+
+    Returns:
+      A list of variables that the L2 loss should be computed for.
+    """
+    mlperf.logger.log(key=mlperf.tags.MODEL_EXCLUDE_BN_FROM_L2,
+                      value=True)
+    return [v for v in variables if 'batchnorm' not in v.name]
 
   def get_learning_rate(self, global_step, batch_size):
     del global_step

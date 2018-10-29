@@ -162,6 +162,8 @@ class ConvNetBuilder(object):
       num_channels_in = self.top_size
     if stddev is not None and kernel_initializer is None:
       kernel_initializer = tf.truncated_normal_initializer(stddev=stddev)
+    if kernel_initializer is None:
+      kernel_initializer = tf.variance_scaling_initializer()
     name = 'conv' + str(self.counts['conv'])
     self.counts['conv'] += 1
     with tf.variable_scope(name):
