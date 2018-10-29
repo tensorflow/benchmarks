@@ -1001,6 +1001,9 @@ class COCOPreprocessor(BaseImagePreprocessor):
 
       image, boxes = preprocessor.random_horizontal_flip(
           image=image, boxes=boxes)
+      # Random horizontal flip probability is 50%
+      # See https://github.com/tensorflow/models/blob/master/research/object_detection/core/preprocessor.py  # pylint: disable=line-too-long
+      mlperf.logger.log(key=mlperf.tags.RANDOM_FLIP_PROBABILITY, value=0.5)
 
       image = ssd_dataloader.color_jitter(
           image, brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05)
@@ -1086,6 +1089,7 @@ class COCOPreprocessor(BaseImagePreprocessor):
             tf.data.TFRecordDataset,
             cycle_length=datasets_parallel_interleave_cycle_length or 10,
             sloppy=datasets_sloppy_parallel_interleave))
+    mlperf.logger.log(key=mlperf.tags.INPUT_ORDER)
     if datasets_repeat_cached_sample:
       # Repeat a single sample element indefinitely to emulate memory-speed IO.
       ds = ds.take(1).cache().repeat()
@@ -1094,6 +1098,8 @@ class COCOPreprocessor(BaseImagePreprocessor):
       ds = ds.cache()
     if train:
       ds = ds.apply(tf.contrib.data.shuffle_and_repeat(buffer_size=10000))
+      mlperf.logger.log(key=mlperf.tags.INPUT_SHARD, value=10000)
+      mlperf.logger.log(key=mlperf.tags.INPUT_ORDER)
     else:
       ds = ds.repeat()
 

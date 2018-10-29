@@ -29,6 +29,7 @@ from object_detection.core import box_list
 from object_detection.core import region_similarity_calculator
 from object_detection.core import target_assigner
 from object_detection.matchers import argmax_matcher
+import mlperf
 import ssd_constants
 
 
@@ -66,6 +67,17 @@ class DefaultBoxes(object):
           self.default_boxes.append(box)
 
     assert len(self.default_boxes) == ssd_constants.NUM_SSD_BOXES
+
+    mlperf.logger.log(key=mlperf.tags.FEATURE_SIZES,
+                      value=ssd_constants.FEATURE_SIZES)
+    mlperf.logger.log(key=mlperf.tags.STEPS,
+                      value=ssd_constants.STEPS)
+    mlperf.logger.log(key=mlperf.tags.SCALES,
+                      value=ssd_constants.SCALES)
+    mlperf.logger.log(key=mlperf.tags.ASPECT_RATIOS,
+                      value=ssd_constants.ASPECT_RATIOS)
+    mlperf.logger.log(key=mlperf.tags.NUM_DEFAULTS,
+                      value=ssd_constants.NUM_SSD_BOXES)
 
     def to_ltrb(cy, cx, h, w):
       return cy - h / 2, cx - w / 2, cy + h / 2, cx + w / 2
@@ -193,6 +205,9 @@ def ssd_crop(image, boxes, classes):
 
   filtered_boxes = tf.boolean_mask(boxes, box_masks, axis=0)
 
+  mlperf.logger.log(key=mlperf.tags.NUM_CROPPING_ITERATIONS,
+                    value=ssd_constants.NUM_CROP_PASSES)
+
   # Clip boxes to the cropped region.
   filtered_boxes = tf.stack([
       tf.maximum(filtered_boxes[:, 0], crop_bounds[0]),
@@ -219,6 +234,8 @@ def ssd_crop(image, boxes, classes):
       box_ind=tf.zeros((1,), tf.int32),
       crop_size=(ssd_constants.IMAGE_SIZE, ssd_constants.IMAGE_SIZE),
   )[0, :, :, :]
+  mlperf.logger.log(key=mlperf.tags.INPUT_SIZE,
+                    value=ssd_constants.IMAGE_SIZE)
 
   cropped_classes = tf.boolean_mask(classes, box_masks, axis=0)
 
@@ -251,6 +268,11 @@ def normalize_image(image):
   """
   image = tf.subtract(image, ssd_constants.NORMALIZATION_MEAN)
   image = tf.divide(image, ssd_constants.NORMALIZATION_STD)
+
+  mlperf.logger.log(key=mlperf.tags.DATA_NORMALIZATION_MEAN,
+                    value=ssd_constants.NORMALIZATION_MEAN)
+  mlperf.logger.log(key=mlperf.tags.DATA_NORMALIZATION_STD,
+                    value=ssd_constants.NORMALIZATION_STD)
   return image
 
 

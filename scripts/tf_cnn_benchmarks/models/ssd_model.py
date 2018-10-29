@@ -36,6 +36,7 @@ import re
 import tensorflow as tf
 
 import constants
+import mlperf
 import ssd_constants
 from cnn_util import log_fn
 from models import model as model_lib
@@ -57,14 +58,19 @@ class SSD300Model(model_lib.CNNModel):
     # Currently only support ResNet-34 as backbone model
     if backbone != 'resnet34':
       raise ValueError('Invalid backbone model %s for SSD.' % backbone)
+    mlperf.logger.log(key=mlperf.tags.BACKBONE, value=backbone)
 
     # Number of channels and default boxes associated with the following layers:
     #   ResNet34 layer, Conv7, Conv8_2, Conv9_2, Conv10_2, Conv11_2
     self.out_chan = [256, 512, 512, 256, 256, 256]
+    mlperf.logger.log(key=mlperf.tags.LOC_CONF_OUT_CHANNELS,
+                      value=self.out_chan)
 
     # Number of default boxes from layers of different scales
     #   38x38x4, 19x19x6, 10x10x6, 5x5x6, 3x3x4, 1x1x4
     self.num_dboxes = [4, 6, 6, 6, 4, 4]
+    mlperf.logger.log(key=mlperf.tags.NUM_DEFAULTS_PER_CELL,
+                      value=self.num_dboxes)
 
     # TODO(haoyuzhang): in order to correctly restore in replicated mode, need
     # to create a saver for each tower before graph is finalized. Use variable
@@ -81,6 +87,12 @@ class SSD300Model(model_lib.CNNModel):
 
     # Global step when predictions are collected.
     self.eval_global_step = 0
+
+    # Accuracy and number of batches at current evaluation step
+    # TODO(haoyuzhang): Remove class variables after benchmark_cnn.py uses more
+    # generic metrics in results
+    self.eval_accuracy_at_step = 0
+    self.eval_num_batches_at_step = 0
 
     # The MLPerf reference uses a starting lr of 1e-3 at bs=32.
     self.base_lr_batch_size = 32
@@ -504,7 +516,11 @@ class SSD300Model(model_lib.CNNModel):
     # eval at a new global step.
     if results['global_step'] > self.eval_global_step:
       self.eval_global_step = results['global_step']
+      self.eval_accuracy_at_step = 0
+      self.eval_num_batches_at_step = 0
       self.predictions.clear()
+
+    self.eval_num_batches_at_step += 1
 
     for i, sid in enumerate(source_id):
       self.predictions[int(sid)] = {
@@ -524,14 +540,22 @@ class SSD300Model(model_lib.CNNModel):
       eval_results = coco_metric.compute_map(self.predictions.values(),
                                              annotation_file)
       self.predictions.clear()
-      ret = {'top_1_accuracy': 0., 'top_5_accuracy': 0.}
+      self.eval_accuracy_at_step = eval_results['COCO/AP']
+      # Top 1 accuracy is averaged on all eval batches. Multiply by number of
+      # previously finished steps to get correct average.
+      sum_eval_accuracy = (self.eval_accuracy_at_step *
+                           self.eval_num_batches_at_step)
+      ret = {'top_1_accuracy': sum_eval_accuracy, 'top_5_accuracy': 0.}
       for metric_key, metric_value in eval_results.items():
         ret[constants.SIMPLE_VALUE_RESULT_PREFIX + metric_key] = metric_value
+      mlperf.logger.log_eval_accuracy(self.eval_accuracy_at_step,
+                                      self.eval_global_step,
+                                      self.batch_size * self.params.num_gpus)
       return ret
     log_fn('Got {:d} out of {:d} eval examples.'
            ' Waiting for the remaining to calculate mAP...'.format(
                len(self.predictions), ssd_constants.COCO_NUM_VAL_IMAGES))
-    return {'top_1_accuracy': 0., 'top_5_accuracy': 0.}
+    return {'top_1_accuracy': self.eval_accuracy_at_step, 'top_5_accuracy': 0.}
 
   def get_synthetic_inputs(self, input_name, nclass):
     """Generating synthetic data matching real data shape and type."""

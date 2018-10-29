@@ -36,6 +36,7 @@ import six
 
 import tensorflow as tf
 
+import mlperf
 import ssd_constants
 
 FLAGS = flags.FLAGS
@@ -76,6 +77,10 @@ def compute_map(labels_and_predictions, val_json_file):
           (loc_[3] - loc_[1]) * wtot, (loc_[2] - loc_[0]) * htot, prob_,
           ssd_constants.CLASS_INV_MAP[label_]
           ])
+  mlperf.logger.log(key=mlperf.tags.NMS_THRESHOLD,
+                    value=ssd_constants.OVERLAP_CRITERIA)
+  mlperf.logger.log(key=mlperf.tags.NMS_MAX_DETECTIONS,
+                    value=ssd_constants.MAX_NUM_EVAL_BOXES)
 
   if val_json_file.startswith("gs://"):
     _, local_val_json = tempfile.mkstemp(suffix=".json")

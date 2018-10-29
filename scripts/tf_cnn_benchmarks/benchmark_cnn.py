@@ -1936,7 +1936,8 @@ class BenchmarkCNN(object):
                  image_producer, global_step):
     """Evaluate the model using the validation dataset."""
     with self._do_eval():
-      mlperf.logger.log(key=mlperf.tags.EVAL_START)
+      mlperf.logger.log_eval_epoch(
+          mlperf.tags.EVAL_START, global_step, self.batch_size)
       loop_start_time = start_time = time.time()
       # TODO(laigd): refactor the part to compute/report the accuracy. Currently
       # it only works for image models.
@@ -1994,10 +1995,11 @@ class BenchmarkCNN(object):
             tf.GraphKeys.GLOBAL_STEP, global_step,
         }
         self.benchmark_logger.log_evaluation_result(eval_result)
-      mlperf.logger.log(key=mlperf.tags.EVAL_STOP)
+      mlperf.logger.log_eval_epoch(
+          mlperf.tags.EVAL_STOP, global_step, self.batch_size)
       mlperf.logger.log(key=mlperf.tags.EVAL_SIZE,
                         value=self.num_batches * self.batch_size)
-      mlperf.logger.log(key=mlperf.tags.EVAL_ACCURACY, value=accuracy_at_1)
+      mlperf.logger.log_eval_accuracy(accuracy_at_1)
       if self.params.stop_at_top_1_accuracy:
         mlperf.logger.log(key=mlperf.tags.EVAL_TARGET,
                           value=self.params.stop_at_top_1_accuracy)
@@ -3184,6 +3186,7 @@ class BenchmarkCNN(object):
           else:
             l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in filtered_params])
       weight_decay = self.params.weight_decay
+      mlperf.logger.log(key=mlperf.tags.OPT_WEIGHT_DECAY, value=weight_decay)
       if (weight_decay is not None and weight_decay != 0. and
           l2_loss is not None):
         mlperf.logger.log(key=mlperf.tags.MODEL_L2_REGULARIZATION,

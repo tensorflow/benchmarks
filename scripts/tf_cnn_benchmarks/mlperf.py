@@ -67,9 +67,11 @@ class MlPerfLogger(object):
 
   def __init__(self, model):
     mlperf_log.ROOT_DIR_RESNET = os.path.split(os.path.abspath(__file__))[0]
+    mlperf_log.ROOT_DIR_SSD = os.path.split(os.path.abspath(__file__))[0]
     self.model = model
     model_to_fn = {
-        'resnet50': mlperf_log.resnet_print
+        'resnet50': mlperf_log.resnet_print,
+        'ssd300': mlperf_log.ssd_print,
     }
     try:
       self._log_fn = model_to_fn[model]
@@ -77,9 +79,18 @@ class MlPerfLogger(object):
       raise ValueError('--ml_perf_compliance_logging is only compatible when '
                        '--model is one of the following: ' +
                        ', '.join(model_to_fn.keys()))
+    model_to_tag_set = {
+        'resnet50': mlperf_log.RESNET_TAG_SET,
+        'ssd300': mlperf_log.SSD_TAG_SET,
+    }
+    self.tag_set = model_to_tag_set[self.model]
 
   def log(self, key, value=None, stack_offset=2):
-    self._log_fn(key, value, stack_offset)
+    if key in self.tag_set:
+      self._log_fn(key, value, stack_offset)
+    else:
+      print('Ignoring MLPerf logging item key=%s, value=%s for model %s' %
+            (key, value, self.model))
 
   def log_deferred_tensor_value(self, key, tensor_value, stack_offset=2,
                                 every_n=1, first_n=None):
@@ -133,12 +144,12 @@ class MlPerfLogger(object):
     for i in range(num_epochs_int):
       # MLPerf allows us to print all the train epochs at once instead of
       # printing them as we do them.
-      mlperf_log.resnet_print(key=mlperf_log.TRAIN_EPOCH, value=i)
+      self.log(key=mlperf_log.TRAIN_EPOCH, value=i, stack_offset=3)
     if num_epochs_int != num_epochs:
       value = (str(num_epochs_int) +
                ', but this epoch only has {}% of the examples of a normal epoch'
                .format(100 * (num_epochs - num_epochs_int)))
-      mlperf_log.resnet_print(key=mlperf_log.TRAIN_EPOCH, value=value)
+      self.log(key=mlperf_log.TRAIN_EPOCH, value=value, stack_offset=3)
 
   def log_input_resize_aspect_preserving(self, height, width, scale_factor):
     assert height == width, (
@@ -147,6 +158,31 @@ class MlPerfLogger(object):
         (height, width))
     self.log(key=tags.INPUT_RESIZE_ASPECT_PRESERVING,
              value={'min': int(height * scale_factor)})
+
+  def log_eval_epoch(self, tag, global_step, batch_size, stack_offset=2):
+    if self.model == 'resnet50':
+      self.log(key=tag, stack_offset=stack_offset+1)
+    elif self.model == 'ssd300':
+      epoch = int(global_step * batch_size / 118287)
+      self.log(key=tag, value=epoch, stack_offset=stack_offset+1)
+
+  def log_eval_accuracy(self, accuracy, global_step=None, batch_size=None,
+                        stack_offset=2):
+    """Logs eval accuracy."""
+    if self.model == 'resnet50':
+      self.log(key=tags.EVAL_ACCURACY, value=accuracy,
+               stack_offset=stack_offset+1)
+    elif self.model == 'ssd300':
+      # Log only when global step and batch size info is complete
+      if global_step and batch_size:
+        epoch = int(global_step * batch_size / 118287)
+        eval_accuracy = {'epoch': epoch, 'value': accuracy}
+        eval_iteration_accuracy = {'iteration': global_step, 'value': accuracy}
+        self.log(key=tags.EVAL_ACCURACY, value=eval_accuracy,
+                 stack_offset=stack_offset+1)
+        self.log(key=tags.EVAL_ITERATION_ACCURACY,
+                 value=eval_iteration_accuracy,
+                 stack_offset=stack_offset+1)
 
 
 def _empty_fn(*args, **kwargs):
