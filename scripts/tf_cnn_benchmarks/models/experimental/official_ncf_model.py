@@ -37,7 +37,6 @@ _NUM_ITEMS_20M = 26744
 # TODO(reedwm): Support multi-GPU. Currently keras layers, which this model
 # uses, ignore variable_scopes, which we rely on for multi-GPU support.
 # TODO(reedwm): Support real data. This will require a significant refactor.
-# TODO(reedwm): Support fp16.
 # TODO(reedwm): All-reduce IndexedSlices more effectively.
 # TODO(reedwm): Support the 1M variant of this model.
 
@@ -56,8 +55,8 @@ class NcfModel(model.Model):
     super(NcfModel, self).__init__(
         'official_ncf', batch_size=2048, learning_rate=0.0005,
         fp16_loss_scale=128, params=params)
-    if self.data_type != tf.float32:
-      raise ValueError('NCF model only supports float32 for now.')
+    if self.fp16_vars:
+      raise ValueError('NCF model only supports float32 variables for now.')
 
   def build_network(self, inputs, phase_train=True, nclass=1001):
     try:
@@ -80,8 +79,20 @@ class NcfModel(model.Model):
         'mlp_reg_layers': (0, 0, 0, 0),
         'use_tpu': False
     }
-    keras_model = neumf_model.construct_model(users, items, params)
-    return model.BuildNetworkResult(logits=keras_model.output, extra_info=None)
+    if self.data_type == tf.float32:
+      keras_model = neumf_model.construct_model(users, items, params)
+      logits = keras_model.output
+    else:
+      assert self.data_type == tf.float16
+      tf.keras.backend.set_floatx('float16')
+      # We cannot rely on the variable_scope's fp16 custom getter here, because
+      # the NCF model uses keras layers, which ignore variable scopes. So we use
+      # a variable_creator_scope instead.
+      with tf.variable_creator_scope(_fp16_variable_creator):
+        keras_model = neumf_model.construct_model(users, items, params)
+      logits = tf.cast(keras_model.output, tf.float32)
+
+    return model.BuildNetworkResult(logits=logits, extra_info=None)
 
   def loss_function(self, inputs, build_network_result):
     logits = build_network_result.logits
@@ -128,3 +139,24 @@ class NcfModel(model.Model):
   def get_input_data_types(self, subset):
     del subset
     return [self.int32, tf.int32, tf.int32]
+
+
+def _fp16_variable_creator(next_creator, **kwargs):
+  """Variable creator to create variables in fp32 and cast them to fp16."""
+  dtype = kwargs.get('dtype', None)
+  initial_value = kwargs.get('initial_value', None)
+  if dtype is None:
+    if initial_value is not None and not callable(initial_value):
+      dtype = initial_value.dtype
+  if dtype == tf.float16:
+    if callable(initial_value):
+      new_initial_value = lambda: tf.cast(initial_value(), tf.float32)
+    else:
+      new_initial_value = tf.cast(initial_value, tf.float32)
+    kwargs['dtype'] = tf.float32
+    kwargs['initial_value'] = new_initial_value
+    var = next_creator(**kwargs)
+    return tf.cast(var, dtype=tf.float16)
+  else:
+    return next_creator(**kwargs)
+
