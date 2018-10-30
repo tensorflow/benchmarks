@@ -78,9 +78,10 @@ class NcfModel(model.Model):
         'mf_dim': 64,
         'mf_regularization': 0,
         'mlp_reg_layers': (0, 0, 0, 0),
+        'use_tpu': False
     }
-    logits = neumf_model.construct_model(users, items, params)
-    return model.BuildNetworkResult(logits=logits, extra_info=None)
+    keras_model = neumf_model.construct_model(users, items, params)
+    return model.BuildNetworkResult(logits=keras_model.output, extra_info=None)
 
   def loss_function(self, inputs, build_network_result):
     logits = build_network_result.logits
