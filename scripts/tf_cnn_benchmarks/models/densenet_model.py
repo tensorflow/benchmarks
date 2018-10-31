@@ -18,6 +18,11 @@
 References:
   "Densely Connected Convolutional Networks": https://arxiv.org/pdf/1608.06993
 """
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -75,7 +80,7 @@ class DensenetCifar10Model(model_lib.CNNModel):
     cnn.spatial_mean()
 
   def get_learning_rate(self, global_step, batch_size):
-    num_batches_per_epoch = int(50000 / batch_size)
+    num_batches_per_epoch = 50000 // batch_size
     boundaries = num_batches_per_epoch * np.array([150, 225, 300],
                                                   dtype=np.int64)
     boundaries = [x for x in boundaries]

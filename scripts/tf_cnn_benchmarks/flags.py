@@ -23,6 +23,10 @@ tf_cnn_benchmarks as a library. When using it as a library, we don't want to
 define any flags, but instead pass parameters to the BenchmarkCNN constructor.
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from collections import namedtuple
 
 from absl import flags as absl_flags

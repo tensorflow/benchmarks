@@ -19,6 +19,10 @@ References:
   Deep Speech 2: End-to-End Speech Recognition in English and Mandarin
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import itertools
 
 import numpy as np
@@ -426,11 +430,11 @@ class DeepSpeech2Model(model_lib.Model):
       predicted_str = greedy_decoder.decode_logits(probs[i])
       expected_str = greedy_decoder.decode(targets[i])
       # Compute CER.
-      total_cer += greedy_decoder.cer(predicted_str, expected_str) / float(
-          len(expected_str))
+      total_cer += (greedy_decoder.cer(predicted_str, expected_str) /
+                    len(expected_str))
       # Compute WER.
-      total_wer += greedy_decoder.wer(predicted_str, expected_str) / float(
-          len(expected_str.split()))
+      total_wer += (greedy_decoder.wer(predicted_str, expected_str) /
+                    len(expected_str.split()))
 
     # Get mean value
     total_cer /= self.batch_size

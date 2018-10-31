@@ -20,6 +20,10 @@ References:
   Advances in Neural Information Processing Systems. 2012
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow as tf
 from models import model
 
@@ -78,8 +82,8 @@ class AlexnetCifar10Model(model.CNNModel):
   def get_learning_rate(self, global_step, batch_size):
     num_examples_per_epoch = 50000
     num_epochs_per_decay = 100
-    decay_steps = int(
-        num_epochs_per_decay * num_examples_per_epoch / batch_size)
+    decay_steps = (
+        num_epochs_per_decay * num_examples_per_epoch // batch_size)
     decay_factor = 0.1
     return tf.train.exponential_decay(
         self.learning_rate,

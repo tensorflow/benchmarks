@@ -21,6 +21,10 @@ intended to be used only with CNNs.
 Only synthetic data with 1 GPU is currently supported.
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow as tf
 
 from models import model

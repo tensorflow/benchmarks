@@ -13,6 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 """Convolution blocks for mobilenet."""
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import contextlib
 import functools
 
@@ -60,14 +65,14 @@ def _make_divisible(v, divisor, min_value=None):
 def _split_divisible(num, num_ways, divisible_by=8):
   """Evenly splits num, num_ways so each piece is a multiple of divisible_by."""
   assert num % divisible_by == 0
-  assert num / num_ways >= divisible_by
+  assert num // num_ways >= divisible_by
   # Note: want to round down, we adjust each split to match the total.
   base = num // num_ways // divisible_by * divisible_by
   result = []
   accumulated = 0
   for i in range(num_ways):
     r = base
-    while accumulated + r < num * (i + 1) / num_ways:
+    while accumulated + r < num * (i + 1) // num_ways:
       r += divisible_by
     result.append(r)
     accumulated += r

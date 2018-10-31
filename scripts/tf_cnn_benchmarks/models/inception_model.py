@@ -37,6 +37,10 @@ References:
   Inception v4 and Resnet V2 architectures: http://arxiv.org/abs/1602.07261
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from models import model
 

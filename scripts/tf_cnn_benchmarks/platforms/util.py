@@ -23,4 +23,8 @@ Creating a custom platform can be useful to, e.g., run some initialization code
 required by the platform or register a platform-specific model.
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from platforms.default.util import *  # pylint: disable=unused-import,wildcard-import

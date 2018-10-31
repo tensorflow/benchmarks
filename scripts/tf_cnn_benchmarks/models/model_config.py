@@ -16,6 +16,10 @@
 """Model configurations for CNN benchmarks.
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from functools import partial
 
 from models import alexnet_model

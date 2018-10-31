@@ -30,7 +30,9 @@ References:
   Atrous Convolution, and Fully Connected CRFs
   arXiv:1606.00915 (2016)
 """
+from __future__ import absolute_import
 from __future__ import division
+from __future__ import print_function
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -322,7 +324,7 @@ class ResnetModel(model_lib.CNNModel):
   def get_learning_rate(self, global_step, batch_size):
     rescaled_lr = self.get_scaled_base_learning_rate(batch_size)
     num_batches_per_epoch = (
-        float(datasets.IMAGENET_NUM_TRAIN_IMAGES) / batch_size)
+        datasets.IMAGENET_NUM_TRAIN_IMAGES / batch_size)
     boundaries = [int(num_batches_per_epoch * x) for x in [30, 60, 80, 90]]
     values = [1, 0.1, 0.01, 0.001, 0.0001]
     values = [rescaled_lr * v for v in values]

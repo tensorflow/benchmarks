@@ -17,6 +17,8 @@
 See the README for more information.
 """
 
+from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import argparse
@@ -1069,11 +1071,11 @@ def get_num_batches_and_epochs(params, batch_size, num_examples_per_epoch):
     raise ValueError('At most one of --num_batches and --num_epochs may be '
                      'specified.')
   if params.num_epochs:
-    num_batches = int(float(params.num_epochs) * num_examples_per_epoch /
+    num_batches = int(params.num_epochs * num_examples_per_epoch /
                       batch_size)
   else:
     num_batches = params.num_batches or _DEFAULT_NUM_BATCHES
-  num_epochs = num_batches * batch_size / float(num_examples_per_epoch)
+  num_epochs = num_batches * batch_size / num_examples_per_epoch
   return (num_batches, num_epochs)
 
 
@@ -1135,7 +1137,7 @@ def get_learning_rate(params, global_step, num_examples_per_epoch, model,
     ValueError: Invalid or unsupported params.
   """
   with tf.name_scope('learning_rate'):
-    num_batches_per_epoch = (float(num_examples_per_epoch) / batch_size)
+    num_batches_per_epoch = num_examples_per_epoch / batch_size
 
     if params.piecewise_learning_rate_schedule:
       if (params.init_learning_rate is not None or
@@ -1713,7 +1715,7 @@ class BenchmarkCNN(object):
     log_fn('Mode:        %s' % self.mode)
     log_fn('SingleSess:  %s' % benchmark_info['single_session'])
     log_fn('Batch size:  %s global' % (self.batch_size * self.num_workers))
-    log_fn('             %s per device' % (self.batch_size /
+    log_fn('             %s per device' % (self.batch_size //
                                            len(self.raw_devices)))
     if self.batch_group_size > 1:
       log_fn('             %d batches per prepocessing group' %
@@ -1776,7 +1778,7 @@ class BenchmarkCNN(object):
           'single_sess': benchmark_info['single_session'],
           'devices': benchmark_info['device_list'],
           'batch_size': self.batch_size,
-          'batch_size_per_device': self.batch_size / len(self.raw_devices),
+          'batch_size_per_device': self.batch_size // len(self.raw_devices),
           'num_batches': self.num_batches,
           'num_epochs': self.num_epochs,
           'data_format': self.params.data_format,
@@ -2313,7 +2315,7 @@ class BenchmarkCNN(object):
       # init_global_step by num_workers only in non-single session mode.
       end_local_step = self.num_batches - self.init_global_step
     else:
-      end_local_step = self.num_batches - (self.init_global_step /
+      end_local_step = self.num_batches - (self.init_global_step //
                                            self.num_workers)
     if not global_step_watcher:
       # In cross-replica sync mode, all workers must run the same number of
@@ -2987,7 +2989,7 @@ class BenchmarkCNN(object):
       # Build the per-worker image processing
       with tf.name_scope('input_processing'):
         input_processing_info = self._build_input_processing(
-            shift_ratio=(float(task_num) / self.num_workers))
+            shift_ratio=(task_num / self.num_workers))
       if input_processing_info.input_producer_op is not None:
         global_input_producer_op.extend(input_processing_info.input_producer_op)
       # Build the per-worker model replica.
@@ -3310,7 +3312,7 @@ class BenchmarkCNN(object):
     if self.job_name:
       # shift_ratio prevents multiple workers from processing the same batch
       # during a step
-      shift_ratio = float(self.task_index) / self.num_workers
+      shift_ratio = self.task_index / self.num_workers
 
     processor_class = self.dataset.get_input_preprocessor(
         self.params.input_preprocessor)
