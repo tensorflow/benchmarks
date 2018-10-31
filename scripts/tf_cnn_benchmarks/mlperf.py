@@ -70,7 +70,7 @@ class MlPerfLogger(object):
     mlperf_log.ROOT_DIR_SSD = os.path.split(os.path.abspath(__file__))[0]
     self.model = model
     model_to_fn = {
-        'resnet50': mlperf_log.resnet_print,
+        'resnet50_v1.5': mlperf_log.resnet_print,
         'ssd300': mlperf_log.ssd_print,
     }
     try:
@@ -80,7 +80,7 @@ class MlPerfLogger(object):
                        '--model is one of the following: ' +
                        ', '.join(model_to_fn.keys()))
     model_to_tag_set = {
-        'resnet50': mlperf_log.RESNET_TAG_SET,
+        'resnet50_v1.5': mlperf_log.RESNET_TAG_SET,
         'ssd300': mlperf_log.SSD_TAG_SET,
     }
     self.tag_set = model_to_tag_set[self.model]
@@ -99,25 +99,25 @@ class MlPerfLogger(object):
     # TODO(reedwm): Log the deferred value.
 
   def log_max_pool(self, input_tensor, output_tensor):
-    if self.model == 'resnet50':
+    if self.model == 'resnet50_v1.5':
       resnet_log_helper.log_max_pool(input_tensor, output_tensor)
 
   def log_begin_block(self, input_tensor, block_type):
-    if self.model == 'resnet50':
+    if self.model == 'resnet50_v1.5':
       resnet_log_helper.log_begin_block(input_tensor, block_type)
 
   def log_end_block(self, output_tensor):
-    if self.model == 'resnet50':
+    if self.model == 'resnet50_v1.5':
       resnet_log_helper.log_end_block(output_tensor)
 
   def log_projection(self, input_tensor, output_tensor):
-    if self.model == 'resnet50':
+    if self.model == 'resnet50_v1.5':
       resnet_log_helper.log_projection(input_tensor, output_tensor)
 
   def log_conv2d(self, input_tensor, output_tensor, stride_height, stride_width,
                  filters, initializer, use_bias):
     """Log a conv2d call."""
-    if self.model == 'resnet50':
+    if self.model == 'resnet50_v1.5':
       assert stride_height == stride_width, (
           '--ml_perf_compliance_logging does not support convolutions where '
           'the stride height is not equal to the stride width. '
@@ -134,7 +134,7 @@ class MlPerfLogger(object):
 
   def log_batch_norm(self, input_tensor, output_tensor, momentum, epsilon,
                      center, scale, training):
-    if self.model == 'resnet50':
+    if self.model == 'resnet50_v1.5':
       resnet_log_helper.log_batch_norm(input_tensor, output_tensor, momentum,
                                        epsilon, center, scale, training)
 
@@ -160,7 +160,7 @@ class MlPerfLogger(object):
              value={'min': int(height * scale_factor)})
 
   def log_eval_epoch(self, tag, global_step, batch_size, stack_offset=2):
-    if self.model == 'resnet50':
+    if self.model == 'resnet50_v1.5':
       self.log(key=tag, stack_offset=stack_offset+1)
     elif self.model == 'ssd300':
       epoch = int(global_step * batch_size / 118287)
@@ -169,7 +169,7 @@ class MlPerfLogger(object):
   def log_eval_accuracy(self, accuracy, global_step=None, batch_size=None,
                         stack_offset=2):
     """Logs eval accuracy."""
-    if self.model == 'resnet50':
+    if self.model == 'resnet50_v1.5':
       self.log(key=tags.EVAL_ACCURACY, value=accuracy,
                stack_offset=stack_offset+1)
     elif self.model == 'ssd300':

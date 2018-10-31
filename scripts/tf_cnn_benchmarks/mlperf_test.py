@@ -161,7 +161,7 @@ class MlPerfComplianceTest(tf.test.TestCase):
                                          stop_at_top_1_accuracy=2.0,
                                          tf_random_seed=9876,
                                          ml_perf=True)
-      with mlperf.mlperf_logger(use_mlperf_logger=True, model='resnet50'):
+      with mlperf.mlperf_logger(use_mlperf_logger=True, model='resnet50_v1.5'):
         bench_cnn = benchmark_cnn.BenchmarkCNN(params, model=_MlPerfTestModel())
         bench_cnn.run()
       logs = string_io.getvalue().splitlines()
