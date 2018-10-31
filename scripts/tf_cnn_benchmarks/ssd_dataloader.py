@@ -121,10 +121,97 @@ def calc_iou_tensor(boxes1, boxes2):
   return iou
 
 
-def ssd_crop(image, boxes, classes):
-  """IoU biassed random crop.
+def ssd_parse_example_proto(example_serialized):
+  """Parses an Example proto containing a training example of an image.
+
+  Each Example proto contains the following fields that we care about:
+
+    image/encoded: <JPEG encoded string>
+    image/source_id: tf.string
+    image/height: tf.int64
+    image/width: tf.int64
+    image/object/bbox/xmin: tf.VarLenFeature(tf.float32)
+    image/object/bbox/xmax: tf.VarLenFeature(tf.float32)
+    image/object/bbox/ymin: tf.VarLenFeature(tf.float32
+    image/object/bbox/ymax: tf.VarLenFeature(tf.float32)
+    image/object/class/label: tf.VarLenFeature(tf.int64)
+    image/object/class/text: tf.VarLenFeature(tf.string)
+
+  Complete decoder can be found in:
+  https://github.com/tensorflow/models/blob/master/research/object_detection/data_decoders/tf_example_decoder.py
+
+  Args:
+    example_serialized: scalar Tensor tf.string containing a serialized
+      Example protocol buffer.
+
+  Returns:
+    A dictionary with the following key-values:
+    image_buffer: Tensor tf.string containing the contents of a JPEG file.
+    groundtruth_boxes: Tensor tf.float32 of shape [num_boxes, 4], containing
+      coordinates of object bounding boxes.
+    groundtruth_classeS: Tensor tf.int64 of shape [num_boxes, 1], containing
+      class labels of objects.
+    source_id: unique image identifier.
+    raw_shape: [height, width, 3].
+  """
+  feature_map = {
+      'image/encoded': tf.FixedLenFeature(
+          (), dtype=tf.string, default_value=''),
+      'image/source_id': tf.FixedLenFeature((), tf.string, default_value=''),
+      'image/height': tf.FixedLenFeature((), tf.int64, default_value=1),
+      'image/width': tf.FixedLenFeature((), tf.int64, default_value=1),
+      'image/object/bbox/xmin': tf.VarLenFeature(dtype=tf.float32),
+      'image/object/bbox/ymin': tf.VarLenFeature(dtype=tf.float32),
+      'image/object/bbox/xmax': tf.VarLenFeature(dtype=tf.float32),
+      'image/object/bbox/ymax': tf.VarLenFeature(dtype=tf.float32),
+      'image/object/class/label': tf.VarLenFeature(dtype=tf.int64),
+  }
+  features = tf.parse_single_example(example_serialized, feature_map)
+
+  xmin = tf.expand_dims(features['image/object/bbox/xmin'].values, 1)
+  ymin = tf.expand_dims(features['image/object/bbox/ymin'].values, 1)
+  xmax = tf.expand_dims(features['image/object/bbox/xmax'].values, 1)
+  ymax = tf.expand_dims(features['image/object/bbox/ymax'].values, 1)
+
+  image_buffer = features['image/encoded']
+  # Bounding box coordinates should be in ltrb order
+  boxes = tf.concat([ymin, xmin, ymax, xmax], 1)
+  classes = tf.expand_dims(features['image/object/class/label'].values, 1)
+  source_id = features['image/source_id']
+  raw_shape = tf.stack([features['image/height'], features['image/width'], 3])
+
+  return {'image_buffer': image_buffer,
+          'groundtruth_boxes': boxes,
+          'groundtruth_classes': classes,
+          'source_id': source_id,
+          'raw_shape': raw_shape}
+
+
+def ssd_decode_and_crop(image_buffer, boxes, classes, raw_shape):
+  """Crop image randomly and decode the cropped region.
+
+  This function will crop an image to meet the following requirements:
+  1. height to width ratio between 0.5 and 2;
+  2. IoUs of some boxes exceed specified threshold;
+  3. At least one box center is in the cropped region.
+  We defer the jpeg decoding task until after the crop to avoid wasted work.
 
   Reference: https://github.com/chauhan-utk/ssd.DomainAdaptation
+
+  Args:
+    image_buffer: Tensor tf.string containing the contents of a JPEG file.
+    boxes: Tensor tf.float32 of shape [num_boxes, 4], containing coordinates of
+      object bounding boxes.
+    classes: Tensor tf.int64 of shape [num_boxes, 1], containing class labels
+      of objects.
+    raw_shape: [height, width, 3].
+
+  Returns:
+    resized_image: decoded, cropped, and resized image Tensor tf.float32 of
+      shape [ssd_constants.IMAGE_SIZE, ssd_constants.IMAGE_SIZE, 3], value
+      range 0--255.
+    cropped_boxes: box coordinates for objects in the cropped region.
+    cropped_classes: class labels for objects in the cropped region.
   """
 
   num_boxes = tf.shape(boxes)[0]
@@ -228,18 +315,29 @@ def ssd_crop(image, boxes, classes):
       (filtered_boxes[:, 3] - top) / height,
   ], axis=1)
 
-  cropped_image = tf.image.crop_and_resize(
-      image=image[tf.newaxis, :, :, :],
-      boxes=crop_bounds[tf.newaxis, :],
-      box_ind=tf.zeros((1,), tf.int32),
-      crop_size=(ssd_constants.IMAGE_SIZE, ssd_constants.IMAGE_SIZE),
-  )[0, :, :, :]
+  # crop_window containing integer coordinates of cropped region. A normalized
+  # coordinate value of y should be mapped to the image coordinate at
+  # y * (height - 1).
+  raw_shape = tf.cast(raw_shape, tf.float32)
+  crop_window = tf.stack([left * (raw_shape[0] - 1),
+                          top * (raw_shape[1] - 1),
+                          width * raw_shape[0],
+                          height * raw_shape[1]])
+  crop_window = tf.cast(crop_window, tf.int32)
+
+  # Fused op only decodes the cropped portion of an image
+  cropped_image = tf.image.decode_and_crop_jpeg(
+      image_buffer, crop_window, channels=3)
+
+  # Resize converts image dtype from uint8 to float32, without rescaling values.
+  resized_image = tf.image.resize_images(
+      cropped_image, [ssd_constants.IMAGE_SIZE, ssd_constants.IMAGE_SIZE])
   mlperf.logger.log(key=mlperf.tags.INPUT_SIZE,
                     value=ssd_constants.IMAGE_SIZE)
 
   cropped_classes = tf.boolean_mask(classes, box_masks, axis=0)
 
-  return cropped_image, cropped_boxes, cropped_classes
+  return resized_image, cropped_boxes, cropped_classes
 
 
 def color_jitter(image, brightness=0, contrast=0, saturation=0, hue=0):

@@ -979,11 +979,12 @@ class COCOPreprocessor(BaseImagePreprocessor):
                         'following https://github.com/tensorflow/models/blob/'
                         'master/research/object_detection/g3doc/installation.md'
                         '#protobuf-compilation')
-    source_id = tf.string_to_number(data['source_id'])
-    image = data['image']  # dtype uint8
-    raw_shape = tf.shape(image)
+    image_buffer = data['image_buffer']
     boxes = data['groundtruth_boxes']
     classes = tf.reshape(data['groundtruth_classes'], [-1, 1])
+    source_id = tf.string_to_number(data['source_id'])
+    raw_shape = data['raw_shape']
+
     ssd_encoder = ssd_dataloader.Encoder()
 
     # Only 80 of the 90 COCO classes are used.
@@ -992,7 +993,8 @@ class COCOPreprocessor(BaseImagePreprocessor):
     classes = tf.cast(classes, dtype=tf.float32)
 
     if self.train:
-      image, boxes, classes = ssd_dataloader.ssd_crop(image, boxes, classes)
+      image, boxes, classes = ssd_dataloader.ssd_decode_and_crop(
+          image_buffer, boxes, classes, raw_shape)
       # ssd_crop resizes and returns image of dtype float32 and does not change
       # its range (i.e., value in between 0--255). Divide by 255. converts it
       # to [0, 1] range. Not doing this before cropping to avoid dtype cast
@@ -1020,6 +1022,7 @@ class COCOPreprocessor(BaseImagePreprocessor):
       return (image, encoded_boxes, encoded_classes, num_matched_boxes)
 
     else:
+      image = tf.image.decode_jpeg(image_buffer)
       image = tf.image.resize_images(
           image, size=(ssd_constants.IMAGE_SIZE, ssd_constants.IMAGE_SIZE))
       # resize_image returns image of dtype float32 and does not change its
@@ -1060,7 +1063,7 @@ class COCOPreprocessor(BaseImagePreprocessor):
                      datasets_parallel_interleave_prefetch=None):
     """Creates a dataset for the benchmark."""
     try:
-      from object_detection.data_decoders import tf_example_decoder  # pylint: disable=g-import-not-at-top
+      import ssd_dataloader  # pylint: disable=g-import-not-at-top
     except ImportError:
       raise ImportError('To use the COCO dataset, you must clone the '
                         'repo https://github.com/tensorflow/models and add '
@@ -1070,7 +1073,6 @@ class COCOPreprocessor(BaseImagePreprocessor):
                         'master/research/object_detection/g3doc/installation.md'
                         '#protobuf-compilation')
     assert self.supports_datasets()
-    example_decoder = tf_example_decoder.TfExampleDecoder()
 
     glob_pattern = dataset.tf_record_pattern(subset)
     file_names = gfile.Glob(glob_pattern)
@@ -1103,7 +1105,7 @@ class COCOPreprocessor(BaseImagePreprocessor):
     else:
       ds = ds.repeat()
 
-    ds = ds.map(example_decoder.decode, num_parallel_calls=64)
+    ds = ds.map(ssd_dataloader.ssd_parse_example_proto, num_parallel_calls=64)
     ds = ds.filter(
         lambda data: tf.greater(tf.shape(data['groundtruth_boxes'])[0], 0))
     ds = ds.apply(
