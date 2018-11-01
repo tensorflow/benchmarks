@@ -1181,8 +1181,8 @@ def get_learning_rate(params, global_step, num_examples_per_epoch, model,
       learning_rate = tf.cond(global_step < warmup_steps,
                               lambda: warmup_lr, lambda: learning_rate)
 
-    mlperf.logger.log_deferred_tensor_value(mlperf.tags.OPT_LR, learning_rate,
-                                            every_n=100)
+    learning_rate = mlperf.logger.log_deferred_tensor_value(
+        mlperf.tags.OPT_LR, learning_rate, every_n=100)
   return learning_rate
 
 

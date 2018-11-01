@@ -45,6 +45,7 @@ try:
   from mlperf_compliance import mlperf_log
   from mlperf_compliance import resnet_log_helper
   from mlperf_compliance import tags
+  from mlperf_compliance import tf_mlperf_log
   import_successful = True
 except ImportError:
   # The logger cannot be enabled in this case since the MLPerf library isn't
@@ -94,9 +95,9 @@ class MlPerfLogger(object):
 
   def log_deferred_tensor_value(self, key, tensor_value, stack_offset=2,
                                 every_n=1, first_n=None):
-    del tensor_value, every_n, first_n
-    self._log_fn(key, stack_offset=stack_offset, deferred=True)
-    # TODO(reedwm): Log the deferred value.
+    log_id = self._log_fn(key, stack_offset=stack_offset, deferred=True)
+    return tf_mlperf_log.log_deferred(op=tensor_value, log_id=log_id,
+                                      every_n=every_n, first_n=first_n)
 
   def log_max_pool(self, input_tensor, output_tensor):
     if self.model == 'resnet50_v1.5':
@@ -199,6 +200,10 @@ class NullMlPerfLogger(object):
 
   def __getattr__(self, item):
     return _empty_fn
+
+  def log_deferred_tensor_value(self, key, tensor_value, *args, **kwargs):
+    del key, args, kwargs
+    return tensor_value
 
 
 # A global singleton logger. By default, it's the null logger but can be
