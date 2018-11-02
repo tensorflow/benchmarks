@@ -283,6 +283,8 @@ class CNNModel(Model):
       logits = (
           network.affine(nclass, activation='linear')
           if not self.skip_final_affine_layer() else network.top_layer)
+      mlperf.logger.log(key=mlperf.tags.MODEL_HP_FINAL_SHAPE,
+                        value=logits.shape.as_list()[1:])
       aux_logits = None
       if network.aux_top_layer is not None:
         with network.switch_to_aux_top_layer():

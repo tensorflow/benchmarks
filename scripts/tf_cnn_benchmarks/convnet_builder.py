@@ -196,15 +196,19 @@ class ConvNetBuilder(object):
                      [pad_w_beg, pad_w_end], [0, 0]]
           if self.data_format == 'NCHW':
             padding = [padding[0], padding[3], padding[1], padding[2]]
-          input_layer = tf.pad(input_layer, padding)
-          conv = self._conv2d_impl(input_layer, num_channels_in,
+          padded_input_layer = tf.pad(input_layer, padding)
+          conv = self._conv2d_impl(padded_input_layer, num_channels_in,
                                    num_out_channels,
                                    kernel_size=[k_height, k_width],
                                    strides=[d_height, d_width], padding='VALID',
                                    kernel_initializer=kernel_initializer)
       if use_batch_norm is None:
         use_batch_norm = self.use_batch_norm
-      added_bias = False
+      mlperf.logger.log_conv2d(input_tensor=input_layer, output_tensor=conv,
+                               stride_height=d_height, stride_width=d_width,
+                               filters=num_out_channels,
+                               initializer=kernel_initializer,
+                               use_bias=not use_batch_norm and bias is not None)
       if not use_batch_norm:
         if bias is not None:
           biases = self.get_variable('biases', [num_out_channels],
@@ -213,18 +217,12 @@ class ConvNetBuilder(object):
           biased = tf.reshape(
               tf.nn.bias_add(conv, biases, data_format=self.data_format),
               conv.get_shape())
-          added_bias = True
         else:
           biased = conv
       else:
         self.top_layer = conv
         self.top_size = num_out_channels
         biased = self.batch_norm(**self.batch_norm_config)
-      mlperf.logger.log_conv2d(input_tensor=input_layer, output_tensor=conv,
-                               stride_height=d_height, stride_width=d_width,
-                               filters=num_out_channels,
-                               initializer=kernel_initializer,
-                               use_bias=added_bias)
       if activation == 'relu':
         mlperf.logger.log(key=mlperf.tags.MODEL_HP_RELU)
         conv1 = tf.nn.relu(biased)

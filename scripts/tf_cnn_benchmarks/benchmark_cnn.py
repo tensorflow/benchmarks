@@ -2332,7 +2332,6 @@ class BenchmarkCNN(object):
         sess = tf_debug.TensorBoardDebugWrapperSession(sess,
                                                        self.params.debugger)
     mlperf.logger.log(key=mlperf.tags.TRAIN_LOOP)
-    mlperf.logger.log_train_epochs(self.num_epochs)
     skip_final_eval = False
     accuracy_at_1 = None
     last_eval_step = local_step
@@ -2384,6 +2383,10 @@ class BenchmarkCNN(object):
           self._should_eval_during_training(local_step)):
         python_global_step = sess.run(graph_info.global_step)
         num_steps_since_last_eval = local_step - last_eval_step
+        # The INPUT_SIZE tag value might not match the
+        # PREPROC_NUM_TRAIN_EXAMPLES tag value, because the number of examples
+        # run, which is INPUT_SIZE, is rounded up to the nearest multiple of
+        # self.batch_size.
         mlperf.logger.log(
             key=mlperf.tags.INPUT_SIZE,
             value=num_steps_since_last_eval * self.batch_size)
@@ -2436,13 +2439,16 @@ class BenchmarkCNN(object):
     mlperf.logger.log(
         key=mlperf.tags.INPUT_SIZE,
         value=num_steps_since_last_eval * self.batch_size)
+    python_global_step = sess.run(graph_info.global_step)
     if eval_graph_info and not skip_final_eval:
-      python_global_step = sess.run(graph_info.global_step)
       log_fn('Running final evaluation at global_step {}'.format(
           python_global_step))
       accuracy_at_1, _ = self._eval_once(
           sess, summary_writer, eval_graph_info.fetches,
           eval_graph_info.summary_op, eval_image_producer, python_global_step)
+    num_epochs_ran = (python_global_step * self.batch_size /
+                      self.dataset.num_examples_per_epoch('train'))
+    mlperf.logger.log_train_epochs(num_epochs_ran)
     if image_producer is not None:
       image_producer.done()
     if eval_image_producer is not None:

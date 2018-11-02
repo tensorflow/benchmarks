@@ -124,6 +124,8 @@ def bottleneck_block_v1_5(cnn, depth, depth_bottleneck, stride):
           depth, 1, 1, stride, stride, activation=None,
           use_batch_norm=True, input_layer=input_layer,
           num_channels_in=in_size, bias=None)
+      mlperf.logger.log_projection(input_tensor=input_layer,
+                                   output_tensor=shortcut)
     cnn.conv(depth_bottleneck, 1, 1, 1, 1,
              input_layer=input_layer, num_channels_in=in_size,
              use_batch_norm=True, bias=None)
@@ -318,8 +320,6 @@ class ResnetModel(model_lib.CNNModel):
       cnn.batch_norm()
       cnn.top_layer = tf.nn.relu(cnn.top_layer)
     cnn.spatial_mean()
-    mlperf.logger.log(key=mlperf.tags.MODEL_HP_FINAL_SHAPE,
-                      value=cnn.top_layer.shape.as_list()[1:])
 
   def get_learning_rate(self, global_step, batch_size):
     rescaled_lr = self.get_scaled_base_learning_rate(batch_size)

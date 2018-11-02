@@ -670,6 +670,11 @@ class BaseImagePreprocessor(InputPreprocessor):
   def parse_and_preprocess(self, value, batch_position):
     assert self.supports_datasets()
     image_buffer, label_index, bbox, _ = parse_example_proto(value)
+    if self.match_mlperf:
+      bbox = tf.zeros((1, 0, 4), dtype=bbox.dtype)
+      mlperf.logger.log(key=mlperf.tags.INPUT_CROP_USES_BBOXES, value=False)
+    else:
+      mlperf.logger.log(key=mlperf.tags.INPUT_CROP_USES_BBOXES, value=True)
     image = self.preprocess(image_buffer, bbox, batch_position)
     return (image, label_index)
 
