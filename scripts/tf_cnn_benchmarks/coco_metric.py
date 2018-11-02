@@ -24,7 +24,6 @@ from __future__ import division
 from __future__ import print_function
 
 import atexit
-import json
 import tempfile
 
 from absl import flags
@@ -48,39 +47,28 @@ if six.PY3:
   pycocotools.coco.unicode = str
 
 
-def compute_map(labels_and_predictions, val_json_file):
+def async_eval_runner(queue_predictions, queue_results, val_json_file):
+  """Load intermediate eval results and get COCO metrics."""
+  while True:
+    message = queue_predictions.get()
+    if message == 'STOP':  # poison pill
+      break
+    step, predictions = message
+    results = compute_map(predictions, val_json_file)
+    queue_results.put((step, results))
+
+
+def compute_map(predictions, val_json_file):
   """Use model predictions to compute mAP.
 
-  The evaluation code is largely copied from the MLPerf reference
-  implementation. While it is possible to write the evaluation as a tensor
-  metric and use Estimator.evaluate(), this approach was selected for simplicity
-  and ease of duck testing.
+  Args:
+    predictions: a list of tuples returned by decoded_predictions function,
+      each containing the following elements:
+      image source_id, box coordinates in XYWH order, probability score, label
+    val_json_file: path to COCO annotation file
+  Returns:
+    A dictionary that maps all COCO metrics (keys) to their values
   """
-
-  with tf.gfile.Open(val_json_file, "r") as f:
-    annotation_data = json.load(f)
-
-  predictions = []
-  for example in labels_and_predictions:
-    pred_box = example[ssd_constants.PRED_BOXES]
-    pred_scores = example[ssd_constants.PRED_SCORES]
-
-    loc, label, prob = decode_single(
-        pred_box, pred_scores, ssd_constants.OVERLAP_CRITERIA,
-        ssd_constants.MAX_NUM_EVAL_BOXES, ssd_constants.MAX_NUM_EVAL_BOXES)
-
-    htot, wtot, _ = example[ssd_constants.RAW_SHAPE]
-    for loc_, label_, prob_ in zip(loc, label, prob):
-      # Ordering convention differs, hence [1], [0] rather than [0], [1]
-      predictions.append([
-          int(example[ssd_constants.SOURCE_ID]), loc_[1] * wtot, loc_[0] * htot,
-          (loc_[3] - loc_[1]) * wtot, (loc_[2] - loc_[0]) * htot, prob_,
-          ssd_constants.CLASS_INV_MAP[label_]
-          ])
-  mlperf.logger.log(key=mlperf.tags.NMS_THRESHOLD,
-                    value=ssd_constants.OVERLAP_CRITERIA)
-  mlperf.logger.log(key=mlperf.tags.NMS_MAX_DETECTIONS,
-                    value=ssd_constants.MAX_NUM_EVAL_BOXES)
 
   if val_json_file.startswith("gs://"):
     _, local_val_json = tempfile.mkstemp(suffix=".json")
@@ -93,7 +81,6 @@ def compute_map(labels_and_predictions, val_json_file):
 
   cocoGt = COCO(local_val_json)
   cocoDt = cocoGt.loadRes(np.array(predictions))
-
   E = COCOeval(cocoGt, cocoDt, iouType='bbox')
   E.evaluate()
   E.accumulate()
@@ -124,6 +111,34 @@ def calc_iou(target, candidates):
 
   iou = intersect/(area1 + area2 - intersect)
   return iou
+
+
+# TODO(haoyuzhang): Rewrite this NumPy based implementation to TensorFlow based
+# implementation under ssd_model.py accuracy_function.
+def decode_predictions(labels_and_predictions):
+  """Decode predictions and remove unused boxes and labels."""
+  predictions = []
+  for example in labels_and_predictions:
+    source_id = int(example[ssd_constants.SOURCE_ID])
+    pred_box = example[ssd_constants.PRED_BOXES]
+    pred_scores = example[ssd_constants.PRED_SCORES]
+
+    locs, labels, probs = decode_single(
+        pred_box, pred_scores, ssd_constants.OVERLAP_CRITERIA,
+        ssd_constants.MAX_NUM_EVAL_BOXES, ssd_constants.MAX_NUM_EVAL_BOXES)
+
+    raw_height, raw_width, _ = example[ssd_constants.RAW_SHAPE]
+    for loc, label, prob in zip(locs, labels, probs):
+      # Ordering convention differs, hence [1], [0] rather than [0], [1]
+      x, y = loc[1] * raw_width, loc[0] * raw_height
+      w, h = (loc[3] - loc[1]) * raw_width, (loc[2] - loc[0]) * raw_height
+      predictions.append(
+          [source_id, x, y, w, h, prob, ssd_constants.CLASS_INV_MAP[label]])
+  mlperf.logger.log(key=mlperf.tags.NMS_THRESHOLD,
+                    value=ssd_constants.OVERLAP_CRITERIA)
+  mlperf.logger.log(key=mlperf.tags.NMS_MAX_DETECTIONS,
+                    value=ssd_constants.MAX_NUM_EVAL_BOXES)
+  return predictions
 
 
 def decode_single(bboxes_in, scores_in, criteria, max_output, max_num=200):

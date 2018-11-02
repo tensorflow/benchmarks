@@ -180,6 +180,10 @@ flags.DEFINE_float('stop_at_top_1_accuracy', None,
                    'If set, stops training after the evaluation accuracy hits '
                    'this number. Can only be used with one of the '
                    '--eval_during_training_* flags.')
+flags.DEFINE_boolean('collect_eval_results_async', False,
+                     'If True, start a separate process to postprocess eval '
+                     'results asynchronously. This currently only works with '
+                     'the SSD model.')
 flags.DEFINE_integer('num_warmup_batches', None,
                      'number of batches to run before timing')
 flags.DEFINE_integer('autotune_threshold', None,
@@ -1368,6 +1372,9 @@ class BenchmarkCNN(object):
     if params.stop_at_top_1_accuracy and not eval_during_training_enabled:
       raise ValueError('--stop_at_top_1_accuracy is only supported with '
                        '--eval_during_training_*')
+    if params.collect_eval_results_async and params.model != 'ssd300':
+      raise ValueError('--collect_eval_results_async only works with ssd300 '
+                       'model currently.')
     if self.params.forward_only and self.params.freeze_when_forward_only:
       if self.params.train_dir is not None:
         raise ValueError('In forward_only mode, when --freeze_when_forward_only'
@@ -2405,6 +2412,10 @@ class BenchmarkCNN(object):
           break
         else:
           log_fn('Resuming training')
+      if eval_graph_info and self.model.reached_target():
+        log_fn('Stopping, as the model indicates its custom goal was reached')
+        skip_final_eval = True
+        break
     loop_end_time = time.time()
     # Waits for the global step to be done, regardless of done_fn.
     if global_step_watcher:
@@ -2476,8 +2487,9 @@ class BenchmarkCNN(object):
     }
     if last_average_loss is not None:
       stats['last_average_loss'] = last_average_loss
-    success = bool(accuracy_at_1 and self.params.stop_at_top_1_accuracy and
-                   accuracy_at_1 >= self.params.stop_at_top_1_accuracy)
+    success = bool(self.model.reached_target() or
+                   (accuracy_at_1 and self.params.stop_at_top_1_accuracy and
+                    accuracy_at_1 >= self.params.stop_at_top_1_accuracy))
     mlperf.logger.log(key=mlperf.tags.RUN_STOP, value={'success': success})
     mlperf.logger.log(key=mlperf.tags.RUN_FINAL)
     return stats

@@ -31,8 +31,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import multiprocessing
 import os
 import re
+import threading
 import tensorflow as tf
 
 import constants
@@ -88,11 +90,25 @@ class SSD300Model(model_lib.CNNModel):
     # Global step when predictions are collected.
     self.eval_global_step = 0
 
-    # Accuracy and number of batches at current evaluation step
-    # TODO(haoyuzhang): Remove class variables after benchmark_cnn.py uses more
-    # generic metrics in results
-    self.eval_accuracy_at_step = 0
-    self.eval_num_batches_at_step = 0
+    # Average precision. In asynchronous eval mode, this is the latest AP we
+    # get so far and may not be the results at current eval step.
+    self.eval_coco_ap = 0
+
+    # Process, queues, and thread for asynchronous evaluation. When enabled,
+    # create a separte process (async_eval_process) that continously pull
+    # intermediate results from the predictions queue (a multiprocessing queue),
+    # process them, and push final results into results queue (another
+    # multiprocessing queue). The main thread is responsible to push message
+    # into predictions queue, and start a separate thread to continuously pull
+    # messages from results queue to update final results.
+    # Message in predictions queue should be a tuple of two elements:
+    #    (evaluation step, predictions)
+    # Message in results queue should be a tuple of two elements:
+    #    (evaluation step, final results)
+    self.async_eval_process = None
+    self.async_eval_predictions_queue = None
+    self.async_eval_results_queue = None
+    self.async_eval_results_getter_thread = None
 
     # The MLPerf reference uses a starting lr of 1e-3 at bs=32.
     self.base_lr_batch_size = 32
@@ -516,11 +532,7 @@ class SSD300Model(model_lib.CNNModel):
     # eval at a new global step.
     if results['global_step'] > self.eval_global_step:
       self.eval_global_step = results['global_step']
-      self.eval_accuracy_at_step = 0
-      self.eval_num_batches_at_step = 0
       self.predictions.clear()
-
-    self.eval_num_batches_at_step += 1
 
     for i, sid in enumerate(source_id):
       self.predictions[int(sid)] = {
@@ -535,27 +547,73 @@ class SSD300Model(model_lib.CNNModel):
     if len(self.predictions) >= ssd_constants.COCO_NUM_VAL_IMAGES:
       log_fn('Got results for all {:d} eval examples. Calculate mAP...'.format(
           ssd_constants.COCO_NUM_VAL_IMAGES))
+
       annotation_file = os.path.join(self.params.data_dir,
                                      ssd_constants.ANNOTATION_FILE)
-      eval_results = coco_metric.compute_map(self.predictions.values(),
-                                             annotation_file)
+      # Size of predictions before decoding about 15--30GB, while size after
+      # decoding is 100--200MB. When using async eval mode, decoding takes
+      # 20--30 seconds of main thread time but is necessary to avoid OOM during
+      # inter-process communication.
+      decoded_preds = coco_metric.decode_predictions(self.predictions.values())
       self.predictions.clear()
-      self.eval_accuracy_at_step = eval_results['COCO/AP']
-      # Top 1 accuracy is averaged on all eval batches. Multiply by number of
-      # previously finished steps to get correct average.
-      sum_eval_accuracy = (self.eval_accuracy_at_step *
-                           self.eval_num_batches_at_step)
-      ret = {'top_1_accuracy': sum_eval_accuracy, 'top_5_accuracy': 0.}
+
+      if self.params.collect_eval_results_async:
+        def _eval_results_getter():
+          """Iteratively get eval results from async eval process."""
+          while True:
+            step, eval_results = self.async_eval_results_queue.get()
+            self.eval_coco_ap = eval_results['COCO/AP']
+            mlperf.logger.log_eval_accuracy(
+                self.eval_coco_ap, step, self.batch_size * self.params.num_gpus)
+            if self.reached_target():
+              # Reached target, clear all pending messages in predictions queue
+              # and insert poison pill to stop the async eval process.
+              while not self.async_eval_predictions_queue.empty():
+                self.async_eval_predictions_queue.get()
+              self.async_eval_predictions_queue.put('STOP')
+              break
+
+        if not self.async_eval_process:
+          # Limiting the number of messages in predictions queue to prevent OOM.
+          # Each message (predictions data) can potentially consume a lot of
+          # memory, and normally there should only be few messages in the queue.
+          # If often blocked on this, consider reducing eval frequency.
+          self.async_eval_predictions_queue = multiprocessing.Queue(2)
+          self.async_eval_results_queue = multiprocessing.Queue()
+
+          # Reason to use a Process as opposed to Thread is mainly the
+          # computationally intensive eval runner. Python multithreading is not
+          # truly running in parallel, a runner thread would get significantly
+          # delayed (or alternatively delay the main thread).
+          self.async_eval_process = multiprocessing.Process(
+              target=coco_metric.async_eval_runner,
+              args=(self.async_eval_predictions_queue,
+                    self.async_eval_results_queue,
+                    annotation_file))
+          self.async_eval_process.daemon = True
+          self.async_eval_process.start()
+
+          self.async_eval_results_getter_thread = threading.Thread(
+              target=_eval_results_getter, args=())
+          self.async_eval_results_getter_thread.daemon = True
+          self.async_eval_results_getter_thread.start()
+
+        self.async_eval_predictions_queue.put(
+            (self.eval_global_step, decoded_preds))
+        return {'top_1_accuracy': 0, 'top_5_accuracy': 0.}
+
+      eval_results = coco_metric.compute_map(decoded_preds, annotation_file)
+      self.eval_coco_ap = eval_results['COCO/AP']
+      ret = {'top_1_accuracy': self.eval_coco_ap, 'top_5_accuracy': 0.}
       for metric_key, metric_value in eval_results.items():
         ret[constants.SIMPLE_VALUE_RESULT_PREFIX + metric_key] = metric_value
-      mlperf.logger.log_eval_accuracy(self.eval_accuracy_at_step,
-                                      self.eval_global_step,
+      mlperf.logger.log_eval_accuracy(self.eval_coco_ap, self.eval_global_step,
                                       self.batch_size * self.params.num_gpus)
       return ret
     log_fn('Got {:d} out of {:d} eval examples.'
            ' Waiting for the remaining to calculate mAP...'.format(
                len(self.predictions), ssd_constants.COCO_NUM_VAL_IMAGES))
-    return {'top_1_accuracy': self.eval_accuracy_at_step, 'top_5_accuracy': 0.}
+    return {'top_1_accuracy': self.eval_coco_ap, 'top_5_accuracy': 0.}
 
   def get_synthetic_inputs(self, input_name, nclass):
     """Generating synthetic data matching real data shape and type."""
@@ -569,3 +627,7 @@ class SSD300Model(model_lib.CNNModel):
     nboxes = tf.random_uniform(
         [self.batch_size], minval=1, maxval=10, dtype=tf.float32)
     return (inputs, boxes, classes, nboxes)
+
+  def reached_target(self):
+    return (self.params.stop_at_top_1_accuracy and
+            self.eval_coco_ap >= self.params.stop_at_top_1_accuracy)

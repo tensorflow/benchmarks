@@ -148,6 +148,10 @@ class Model(object):
     """Postprocess results returned from model in Python."""
     return results
 
+  def reached_target(self):
+    """Define custom methods to stop training when model's target is reached."""
+    return False
+
 
 class CNNModel(Model):
   """Base model configuration for CNN benchmarks."""
