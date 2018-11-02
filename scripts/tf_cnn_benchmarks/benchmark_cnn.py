@@ -2439,7 +2439,7 @@ class BenchmarkCNN(object):
     # We skip printing images/sec if --eval_during_training_* is specified,
     # because we are both processing training and evaluation images, so a
     # singular "images/sec" value is meaningless.
-    if not self.params.eval_during_training_every_n_steps:
+    if self.mode != constants.BenchmarkMode.TRAIN_AND_EVAL:
       log_fn('-' * 64)
       # TODO(laigd): rename 'images' to maybe 'inputs'.
       log_fn('total images/sec: %.2f' % images_per_sec)
