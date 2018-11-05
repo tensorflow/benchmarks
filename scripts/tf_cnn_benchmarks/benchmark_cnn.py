@@ -1526,8 +1526,12 @@ class BenchmarkCNN(object):
 
     if self.params.eval_during_training_at_specified_epochs:
       try:
-        n_epochs = map(
-            float, self.params.eval_during_training_at_specified_epochs)
+        n_epochs = list(map(
+            float, self.params.eval_during_training_at_specified_epochs))
+        offset = n_epochs[0] - 1
+        if offset.is_integer():
+          offset = int(offset)
+        mlperf.logger.log(key=mlperf.tags.EVAL_EPOCH_OFFSET, value=offset)
         self.eval_during_training_at_specified_steps = {
             (int(e * num_train_examples_per_epoch + self.batch_size - 1) //
              self.batch_size)
@@ -1537,9 +1541,11 @@ class BenchmarkCNN(object):
                          'of %s cannot be converted to a list of floats.' %
                          (self.params.eval_during_training_at_specified_epochs))
 
-    if (self.params.eval_during_training_every_n_epochs or
-        self.params.eval_during_training_every_n_steps):
-      mlperf.logger.log(key=mlperf.tags.EVAL_EPOCH_OFFSET, value=0)
+    if params.eval_during_training_every_n_epochs:
+      offset = params.eval_during_training_every_n_epochs - 1
+      if offset.is_integer():
+        offset = int(offset)
+      mlperf.logger.log(key=mlperf.tags.EVAL_EPOCH_OFFSET, value=offset)
 
     if (self.params.staged_vars and
         self.params.variable_update != 'parameter_server'):
@@ -2008,7 +2014,10 @@ class BenchmarkCNN(object):
           mlperf.tags.EVAL_STOP, global_step, self.batch_size)
       mlperf.logger.log(key=mlperf.tags.EVAL_SIZE,
                         value=self.num_batches * self.batch_size)
-      mlperf.logger.log_eval_accuracy(accuracy_at_1)
+      if self.model != 'ssd300':  # ssd300 logs the eval accuracy elsewhere.
+        mlperf.logger.log_eval_accuracy(
+            accuracy_at_1, global_step, self.batch_size,
+            examples_per_epoch=self.dataset.num_examples_per_epoch('train'))
       if self.params.stop_at_top_1_accuracy:
         mlperf.logger.log(key=mlperf.tags.EVAL_TARGET,
                           value=self.params.stop_at_top_1_accuracy)
@@ -2838,6 +2847,8 @@ class BenchmarkCNN(object):
       # TODO(reedwm): Have each tower read from the first tower's moving
       # averages for a slight performance gain.
       update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+      mlperf.logger.log(key=mlperf.tags.INPUT_BN_SPAN,
+                        value=self.batch_size // len(self.raw_devices))
 
     fetches = self._build_fetches(global_step, all_logits, losses, device_grads,
                                   enqueue_ops, update_ops, all_accuracy_ops,

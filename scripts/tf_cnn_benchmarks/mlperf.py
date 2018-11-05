@@ -167,23 +167,17 @@ class MlPerfLogger(object):
       epoch = int(global_step * batch_size / 118287)
       self.log(key=tag, value=epoch, stack_offset=stack_offset+1)
 
-  def log_eval_accuracy(self, accuracy, global_step=None, batch_size=None,
-                        stack_offset=2):
+  def log_eval_accuracy(self, accuracy, global_step, batch_size,
+                        examples_per_epoch, stack_offset=2):
     """Logs eval accuracy."""
-    if self.model == 'resnet50_v1.5':
-      self.log(key=tags.EVAL_ACCURACY, value=accuracy,
-               stack_offset=stack_offset+1)
-    elif self.model == 'ssd300':
-      # Log only when global step and batch size info is complete
-      if global_step and batch_size:
-        epoch = int(global_step * batch_size / 118287)
-        eval_accuracy = {'epoch': epoch, 'value': accuracy}
-        eval_iteration_accuracy = {'iteration': global_step, 'value': accuracy}
-        self.log(key=tags.EVAL_ACCURACY, value=eval_accuracy,
-                 stack_offset=stack_offset+1)
-        self.log(key=tags.EVAL_ITERATION_ACCURACY,
-                 value=eval_iteration_accuracy,
-                 stack_offset=stack_offset+1)
+    epoch = int(global_step * batch_size / examples_per_epoch)
+    eval_accuracy = {'epoch': epoch, 'value': accuracy}
+    eval_iteration_accuracy = {'iteration': global_step, 'value': accuracy}
+    self.log(key=tags.EVAL_ACCURACY, value=eval_accuracy,
+             stack_offset=stack_offset+1)
+    self.log(key=tags.EVAL_ITERATION_ACCURACY,
+             value=eval_iteration_accuracy,
+             stack_offset=stack_offset+1)
 
 
 def _empty_fn(*args, **kwargs):

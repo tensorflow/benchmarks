@@ -199,6 +199,8 @@ def bottleneck_block(cnn, depth, depth_bottleneck, stride, version):
     stride: Stride used in the first layer of the bottleneck block.
     version: version of ResNet to build.
   """
+  mlperf.logger.log(key=mlperf.tags.MODEL_HP_BLOCK_TYPE,
+                    value=mlperf.tags.BOTTLENECK_BLOCK)
   mlperf.logger.log_begin_block(
       input_tensor=cnn.top_layer, block_type=mlperf.tags.BOTTLENECK_BLOCK)
   if version == 'v2':
@@ -330,6 +332,7 @@ class ResnetModel(model_lib.CNNModel):
     values = [rescaled_lr * v for v in values]
     lr = tf.train.piecewise_constant(global_step, boundaries, values)
     warmup_steps = int(num_batches_per_epoch * 5)
+    mlperf.logger.log(key=mlperf.tags.OPT_LR_WARMUP_STEPS, value=warmup_steps)
     warmup_lr = (
         rescaled_lr * tf.cast(global_step, tf.float32) / tf.cast(
             warmup_steps, tf.float32))

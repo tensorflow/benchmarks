@@ -608,7 +608,8 @@ class SSD300Model(model_lib.CNNModel):
       for metric_key, metric_value in eval_results.items():
         ret[constants.SIMPLE_VALUE_RESULT_PREFIX + metric_key] = metric_value
       mlperf.logger.log_eval_accuracy(self.eval_coco_ap, self.eval_global_step,
-                                      self.batch_size * self.params.num_gpus)
+                                      self.batch_size * self.params.num_gpus,
+                                      examples_per_epoch=118287)
       return ret
     log_fn('Got {:d} out of {:d} eval examples.'
            ' Waiting for the remaining to calculate mAP...'.format(

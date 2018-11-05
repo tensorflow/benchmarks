@@ -718,7 +718,9 @@ class BaseImagePreprocessor(InputPreprocessor):
     if datasets_use_caching:
       ds = ds.cache()
     if train:
-      ds = ds.apply(tf.contrib.data.shuffle_and_repeat(buffer_size=10000))
+      buffer_size = 10000
+      mlperf.logger.log(key=mlperf.tags.INPUT_SHARD, value=buffer_size)
+      ds = ds.apply(tf.contrib.data.shuffle_and_repeat(buffer_size=buffer_size))
     else:
       ds = ds.repeat()
     ds = ds.apply(

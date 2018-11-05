@@ -127,7 +127,6 @@ class MlPerfComplianceTest(tf.test.TestCase):
       mlperf.tags.RUN_START: 1,
       '%s: 2' % mlperf.tags.INPUT_BATCH_SIZE: 1,
       mlperf.tags.TRAIN_LOOP: 1,
-      '%s: 0' % mlperf.tags.EVAL_EPOCH_OFFSET: 1,
       mlperf.tags.TRAIN_EPOCH + '.*': 1,
       '%s: 2' % mlperf.tags.INPUT_SIZE: 2,
       mlperf.tags.EVAL_START: 2,
