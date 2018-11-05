@@ -995,8 +995,13 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
 
     params = benchmark_cnn.make_params(num_epochs=3)
     batches, epochs = benchmark_cnn.get_num_batches_and_epochs(params, 2, 3)
-    self.assertEqual(batches, 4)
-    self.assertAlmostEqual(epochs, 8./3.)
+    self.assertEqual(batches, 5)
+    self.assertAlmostEqual(epochs, 10./3.)
+
+    params = benchmark_cnn.make_params(num_epochs=4)
+    batches, epochs = benchmark_cnn.get_num_batches_and_epochs(params, 2, 3)
+    self.assertEqual(batches, 6)
+    self.assertAlmostEqual(epochs, 4)
 
     with self.assertRaises(ValueError):
       params = benchmark_cnn.make_params(num_batches=100, num_epochs=100)
