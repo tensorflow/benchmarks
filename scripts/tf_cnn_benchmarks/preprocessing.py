@@ -25,8 +25,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 import cnn_util
-from tensorflow.contrib.data.python.ops import batching
-from tensorflow.contrib.data.python.ops import interleave_ops
 from tensorflow.contrib.data.python.ops import threadpool
 from tensorflow.contrib.image.python.ops import distort_image_ops
 from tensorflow.python.data.experimental.ops import prefetching_ops
@@ -703,7 +701,7 @@ class BaseImagePreprocessor(InputPreprocessor):
                        .format(glob_pattern))
     ds = tf.data.TFRecordDataset.list_files(file_names)
     ds = ds.apply(
-        interleave_ops.parallel_interleave(
+        tf.data.experimental.parallel_interleave(
             tf.data.TFRecordDataset,
             cycle_length=datasets_parallel_interleave_cycle_length or 10,
             sloppy=datasets_sloppy_parallel_interleave,
@@ -720,11 +718,12 @@ class BaseImagePreprocessor(InputPreprocessor):
     if train:
       buffer_size = 10000
       mlperf.logger.log(key=mlperf.tags.INPUT_SHARD, value=buffer_size)
-      ds = ds.apply(tf.contrib.data.shuffle_and_repeat(buffer_size=buffer_size))
+      ds = ds.apply(
+          tf.data.experimental.shuffle_and_repeat(buffer_size=buffer_size))
     else:
       ds = ds.repeat()
     ds = ds.apply(
-        batching.map_and_batch(
+        tf.data.experimental.map_and_batch(
             map_func=self.parse_and_preprocess,
             batch_size=batch_size_per_split,
             num_parallel_batches=num_splits))
@@ -1094,7 +1093,7 @@ class COCOPreprocessor(BaseImagePreprocessor):
     # ds = ds.with_options(options)
 
     ds = ds.apply(
-        interleave_ops.parallel_interleave(
+        tf.data.experimental.parallel_interleave(
             tf.data.TFRecordDataset,
             cycle_length=datasets_parallel_interleave_cycle_length or 10,
             sloppy=datasets_sloppy_parallel_interleave))
@@ -1106,7 +1105,7 @@ class COCOPreprocessor(BaseImagePreprocessor):
     if datasets_use_caching:
       ds = ds.cache()
     if train:
-      ds = ds.apply(tf.contrib.data.shuffle_and_repeat(buffer_size=10000))
+      ds = ds.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=10000))
       mlperf.logger.log(key=mlperf.tags.INPUT_SHARD, value=10000)
       mlperf.logger.log(key=mlperf.tags.INPUT_ORDER)
     else:
@@ -1116,7 +1115,7 @@ class COCOPreprocessor(BaseImagePreprocessor):
     ds = ds.filter(
         lambda data: tf.greater(tf.shape(data['groundtruth_boxes'])[0], 0))
     ds = ds.apply(
-        batching.map_and_batch(
+        tf.data.experimental.map_and_batch(
             map_func=self.preprocess,
             batch_size=batch_size_per_split,
             num_parallel_batches=num_splits,
@@ -1247,7 +1246,7 @@ class LibrispeechPreprocessor(InputPreprocessor):
     """Creates a dataset for the benchmark."""
     # TODO(laigd): currently the only difference between this and the one in
     # BaseImagePreprocessor is, this uses map() and padded_batch() while the
-    # latter uses batching.map_and_batch(). Try to merge them.
+    # latter uses tf.data.experimental.map_and_batch(). Try to merge them.
     assert self.supports_datasets()
     glob_pattern = dataset.tf_record_pattern(subset)
     file_names = gfile.Glob(glob_pattern)
@@ -1256,7 +1255,7 @@ class LibrispeechPreprocessor(InputPreprocessor):
                        .format(glob_pattern))
     ds = tf.data.TFRecordDataset.list_files(file_names)
     ds = ds.apply(
-        interleave_ops.parallel_interleave(
+        tf.data.experimental.parallel_interleave(
             tf.data.TFRecordDataset,
             cycle_length=datasets_parallel_interleave_cycle_length or 10,
             sloppy=datasets_sloppy_parallel_interleave,
@@ -1271,7 +1270,7 @@ class LibrispeechPreprocessor(InputPreprocessor):
     if datasets_use_caching:
       ds = ds.cache()
     if train:
-      ds = ds.apply(tf.contrib.data.shuffle_and_repeat(buffer_size=10000))
+      ds = ds.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=10000))
     else:
       ds = ds.repeat()
     ds = ds.map(map_func=self.parse_and_preprocess,
