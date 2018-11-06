@@ -33,8 +33,10 @@ from __future__ import division
 from __future__ import print_function
 
 
+from collections import namedtuple
 import contextlib
 import os
+import sys
 
 import tensorflow as tf
 
@@ -45,7 +47,6 @@ try:
   from mlperf_compliance import mlperf_log
   from mlperf_compliance import resnet_log_helper
   from mlperf_compliance import tags
-  from mlperf_compliance import tf_mlperf_log
   import_successful = True
 except ImportError:
   # The logger cannot be enabled in this case since the MLPerf library isn't
@@ -63,28 +64,34 @@ except ImportError:
 # pylint: enable=g-import-not-at-top
 
 
+_ModelInfo = namedtuple('_ModelInfo', ['print_fn', 'tag_set',
+                                       'mlperf_model_name'])
+
+
+_MLPERF_LOG_PREFIX = ':::MLPv0.5.0'
+
+
 class MlPerfLogger(object):
   """Logs various aspects about a benchmark run for MLPerf compliance."""
 
   def __init__(self, model):
-    mlperf_log.ROOT_DIR_RESNET = os.path.split(os.path.abspath(__file__))[0]
-    mlperf_log.ROOT_DIR_SSD = os.path.split(os.path.abspath(__file__))[0]
+    self._root_dir = os.path.split(os.path.abspath(__file__))[0]
+    mlperf_log.ROOT_DIR_RESNET = self._root_dir
+    mlperf_log.ROOT_DIR_SSD = self._root_dir
     self.model = model
-    model_to_fn = {
-        'resnet50_v1.5': mlperf_log.resnet_print,
-        'ssd300': mlperf_log.ssd_print,
+    model_to_info = {
+        'resnet50_v1.5': _ModelInfo(mlperf_log.resnet_print,
+                                    mlperf_log.RESNET_TAG_SET, tags.RESNET),
+        'ssd300': _ModelInfo(mlperf_log.ssd_print, mlperf_log.SSD_TAG_SET,
+                             tags.SSD)
     }
+
     try:
-      self._log_fn = model_to_fn[model]
+      self._log_fn, self.tag_set, self.mlperf_model_name = model_to_info[model]
     except KeyError:
       raise ValueError('--ml_perf_compliance_logging is only compatible when '
                        '--model is one of the following: ' +
-                       ', '.join(model_to_fn.keys()))
-    model_to_tag_set = {
-        'resnet50_v1.5': mlperf_log.RESNET_TAG_SET,
-        'ssd300': mlperf_log.SSD_TAG_SET,
-    }
-    self.tag_set = model_to_tag_set[self.model]
+                       ', '.join(model_to_info.keys()))
 
   def log(self, key, value=None, stack_offset=2):
     if key in self.tag_set:
@@ -93,11 +100,19 @@ class MlPerfLogger(object):
       print('Ignoring MLPerf logging item key=%s, value=%s for model %s' %
             (key, value, self.model))
 
-  def log_deferred_tensor_value(self, key, tensor_value, stack_offset=2,
-                                every_n=1, first_n=None):
-    log_id = self._log_fn(key, stack_offset=stack_offset, deferred=True)
-    return tf_mlperf_log.log_deferred(op=tensor_value, log_id=log_id,
-                                      every_n=every_n, first_n=first_n)
+  def log_deferred_tensor_value(self, key, tensor_value, global_step,
+                                stack_offset=2, every_n=1):
+    """Logs the value of a tensor when the graph is run."""
+    caller = '(%s)' % mlperf_log.get_caller(stack_offset, self._root_dir)
+    def create_print_op():
+      return tf.print(_MLPERF_LOG_PREFIX, self.mlperf_model_name,
+                      tf.timestamp(), caller, key,
+                      '{ "deferred": true, "value":', tensor_value, '}',
+                      output_stream=sys.stdout)
+    maybe_print = tf.cond(tf.equal(global_step % every_n, 0), create_print_op,
+                          tf.no_op)
+    with tf.control_dependencies([maybe_print]):
+      return tf.identity(tensor_value)
 
   def log_max_pool(self, input_tensor, output_tensor):
     if self.model == 'resnet50_v1.5':
