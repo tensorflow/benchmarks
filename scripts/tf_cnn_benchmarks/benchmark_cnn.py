@@ -2014,7 +2014,7 @@ class BenchmarkCNN(object):
           mlperf.tags.EVAL_STOP, global_step, self.batch_size)
       mlperf.logger.log(key=mlperf.tags.EVAL_SIZE,
                         value=self.num_batches * self.batch_size)
-      if self.model != 'ssd300':  # ssd300 logs the eval accuracy elsewhere.
+      if self.params.model != 'ssd300':  # ssd300 logs eval accuracy elsewhere.
         mlperf.logger.log_eval_accuracy(
             accuracy_at_1, global_step, self.batch_size,
             examples_per_epoch=self.dataset.num_examples_per_epoch('train'))

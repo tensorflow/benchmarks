@@ -107,7 +107,7 @@ class MlPerfLogger(object):
     def create_print_op():
       return tf.print(_MLPERF_LOG_PREFIX, self.mlperf_model_name,
                       tf.timestamp(), caller, key,
-                      '{ "deferred": true, "value":', tensor_value, '}',
+                      ': { "deferred": true, "value":', tensor_value, '}',
                       output_stream=sys.stdout)
     maybe_print = tf.cond(tf.equal(global_step % every_n, 0), create_print_op,
                           tf.no_op)
