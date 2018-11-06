@@ -564,7 +564,8 @@ class SSD300Model(model_lib.CNNModel):
             step, eval_results = self.async_eval_results_queue.get()
             self.eval_coco_ap = eval_results['COCO/AP']
             mlperf.logger.log_eval_accuracy(
-                self.eval_coco_ap, step, self.batch_size * self.params.num_gpus)
+                self.eval_coco_ap, step, self.batch_size * self.params.num_gpus,
+                ssd_constants.COCO_NUM_TRAIN_IMAGES)
             if self.reached_target():
               # Reached target, clear all pending messages in predictions queue
               # and insert poison pill to stop the async eval process.
@@ -609,7 +610,7 @@ class SSD300Model(model_lib.CNNModel):
         ret[constants.SIMPLE_VALUE_RESULT_PREFIX + metric_key] = metric_value
       mlperf.logger.log_eval_accuracy(self.eval_coco_ap, self.eval_global_step,
                                       self.batch_size * self.params.num_gpus,
-                                      examples_per_epoch=118287)
+                                      ssd_constants.COCO_NUM_TRAIN_IMAGES)
       return ret
     log_fn('Got {:d} out of {:d} eval examples.'
            ' Waiting for the remaining to calculate mAP...'.format(

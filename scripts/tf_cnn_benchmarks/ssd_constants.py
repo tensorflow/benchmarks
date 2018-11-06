@@ -114,4 +114,5 @@ MIN_SCORE = 0.05  # Minimum score to be considered during evaluation.
 DUMMY_SCORE = -1e5  # If no boxes are matched.
 
 ANNOTATION_FILE = "annotations/instances_val2017.json"
+COCO_NUM_TRAIN_IMAGES = 118287
 COCO_NUM_VAL_IMAGES = 4952
