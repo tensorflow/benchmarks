@@ -1081,12 +1081,7 @@ class COCOPreprocessor(BaseImagePreprocessor):
     assert self.supports_datasets()
 
     glob_pattern = dataset.tf_record_pattern(subset)
-    file_names = gfile.Glob(glob_pattern)
-    if not file_names:
-      raise ValueError('Found no files in --data_dir matching: {}'
-                       .format(glob_pattern))
-
-    ds = tf.data.TFRecordDataset.list_files(file_names)
+    ds = tf.data.TFRecordDataset.list_files(glob_pattern)
     # TODO(haoyuzhang): Enable map+filter fusion after cl/218399112 in release
     # options = tf.data.Options()
     # options.experimental_map_and_filter_fusion = True
