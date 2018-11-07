@@ -193,6 +193,13 @@ flags.DEFINE_string('gpu_indices', '', 'indices of worker GPUs in ring order')
 flags.DEFINE_integer('display_every', 10,
                      'Number of local steps after which progress is printed '
                      'out')
+flags.DEFINE_float('display_perf_ewma', None,
+                   'If set, display numbers of images/sec using exponentially '
+                   'weighted moving avearge with the specified weight, which '
+                   'defines how much current value contributes to the reported '
+                   'average. Increasing weight makes the reported performance '
+                   'number reflect more about the real-time speed instead of '
+                   'the entire history', lower_bound=0, upper_bound=1)
 flags.DEFINE_string('data_dir', None,
                     'Path to dataset in TFRecord format (aka Example '
                     'protobufs). If not specified, synthetic data will be '
@@ -853,7 +860,7 @@ def benchmark_one_step(sess,
   if (show_images_per_sec and step >= 0 and
       (step == 0 or (step + 1) % params.display_every == 0)):
     speed_mean, speed_uncertainty, speed_jitter = get_perf_timing(
-        batch_size, step_train_times)
+        batch_size, step_train_times, params.display_perf_ewma)
     log_str = '%i\t%s\t%.*f' % (
         step + 1,
         get_perf_timing_str(speed_mean, speed_uncertainty, speed_jitter),
@@ -912,10 +919,16 @@ def get_perf_timing_str(speed_mean, speed_uncertainty, speed_jitter, scale=1):
     return 'images/sec: %.1f' % speed_mean
 
 
-def get_perf_timing(batch_size, step_train_times, scale=1):
+def get_perf_timing(batch_size, step_train_times, ewma_alpha=None, scale=1):
+  """Calculate benchmark processing speed."""
   times = np.array(step_train_times)
   speeds = batch_size / times
-  speed_mean = scale * batch_size / np.mean(times)
+  if ewma_alpha:
+    weights = np.logspace(len(times)-1, 0, len(times), base=1-ewma_alpha)
+    time_mean = np.average(times, weights)
+  else:
+    time_mean = np.mean(times)
+  speed_mean = scale * batch_size / time_mean
   speed_uncertainty = np.std(speeds) / np.sqrt(float(len(speeds)))
   speed_jitter = 1.4826 * np.median(np.abs(speeds - np.median(speeds)))
   return speed_mean, speed_uncertainty, speed_jitter
