@@ -88,14 +88,17 @@ class NcfModel(model.Model):
       logits = keras_model.output
     else:
       assert self.data_type == tf.float16
-      tf.keras.backend.set_floatx('float16')
-      # We cannot rely on the variable_scope's fp16 custom getter here, because
-      # the NCF model uses keras layers, which ignore variable scopes. So we use
-      # a variable_creator_scope instead.
-      with tf.variable_creator_scope(_fp16_variable_creator):
-        keras_model = neumf_model.construct_model(users, items, params)
-      logits = tf.cast(keras_model.output, tf.float32)
-
+      old_floatx = tf.keras.backend.floatx()
+      try:
+        tf.keras.backend.set_floatx('float16')
+        # We cannot rely on the variable_scope's fp16 custom getter here,
+        # because the NCF model uses keras layers, which ignore variable scopes.
+        # So we use a variable_creator_scope instead.
+        with tf.variable_creator_scope(_fp16_variable_creator):
+          keras_model = neumf_model.construct_model(users, items, params)
+        logits = tf.cast(keras_model.output, tf.float32)
+      finally:
+        tf.keras.backend.set_floatx(old_floatx)
     return model.BuildNetworkResult(logits=logits, extra_info=None)
 
   def loss_function(self, inputs, build_network_result):
