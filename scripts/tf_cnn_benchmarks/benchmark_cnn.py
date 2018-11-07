@@ -1075,8 +1075,8 @@ def get_num_batches_and_epochs(params, batch_size, num_examples_per_epoch):
     raise ValueError('At most one of --num_batches and --num_epochs may be '
                      'specified.')
   if params.num_epochs:
-    num_batches = (params.num_epochs * num_examples_per_epoch +
-                   batch_size - 1) // batch_size
+    num_batches = int(params.num_epochs * num_examples_per_epoch +
+                      batch_size - 1) // batch_size
   else:
     num_batches = params.num_batches or _DEFAULT_NUM_BATCHES
   num_epochs = num_batches * batch_size / num_examples_per_epoch
