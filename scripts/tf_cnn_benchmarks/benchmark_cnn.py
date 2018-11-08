@@ -1416,6 +1416,11 @@ class BenchmarkCNN(object):
     if self.params.batch_size > 0:
       self.model.set_batch_size(self.params.batch_size)
     self.batch_size = self.model.get_batch_size() * self.num_gpus
+    if self.mode in (constants.BenchmarkMode.TRAIN,
+                     constants.BenchmarkMode.TRAIN_AND_EVAL):
+      self.train_batch_size = self.batch_size
+    else:
+      self.train_batch_size = None
     if self.mode in (constants.BenchmarkMode.EVAL,
                      constants.BenchmarkMode.TRAIN_AND_EVAL):
       if self.params.eval_batch_size > 0:
@@ -2029,7 +2034,7 @@ class BenchmarkCNN(object):
                         value=self.num_batches * self.batch_size)
       if self.params.model != 'ssd300':  # ssd300 logs eval accuracy elsewhere.
         mlperf.logger.log_eval_accuracy(
-            accuracy_at_1, global_step, self.batch_size,
+            accuracy_at_1, global_step, self.train_batch_size,
             examples_per_epoch=self.dataset.num_examples_per_epoch('train'))
       if self.params.stop_at_top_1_accuracy:
         mlperf.logger.log(key=mlperf.tags.EVAL_TARGET,
