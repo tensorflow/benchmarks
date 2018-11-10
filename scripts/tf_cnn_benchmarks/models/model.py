@@ -174,6 +174,7 @@ class CNNModel(Model):
     self.depth = 3
     self.params = params
     self.data_format = params.data_format if params else 'NCHW'
+    self.input_data_format = params.input_data_format
 
   def get_layer_counts(self):
     return self.layer_counts
@@ -273,8 +274,14 @@ class CNNModel(Model):
         information.
     """
     images = inputs[0]
-    if self.data_format == 'NCHW':
+    if self.data_format == 'NCHW' and self.input_data_format == 'NHWC':
       images = tf.transpose(images, [0, 3, 1, 2])
+    elif self.data_format == 'NHWC' and self.input_data_format == 'NCHW':
+      images = tf.transpose(images, [0, 2, 3, 1])
+    else:
+      # No need to transpose since self.data_format == self.input_data_format
+      pass
+
     var_type = tf.float32
     if self.data_type == tf.float16 and self.fp16_vars:
       var_type = tf.float16
