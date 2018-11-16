@@ -356,9 +356,11 @@ flags.DEFINE_float('gpu_memory_frac_for_testing', 0,
                    'Useful for testing the benchmark script, as this allows '
                    'distributed mode to be run on a single machine. For '
                    'example, if there are two tasks, each can be allocated '
-                   '~40 percent of the memory on a single machine',
-                   lower_bound=0., upper_bound=1.)
-flags.DEFINE_boolean('use_unified_memory', False,
+                   '~40 percent of the memory on a single machine. This is '
+                   'also useful for using unified memory, as this can be set '
+                   'above 1 to oversubscribe the GPU using unified memory.',
+                   lower_bound=0.)
+flags.DEFINE_boolean('use_unified_memory', None,
                      'If True, allocate unified memory enabling larger models '
                      'to fit in available device RAM.')
 flags.DEFINE_boolean('use_tf_layers', True,
@@ -737,7 +739,8 @@ def create_config_proto(params):
     config.gpu_options.per_process_gpu_memory_fraction = (
         params.gpu_memory_frac_for_testing)
   if params.use_unified_memory:
-    config.gpu_options.experimental.use_unified_memory = True
+    config.gpu_options.experimental.use_unified_memory = (
+        params.use_unified_memory)
   if params.xla:
     config.graph_options.optimizer_options.global_jit_level = (
         tf.OptimizerOptions.ON_1)

@@ -1241,8 +1241,6 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
       benchmark_cnn.make_params(job_name='foo')
     with self.assertRaises(ValueError):
       benchmark_cnn.make_params(gpu_memory_frac_for_testing=-1.)
-    with self.assertRaises(ValueError):
-      benchmark_cnn.make_params(gpu_memory_frac_for_testing=2.)
 
 
 class VariableUpdateTest(tf.test.TestCase):
