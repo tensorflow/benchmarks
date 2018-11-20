@@ -188,6 +188,7 @@ flags.DEFINE_integer('num_warmup_batches', None,
                      'number of batches to run before timing')
 flags.DEFINE_integer('autotune_threshold', None,
                      'The autotune threshold for the models')
+# TODO(tucker): change num_gpus to num_devices
 flags.DEFINE_integer('num_gpus', 1, 'the number of GPUs to run on')
 flags.DEFINE_string('gpu_indices', '', 'indices of worker GPUs in ring order')
 flags.DEFINE_integer('display_every', 10,
@@ -282,6 +283,9 @@ flags.DEFINE_integer('num_intra_threads', None,
 flags.DEFINE_integer('num_inter_threads', 0,
                      'Number of threads to use for inter-op parallelism. If '
                      'set to 0, the system will pick an appropriate number.')
+flags.DEFINE_boolean('use_numa_affinity', False,
+                     'Whether to turn on NUMA affinity for CPU devices. '
+                     'This is probably only useful when --device=cpu.')
 flags.DEFINE_string('trace_file', '',
                     'Enable TensorFlow tracing and write trace to this file.')
 flags.DEFINE_boolean('use_chrome_trace_format', True,
@@ -734,6 +738,10 @@ def create_config_proto(params):
   config.experimental.collective_group_leader = '/job:worker/replica:0/task:0'
   config.gpu_options.experimental.collective_ring_order = params.gpu_indices
   config.gpu_options.force_gpu_compatible = params.force_gpu_compatible
+  config.experimental.use_numa_affinity = params.use_numa_affinity
+  if params.device == 'cpu':
+    # TODO(tucker): change num_gpus to num_devices
+    config.device_count['CPU'] = params.num_gpus
   if params.allow_growth is not None:
     config.gpu_options.allow_growth = params.allow_growth
   if params.gpu_memory_frac_for_testing > 0:
@@ -1763,6 +1771,7 @@ class BenchmarkCNN(object):
     log_fn('Num batches: %d' % self.num_batches)
     log_fn('Num epochs:  %.2f' % self.num_epochs)
     log_fn('Devices:     %s' % benchmark_info['device_list'])
+    log_fn('NUMA bind:   %s' % self.params.use_numa_affinity)
     log_fn('Data format: %s' % self.params.data_format)
     if self.rewriter_config:
       log_fn('RewriterConfig: %s' % self.rewriter_config)
