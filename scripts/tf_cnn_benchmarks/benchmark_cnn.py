@@ -732,6 +732,7 @@ def create_config_proto(params):
     config.intra_op_parallelism_threads = params.num_intra_threads
   config.inter_op_parallelism_threads = params.num_inter_threads
   config.experimental.collective_group_leader = '/job:worker/replica:0/task:0'
+  config.gpu_options.experimental.collective_ring_order = params.gpu_indices
   config.gpu_options.force_gpu_compatible = params.force_gpu_compatible
   if params.allow_growth is not None:
     config.gpu_options.allow_growth = params.allow_growth
@@ -779,6 +780,11 @@ def create_config_proto(params):
   if params.variable_update == 'horovod':
     import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
     config.gpu_options.visible_device_list = str(hvd.local_rank())
+  # For collective_all_reduce, ignore all devices except current worker.
+  if params.variable_update == 'collective_all_reduce':
+    del config.device_filters[:]
+    config.device_filters.append(
+        '/job:%s/replica:0/task:%d' % (params.job_name, params.task_index))
 
   return config
 
