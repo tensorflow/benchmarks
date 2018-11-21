@@ -807,7 +807,7 @@ def get_perf_timing_str(speed_mean, speed_uncertainty, speed_jitter, scale=1):
 def get_perf_timing(batch_size, step_train_times, scale=1):
   times = np.array(step_train_times)
   speeds = batch_size / times
-  speed_mean = scale * batch_size / np.mean(times)
+  speed_mean = scale * np.mean(batch_size / times)
   speed_uncertainty = np.std(speeds) / np.sqrt(float(len(speeds)))
   speed_jitter = 1.4826 * np.median(np.abs(speeds - np.median(speeds)))
   return speed_mean, speed_uncertainty, speed_jitter
