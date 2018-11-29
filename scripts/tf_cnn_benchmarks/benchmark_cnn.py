@@ -54,7 +54,6 @@ from tensorflow.contrib.compiler import xla
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import debug as tf_debug
 from tensorflow.python.client import timeline
-from tensorflow.python.data.experimental.ops import prefetching_ops
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import graph_util_impl
 from tensorflow.python.framework import importer
@@ -89,7 +88,7 @@ GraphInfo = namedtuple(  # pylint: disable=invalid-name
 
 
 # InputProcessingInfo contains various sources of inputs which will be later fed
-# into the model. If synthetic data is used, all four fields are None.
+# into the model. If synthetic data is used, all three fields are None.
 InputProcessingInfo = namedtuple(
     'InputProcessingInfo',
     [
@@ -101,12 +100,8 @@ InputProcessingInfo = namedtuple(
         # A list of StagingArea for each device.
         'input_producer_stages',
 
-        # Input produced using FunctionBufferingResource. Non-None iff datasets
-        # prefetching is used and --use_multi_device_iterator=False
-        'function_buffering_resources',
-
         # Input produced using multi device iterator. Non-None iff datasets
-        # prefetching is used and --use_multi_device_iterator=True
+        # prefetching is used
         'multi_device_iterator_input'
     ])
 
@@ -418,11 +413,6 @@ flags.DEFINE_integer('datasets_parallel_interleave_prefetch', None,
                      'The number of input elements to fetch before they are '
                      'needed for interleaving.')
 
-flags.DEFINE_boolean(
-    'use_multi_device_iterator', True,
-    'If true, we use the MultiDeviceIterator for prefetching, '
-    'which deterministically prefetches the data onto the '
-    'various GPUs')
 flags.DEFINE_integer(
     'multi_device_iterator_max_buffer_size', 1,
     'Configuration parameter for the MultiDeviceIterator that '
@@ -2684,7 +2674,6 @@ class BenchmarkCNN(object):
     input_processing_info = InputProcessingInfo(
         input_producer_op=None,
         input_producer_stages=None,
-        function_buffering_resources=None,
         multi_device_iterator_input=None)
 
     mlperf.logger.log(key=mlperf.tags.INPUT_ORDER)
@@ -2707,23 +2696,12 @@ class BenchmarkCNN(object):
 
     # Use prefetching mechanism provided by dataset input pipeline.
     if self.datasets_use_prefetch:
-      if self.params.use_multi_device_iterator:
-        multi_device_iterator = (
-            input_preprocessor.build_multi_device_iterator(
-                self.batch_size, len(self.devices), self.cpu_device,
-                self.params, self.raw_devices, self.dataset, self._doing_eval))
-        return input_processing_info._replace(
-            multi_device_iterator_input=multi_device_iterator.get_next())
-
-      subset = 'validation' if self._doing_eval else 'train'
-      function_buffering_resources = (
-          input_preprocessor.build_prefetch_input_processing(
-              self.batch_size, self.model.get_input_shapes(subset),
-              len(self.devices), self.cpu_device, self.params, self.devices,
-              self.model.get_input_data_types(subset), self.dataset,
-              self._doing_eval))
+      multi_device_iterator = (
+          input_preprocessor.build_multi_device_iterator(
+              self.batch_size, len(self.devices), self.cpu_device, self.params,
+              self.raw_devices, self.dataset, self._doing_eval))
       return input_processing_info._replace(
-          function_buffering_resources=function_buffering_resources)
+          multi_device_iterator_input=multi_device_iterator.get_next())
 
     # Not using dataset prefetching. Use a staging area to mimic the prefetching
     # behavior instead.
@@ -3126,31 +3104,11 @@ class BenchmarkCNN(object):
     """Add ops for forward-pass and gradient computations."""
     nclass = self.dataset.num_classes
     if self.datasets_use_prefetch:
-      function_buffering_resource = None
-      if input_processing_info.function_buffering_resources:
-        function_buffering_resource = (
-            input_processing_info.function_buffering_resources[rel_device_num])
-
-      input_data = None
-      if input_processing_info.multi_device_iterator_input:
-        input_data = (
-            input_processing_info.multi_device_iterator_input[rel_device_num])
-
-      # Exactly one of function_buffering_resource or input_data is not None.
-      if function_buffering_resource is None and input_data is None:
-        raise ValueError('Both function_buffering_resource and input_data '
-                         'cannot be null if datasets_use_prefetch=True')
-      if function_buffering_resource is not None and input_data is not None:
-        raise ValueError('Both function_buffering_resource and input_data '
-                         'cannot be specified. Only one should be.')
-      with tf.device(self.raw_devices[rel_device_num]):
-        if function_buffering_resource is not None:
-          subset = 'validation' if self._doing_eval else 'train'
-          input_list = prefetching_ops.function_buffering_resource_get_next(
-              function_buffering_resource,
-              output_types=self.model.get_input_data_types(subset))
-        else:
-          input_list = input_data
+      assert input_processing_info.multi_device_iterator_input, (
+          'multi_device_iterator_input cannot be None if '
+          'datasets_use_prefetch=True')
+      input_list = (
+          input_processing_info.multi_device_iterator_input[rel_device_num])
     else:
       if not self.dataset.use_synthetic_gpu_inputs():
         input_producer_stage = input_processing_info.input_producer_stages[

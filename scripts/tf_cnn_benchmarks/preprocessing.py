@@ -27,7 +27,6 @@ import tensorflow as tf
 import cnn_util
 from tensorflow.contrib.data.python.ops import threadpool
 from tensorflow.contrib.image.python.ops import distort_image_ops
-from tensorflow.python.data.experimental.ops import prefetching_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.framework import function
 from tensorflow.python.layers import utils
@@ -488,47 +487,6 @@ class InputPreprocessor(object):
   def parse_and_preprocess(self, value, batch_position):
     """Function to parse and preprocess an Example proto in input pipeline."""
     raise NotImplementedError('Must be implemented by subclass.')
-
-  def build_prefetch_input_processing(self, batch_size, model_input_shapes,
-                                      num_splits, cpu_device, params,
-                                      gpu_devices, model_input_data_types,
-                                      dataset, doing_eval):
-    """"Returns FunctionBufferingResources that do input pre(processing)."""
-    assert self.supports_datasets()
-    with tf.device(cpu_device):
-      if doing_eval:
-        subset = 'validation'
-      else:
-        subset = 'train'
-
-      function_buffering_resources = []
-      remote_fn, args = self.minibatch_fn(
-          batch_size=batch_size,
-          model_input_shapes=model_input_shapes,
-          num_splits=num_splits,
-          dataset=dataset,
-          subset=subset,
-          train=(not doing_eval),
-          datasets_repeat_cached_sample=params.datasets_repeat_cached_sample,
-          num_threads=params.datasets_num_private_threads,
-          datasets_use_caching=params.datasets_use_caching,
-          datasets_parallel_interleave_cycle_length=(
-              params.datasets_parallel_interleave_cycle_length),
-          datasets_sloppy_parallel_interleave=(
-              params.datasets_sloppy_parallel_interleave),
-          datasets_parallel_interleave_prefetch=(
-              params.datasets_parallel_interleave_prefetch))
-      for device_num in range(len(gpu_devices)):
-        with tf.device(gpu_devices[device_num]):
-          buffer_resource_handle = prefetching_ops.function_buffering_resource(
-              f=remote_fn,
-              output_types=model_input_data_types,
-              target_device=cpu_device,
-              string_arg=args[0],
-              buffer_size=params.datasets_prefetch_buffer_size,
-              shared_name=None)
-          function_buffering_resources.append(buffer_resource_handle)
-      return function_buffering_resources
 
   # TODO(laigd): figure out how to remove these parameters, since the
   # preprocessor itself has self.batch_size, self.num_splits, etc defined.
