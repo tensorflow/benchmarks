@@ -1042,7 +1042,8 @@ class COCOPreprocessor(BaseImagePreprocessor):
     ds = tf.data.TFRecordDataset.list_files(glob_pattern)
     # TODO(haoyuzhang): Enable map+filter fusion after cl/218399112 in release
     # options = tf.data.Options()
-    # options.experimental_map_and_filter_fusion = True
+    # options.experimental_optimization = tf.data.experimental.OptimizationOptions()  # pylint: disable=line-too-long
+    # options.experimental_optimization.map_and_filter_fusion = True
     # ds = ds.with_options(options)
 
     ds = ds.apply(
