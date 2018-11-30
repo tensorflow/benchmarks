@@ -450,7 +450,7 @@ class SSD300Model(model_lib.CNNModel):
         [self.batch_size]
     ]
 
-  def accuracy_function(self, inputs, logits):
+  def accuracy_function(self, inputs, build_network_result):
     """Returns the ops to measure the mean precision of the model."""
     try:
       import ssd_dataloader  # pylint: disable=g-import-not-at-top
@@ -473,7 +473,8 @@ class SSD300Model(model_lib.CNNModel):
     # shape: [batch_size, NUM_SSD_BOXES, 4]
     # pred_labels: confidence scores of objects being of all categories
     # shape: [batch_size, NUM_SSD_BOXES, label_num]
-    pred_locs, pred_labels = tf.split(logits, [4, self.label_num], 2)
+    pred_locs, pred_labels = tf.split(build_network_result.logits,
+                                      [4, self.label_num], 2)
 
     ssd_box_coder = faster_rcnn_box_coder.FasterRcnnBoxCoder(
         scale_factors=ssd_constants.BOX_CODER_SCALES)

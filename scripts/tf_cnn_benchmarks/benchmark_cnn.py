@@ -3176,10 +3176,9 @@ class BenchmarkCNN(object):
 
       build_network_result = self.model.build_network(
           input_list, phase_train, nclass)
-      logits = build_network_result.logits
 
       if not phase_train:
-        return [logits]
+        return [build_network_result]
 
       base_loss = self.model.loss_function(input_list, build_network_result)
       params = self.variable_mgr.trainable_variables_on_device(
@@ -3267,7 +3266,7 @@ class BenchmarkCNN(object):
         loss = base_loss
 
       if self.params.print_training_accuracy:
-        return [logits, loss] + grads
+        return [build_network_result, loss] + grads
       else:
         return [loss] + grads
 
@@ -3278,18 +3277,18 @@ class BenchmarkCNN(object):
         forward_pass_and_grad_outputs: Output from forward_pass_and_gradients.
 
       Returns:
-        logits: Unscaled probability distribution from forward pass.
+        build_network_result: network result from forward pass.
           If unavailable, None is returned.
         loss: Loss function result from logits.
           If unavailable, None is returned.
         grads: Gradients for all trainable variables.
           If unavailable, None is returned.
       """
-      logits = None
+      build_network_result = None
       # logits is only fetched in non-train mode or when
       # print_training_accuracy is set.
       if not phase_train or self.params.print_training_accuracy:
-        logits = forward_pass_and_grad_outputs.pop(0)
+        build_network_result = forward_pass_and_grad_outputs.pop(0)
 
       loss = (
           forward_pass_and_grad_outputs[0]
@@ -3298,15 +3297,16 @@ class BenchmarkCNN(object):
           forward_pass_and_grad_outputs[1:]
           if forward_pass_and_grad_outputs else None)
 
-      return logits, loss, grads
+      return build_network_result, loss, grads
 
-    def make_results(logits, loss, grads):
+    def make_results(build_network_result, loss, grads):
       """Generate results based on logits, loss and grads."""
       results = {}  # The return value
 
-      if logits is not None:
-        results['logits'] = logits
-        accuracy_ops = self.model.accuracy_function(input_list, logits)
+      if build_network_result is not None:
+        results['logits'] = build_network_result.logits
+        accuracy_ops = self.model.accuracy_function(input_list,
+                                                    build_network_result)
         for name, op in accuracy_ops.items():
           results['accuracy:' + name] = op
 
@@ -3322,8 +3322,9 @@ class BenchmarkCNN(object):
 
     with tf.device(self.devices[rel_device_num]):
       outputs = maybe_compile(forward_pass_and_gradients, self.params)
-      logits, loss, grads = unpack_forward_pass_and_gradients_output(outputs)
-      return make_results(logits, loss, grads)
+      (build_network_result, loss,
+       grads) = unpack_forward_pass_and_gradients_output(outputs)
+      return make_results(build_network_result, loss, grads)
 
   def get_input_preprocessor(self):
     """Returns the image preprocessor to used, based on the model.
