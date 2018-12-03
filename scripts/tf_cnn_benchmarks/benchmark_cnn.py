@@ -932,7 +932,7 @@ def get_perf_timing(batch_size, step_train_times, ewma_alpha=None, scale=1):
   speeds = batch_size / times
   if ewma_alpha:
     weights = np.logspace(len(times)-1, 0, len(times), base=1-ewma_alpha)
-    time_mean = np.average(times, weights)
+    time_mean = np.average(times, weights=weights)
   else:
     time_mean = np.mean(times)
   speed_mean = scale * batch_size / time_mean
