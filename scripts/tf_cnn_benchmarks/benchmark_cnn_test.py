@@ -645,6 +645,15 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
         use_fp16=True, fp16_vars=True)
     self._train_and_eval_local(params)
 
+  def testXlaCompile(self):
+    params = test_util.get_params('testXlaCompile')._replace(xla_compile=True)
+    self._train_and_eval_local(params)
+
+  def testXlaCompileWithFp16(self):
+    params = test_util.get_params('testXlaCompileWithFp16')._replace(
+        use_fp16=True, xla_compile=True)
+    self._train_and_eval_local(params)
+
   def testGradientRepacking(self):
     params = test_util.get_params('testGradientRepacking1')._replace(
         gradient_repacking=2)
