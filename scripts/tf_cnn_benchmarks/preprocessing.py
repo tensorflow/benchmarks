@@ -657,7 +657,7 @@ class BaseImagePreprocessor(InputPreprocessor):
     if not file_names:
       raise ValueError('Found no files in --data_dir matching: {}'
                        .format(glob_pattern))
-    ds = tf.data.TFRecordDataset.list_files(file_names)
+    ds = tf.data.TFRecordDataset.list_files(file_names, shuffle=train)
     ds = ds.apply(
         tf.data.experimental.parallel_interleave(
             tf.data.TFRecordDataset,
@@ -1039,7 +1039,7 @@ class COCOPreprocessor(BaseImagePreprocessor):
     assert self.supports_datasets()
 
     glob_pattern = dataset.tf_record_pattern(subset)
-    ds = tf.data.TFRecordDataset.list_files(glob_pattern)
+    ds = tf.data.TFRecordDataset.list_files(glob_pattern, shuffle=train)
     # TODO(haoyuzhang): Enable map+filter fusion after cl/218399112 in release
     # options = tf.data.Options()
     # options.experimental_optimization = tf.data.experimental.OptimizationOptions()  # pylint: disable=line-too-long
@@ -1207,7 +1207,7 @@ class LibrispeechPreprocessor(InputPreprocessor):
     if not file_names:
       raise ValueError('Found no files in --data_dir matching: {}'
                        .format(glob_pattern))
-    ds = tf.data.TFRecordDataset.list_files(file_names)
+    ds = tf.data.TFRecordDataset.list_files(file_names, shuffle=train)
     ds = ds.apply(
         tf.data.experimental.parallel_interleave(
             tf.data.TFRecordDataset,
