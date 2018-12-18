@@ -499,13 +499,10 @@ class TestCNNModel(model.CNNModel):
       return manually_compute_losses(inputs, inputs_placeholder, loss,
                                      num_workers, params)
 
-  def accuracy_function(self, inputs, build_network_result):
+  def accuracy_function(self, inputs, logits):
     del inputs
     # Let the accuracy be the same as the loss function.
-    return {
-        'top_1_accuracy': build_network_result.logits,
-        'top_5_accuracy': build_network_result.logits
-    }
+    return {'top_1_accuracy': logits, 'top_5_accuracy': logits}
 
 
 class TestDataSet(datasets.ImageDataset):

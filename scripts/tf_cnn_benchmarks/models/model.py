@@ -139,7 +139,8 @@ class Model(object):
     """
     raise NotImplementedError('Must be implemented in derived classes')
 
-  def accuracy_function(self, inputs, build_network_result):
+  # TODO(laigd): have accuracy_function() take build_network_result instead.
+  def accuracy_function(self, inputs, logits):
     """Returns the ops to measure the accuracy of the model."""
     raise NotImplementedError('Must be implemented in derived classes')
 
@@ -321,10 +322,9 @@ class CNNModel(Model):
         loss = tf.add_n([loss, aux_loss])
     return loss
 
-  def accuracy_function(self, inputs, build_network_result):
+  def accuracy_function(self, inputs, logits):
     """Returns the ops to measure the accuracy of the model."""
     _, labels = inputs
-    logits = build_network_result.logits
     top_1_op = tf.reduce_sum(
         tf.cast(tf.nn.in_top_k(logits, labels, 1), self.data_type))
     top_5_op = tf.reduce_sum(

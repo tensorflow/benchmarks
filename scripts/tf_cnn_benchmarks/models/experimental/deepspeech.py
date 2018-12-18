@@ -402,9 +402,8 @@ class DeepSpeech2Model(model_lib.Model):
   PROBABILITY_TENSOR = 'deepspeech2_prob'
   LABEL_TENSOR = 'deepspeech2_label'
 
-  def accuracy_function(self, inputs, build_network_result):
+  def accuracy_function(self, inputs, logits):
     """Returns the ops to evaluate the model performance."""
-    logits = build_network_result.logits
     # Get probabilities of each predicted class
     probs = tf.nn.softmax(logits)
     assert probs.shape.as_list()[0] == self.batch_size
