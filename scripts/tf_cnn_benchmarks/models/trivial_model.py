@@ -53,7 +53,7 @@ class TrivialSSD300Model(model.CNNModel):
 
   def __init__(self, params=None):
     super(TrivialSSD300Model, self).__init__(
-        'trivial', 300, 32, 0.005, params=params)
+        'trivial', 300, params.batch_size, 0.005, params=params)
 
   def add_inference(self, cnn):
     cnn.reshape([-1, 300 * 300 * 3])
@@ -61,7 +61,10 @@ class TrivialSSD300Model(model.CNNModel):
     cnn.affine(4096)
 
   def get_input_shapes(self, subset):
-    return [[32, 300, 300, 3], [32, 8732, 4], [32, 8732, 1], [32]]
+    return [[self.batch_size, 300, 300, 3],
+            [self.batch_size, 8732, 4],
+            [self.batch_size, 8732, 1],
+            [self.batch_size]]
 
   def loss_function(self, inputs, build_network_result):
     images, _, _, labels = inputs

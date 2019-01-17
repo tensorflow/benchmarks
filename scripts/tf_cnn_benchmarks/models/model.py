@@ -257,6 +257,10 @@ class CNNModel(Model):
         name=self.model_name + '_synthetic_labels')
     return (inputs, labels)
 
+  def gpu_preprocess_nhwc(self, images, phase_train=True):
+    del phase_train
+    return images
+
   def build_network(self,
                     inputs,
                     phase_train=True,
@@ -273,6 +277,7 @@ class CNNModel(Model):
         information.
     """
     images = inputs[0]
+    images = self.gpu_preprocess_nhwc(images, phase_train)
     if self.data_format == 'NCHW':
       images = tf.transpose(images, [0, 3, 1, 2])
     var_type = tf.float32

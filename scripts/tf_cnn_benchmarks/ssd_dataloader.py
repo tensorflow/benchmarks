@@ -356,22 +356,24 @@ def color_jitter(image, brightness=0, contrast=0, saturation=0, hue=0):
     return image
 
 
-def normalize_image(image):
-  """Normalize the image to zero mean and unit variance.
+def normalize_image(images):
+  """Normalize image to zero mean and unit variance.
 
   Args:
-    image: 3D tensor of type float32, value in [0, 1]
+    images: a tensor representing images, at least 3-D.
   Returns:
-    image normalized by mean and stdev.
+    images normalized by mean and stdev.
   """
-  image = tf.subtract(image, ssd_constants.NORMALIZATION_MEAN)
-  image = tf.divide(image, ssd_constants.NORMALIZATION_STD)
+  data_type = images.dtype
+  mean = tf.constant(ssd_constants.NORMALIZATION_MEAN, data_type)
+  std = tf.constant(ssd_constants.NORMALIZATION_STD, data_type)
+  images = tf.divide(tf.subtract(images, mean), std)
 
   mlperf.logger.log(key=mlperf.tags.DATA_NORMALIZATION_MEAN,
                     value=ssd_constants.NORMALIZATION_MEAN)
   mlperf.logger.log(key=mlperf.tags.DATA_NORMALIZATION_STD,
                     value=ssd_constants.NORMALIZATION_STD)
-  return image
+  return images
 
 
 class Encoder(object):

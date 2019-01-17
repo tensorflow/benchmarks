@@ -116,6 +116,26 @@ class SSD300Model(model_lib.CNNModel):
   def skip_final_affine_layer(self):
     return True
 
+  def gpu_preprocess_nhwc(self, images, phase_train=True):
+    try:
+      import ssd_dataloader  # pylint: disable=g-import-not-at-top
+    except ImportError:
+      raise ImportError('To use the COCO dataset, you must clone the '
+                        'repo https://github.com/tensorflow/models and add '
+                        'tensorflow/models and tensorflow/models/research to '
+                        'the PYTHONPATH, and compile the protobufs by '
+                        'following https://github.com/tensorflow/models/blob/'
+                        'master/research/object_detection/g3doc/installation.md'
+                        '#protobuf-compilation ; To evaluate using COCO'
+                        'metric, download and install Python COCO API from'
+                        'https://github.com/cocodataset/cocoapi')
+
+    if phase_train:
+      images = ssd_dataloader.color_jitter(
+          images, brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05)
+      images = ssd_dataloader.normalize_image(images)
+    return images
+
   def add_backbone_model(self, cnn):
     # --------------------------------------------------------------------------
     # Resnet-34 backbone model -- modified for SSD
@@ -152,8 +172,8 @@ class SSD300Model(model_lib.CNNModel):
       resnet_model.residual_block(cnn, 256, stride, version, i == 0)
 
     # ResNet-34 block group 4: removed final block group
-    # The following 3 lines are intentially commented out to differentiate from
-    # the original ResNet-34 model
+    # The following 3 lines are intentionally commented out to differentiate
+    # from the original ResNet-34 model
     # for i in range(resnet34_layers[3]):
     #   stride = 2 if i == 0 else 1
     #   resnet_model.residual_block(cnn, 512, stride, version, i == 0)
