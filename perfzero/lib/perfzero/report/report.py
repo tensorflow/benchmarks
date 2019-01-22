@@ -16,6 +16,7 @@
 """Reports results of tests."""
 from __future__ import print_function
 
+import tensorflow as tf
 import perfzero.common.cpu as cpu_info
 import perfzero.common.upload.result_info as result_info
 import perfzero.common.upload.result_upload as result_upload
@@ -99,7 +100,7 @@ def build_entry(test_id,
       accel_cnt = utils.get_gpu_count()
 
   # Pulls tensorflow version info.version.
-  tf_ver, tf_git_version = utils.get_tf_full_version()
+  tf_ver, tf_git_version = _get_tf_full_version()
   # Python3 tf_git_version is wrapped with b'blahblah'
   if tf_git_version.index('b') == 0:
     print('Clean __git_version__ {}'.format(tf_git_version))
@@ -146,3 +147,17 @@ def add_result(results, result):
       expected_min=result.get('expected_min'),
       expected_max=result.get('expected_max'),
       result_status=result.get('result_status'))
+
+
+def _get_tf_full_version():
+  """Returns TensorFlow version as reported by TensorFlow.
+
+    Note: The __git__version__ can be confusing as the TensorFlow version
+    number in the string often points to an older branch due to git merges.
+    The git hash is still correct.  The best option is to use the numeric
+    version from __version__ and the hash from __git_version__.
+
+  Returns:
+    Tuple of __version__, __git_version__
+  """
+  return tf.__version__, tf.__git_version__

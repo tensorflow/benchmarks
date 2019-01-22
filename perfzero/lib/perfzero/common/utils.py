@@ -21,7 +21,6 @@ import re
 import subprocess
 import sys
 import time
-import tensorflow as tf
 
 
 def checkout_git_repo(url, local_path, branch=None, sha_hash=None):
@@ -156,20 +155,6 @@ def check_and_print_env_var():
   for envar in required_envars:
     envar_val = get_env_var(envar)
     print('{}={}'.format(envar, envar_val))
-
-
-def get_tf_full_version():
-  """Returns TensorFlow version as reported by TensorFlow.
-
-    Note: The __git__version__ can be confusing as the TensorFlow version
-    number in the string often points to an older branch due to git merges.
-    The git hash is still correct.  The best option is to use the numeric
-    version from __version__ and the hash from __git_version__.
-
-  Returns:
-    Tuple of __version__, __git_version__
-  """
-  return tf.__version__, tf.__git_version__
 
 
 def get_gpu_info():
