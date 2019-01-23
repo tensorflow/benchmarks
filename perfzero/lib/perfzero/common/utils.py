@@ -17,9 +17,9 @@ from __future__ import print_function
 
 import os
 import re
+import subprocess
 import sys
 import time
-import subprocess
 
 
 def checkout_git_repo(url, local_path, branch=None, sha_hash=None):

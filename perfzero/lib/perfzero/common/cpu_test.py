@@ -15,8 +15,8 @@
 """Tests cpu module."""
 import unittest
 
-from perfzero.common import cpu
 from mock import patch
+from perfzero.common import cpu
 
 
 class TestCpu(unittest.TestCase):

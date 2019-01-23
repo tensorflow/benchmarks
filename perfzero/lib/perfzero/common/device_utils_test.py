@@ -17,8 +17,8 @@ from __future__ import print_function
 
 import unittest
 
-import perfzero.common.device_utils as device_utils
 from mock import patch
+import perfzero.common.device_utils as device_utils
 
 
 class TestDiskUtils(unittest.TestCase):

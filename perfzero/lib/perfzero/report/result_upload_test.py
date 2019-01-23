@@ -18,10 +18,10 @@ from __future__ import print_function
 import json
 import unittest
 
-import perfzero.report.result_info as result_info
-import perfzero.report.result_upload as result_upload
 import mock
 from mock import patch
+import perfzero.report.result_info as result_info
+import perfzero.report.result_upload as result_upload
 
 
 class TestResultUpload(unittest.TestCase):

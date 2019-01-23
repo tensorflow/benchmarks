@@ -19,6 +19,7 @@ import perfzero.common.utils as utils
 
 
 def get_nvme_devices():
+  """Returns list paths to nvme devices."""
   devices = []
   cmd = 'sudo lsblk'
   retcode, log = utils.run_command(cmd)

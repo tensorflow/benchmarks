@@ -15,8 +15,8 @@
 """Tests untils module."""
 import unittest
 
-import perfzero.common.utils as utils
 from mock import patch
+import perfzero.common.utils as utils
 
 
 class TestUtils(unittest.TestCase):
