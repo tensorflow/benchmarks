@@ -12,117 +12,104 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Execute benchmark."""
 from __future__ import print_function
 
-import argparse
 import importlib
 import os
+import sys
 import time
 import uuid
 
 import perfzero.common.utils as utils
-import perfzero.report.bench_result as bench_result
-import perfzero.report.report as report
+import perfzero.common.perfzero_config as perfzero_config
+import perfzero.report.report_utils as report_utils
+import perfzero.report.benchmark_result as benchmark_result
 
 
 class BenchmarkRunner(object):
   """Executes tests and reports results."""
 
-  def __init__(self):
+  def __init__(self, config=None):
     project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
     workspace_dir = os.path.join(project_dir, 'workspace')
     site_packages_dir = os.path.join(workspace_dir, 'site-packages')
     auth_token_path = os.path.join(workspace_dir,
                                    'auth_tokens/benchmark_upload_gce.json')
-    self.output_parent_dir = os.path.join(workspace_dir, 'output')
+    self.output_root_dir = os.path.join(workspace_dir, 'output')
+    self.config = config
     """Setup environment before executing tests."""
-    utils.check_and_print_env_var()
-    utils.setup_python_path(site_packages_dir)
+    utils.setup_python_path(site_packages_dir, config.python_paths_str)
     utils.active_gcloud_service(auth_token_path)
-    utils.make_dir_if_not_exist(self.output_parent_dir)
+    utils.make_dir_if_not_exist(self.output_root_dir)
 
   def run_benchmark(self):
     """Run tests."""
-    benchmark_methods = utils.get_env_var('ROGUE_TEST_METHODS').split(',')
-    for benchmark_method in benchmark_methods:
+    for benchmark_method in self.config.benchmark_methods_str.split(','):
       uid = str(uuid.uuid4())
-      output_dir = os.path.join(self.output_parent_dir, uid)
+      output_dir = os.path.join(self.output_root_dir, uid)
       utils.make_dir_if_not_exist(output_dir)
 
       class_instance = self._instantiate_benchmark_class(output_dir)
-      benchmark_id = '{}.{}'.format(class_instance.__class__.__name__,
-                                    benchmark_method)
+      class_method_name = '{}.{}'.format(class_instance.__class__.__name__,
+                                         benchmark_method)
 
       start_time = time.time()
       # Run benchmark method
       getattr(class_instance, benchmark_method)()
       total_time = utils.get_milliseconds_diff(start_time)
 
-      benchmark_result = class_instance.oss_report_object
-      benchmark_result.total_time = total_time
-      self._report_result(benchmark_id, benchmark_result, uid, output_dir)
+      oss_report_object = class_instance.oss_report_object
+      oss_report_object.total_time = total_time
+      self._report_result(class_method_name, oss_report_object, uid, output_dir)
 
-  def _report_result(self, benchmark_id, benchmark_result, uid, output_dir):
+  def _report_result(self, class_method_name, oss_report_object, uid,
+                     output_dir):
     """Report results and upload artifacts."""
-    project_name = utils.get_env_var('ROGUE_REPORT_PROJECT', default='LOCAL')
-
     # Upload benchmark ouput
-    gcs_path = self._upload_benchmark_output(uid, output_dir)
+    output_gcs_dir = None
+    if self.config.output_gcs_url_str == '':
+      print('Skipping uploading artifacts. output_gcs_url_str is not set.')
+    else:
+      output_gcs_dir = '{}/{}/'.format(self.config.output_gcs_url_str, uid)
+      utils.upload_to_gcs(output_dir, output_gcs_dir)
+
     extras = {}
-    extras['artifacts'] = gcs_path
+    extras['artifacts'] = output_gcs_dir
 
-    main_result, results, test_info, system_info = report.build_entry(
-        benchmark_id,
-        benchmark_result.total_time,
-        test_environment=utils.get_env_var('ROGUE_TEST_ENV', default='local'),
-        platform=utils.get_env_var('ROGUE_PLATFORM', default='unknown'),
-        platform_type=utils.get_env_var(
-            'ROGUE_PLATFORM_TYPE', default='unknown'))
+    main_result, results, test_info, system_info = report_utils.build_entry(
+        class_method_name,
+        total_time=oss_report_object.total_time,
+        test_environment=self.config.test_env_str,
+        platform=self.config.platform_name_str,
+        platform_type=self.config.platform_type_str)
 
-    for test_result in benchmark_result.get_results():
-      report.add_result(results, test_result)
+    for test_result in oss_report_object.get_results():
+      report_utils.add_result(results, test_result)
 
     print('results:{}'.format(results))
-    report.report_result(
+    report_utils.report_result(
         main_result,
         results,
         test_info,
         system_info,
         extras=extras,
-        project=project_name,
+        project=self.config.project_name_str,
         dev=False)
 
-  def _upload_benchmark_output(self, uid, output_dir):
-    """Uplaods artifacts to GCS."""
-    target_code_dir = utils.get_env_var('ROGUE_CODE_DIR', default='not_set')
-
-    if target_code_dir == 'not_set':
-      print('Skipping uploading artifacts. ROGUE_CODE_DIR not set.')
-      return 'not_set'
-
-    gcs_path = '{}/{}/'.format(target_code_dir, uid)
-    cmds = ['gsutil -m cp -r {}/* {}'.format(output_dir, gcs_path)]
-    utils.run_commands(cmds)
-    print('Uploaded benchmark output gcs at {}'.format(gcs_path))
-    return gcs_path
-
   def _instantiate_benchmark_class(self, output_dir):
-    """Returns initialized benchmark class."""
-    module_import_path, class_name = utils.get_env_var(
-        'ROGUE_TEST_CLASS').rsplit('.', 1)
+    """Return initialized benchmark class."""
+    module_import_path, class_name = self.config.test_class_str.rsplit('.', 1)
     module = importlib.import_module(module_import_path)
     class_ = getattr(module, class_name)
 
     instance = class_(output_dir=output_dir)
-    instance.oss_report_object = bench_result.BenchResult()
+    instance.oss_report_object = benchmark_result.BenchmarkResult()
     return instance
 
 
 if __name__ == '__main__':
-  parser = argparse.ArgumentParser()
-  FLAGS, unparsed = parser.parse_known_args()
 
-  benchmark_runner = BenchmarkRunner()
+  config = perfzero_config.PerfZeroConfig(mode='env')
+  benchmark_runner = BenchmarkRunner(config)
   benchmark_runner.run_benchmark()

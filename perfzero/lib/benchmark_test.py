@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for test_runner script."""
 from __future__ import print_function
 
@@ -20,9 +19,9 @@ import os
 import sys
 import unittest
 
+import perfzero.report.benchmark_result as benchmark_result
 import benchmark
 from mock import Mock
-import perfzero.report.bench_result as bench_result
 
 
 class TestTestRunner(unittest.TestCase):
@@ -42,7 +41,7 @@ class TestTestRunner(unittest.TestCase):
     os.environ['ROGUE_TEST_CLASS'] = 'foo.fake.TestClass'
     os.environ['ROGUE_TEST_METHODS'] = 'TestMethod'
     os.environ['ROGUE_PYTHON_PATH'] = 'models'
-    test_runner_ = benchmark.BenchmarkRunner()
-    class_ = test_runner_._load_test_class('/dev/null')
+    benchmark_runner = benchmark.BenchmarkRunner()
+    class_ = benchmark_runner._load_test_class('/dev/null')
     self.assertIsInstance(class_.oss_report_object,
-                          type(bench_result.BenchResult()))
+                          type(benchmark_result.BenchmarkResult()))

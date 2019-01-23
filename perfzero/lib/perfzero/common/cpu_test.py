@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests cpu module."""
 import unittest
 
-from mock import patch
 from perfzero.common import cpu
+from mock import patch
 
 
 class TestCpu(unittest.TestCase):

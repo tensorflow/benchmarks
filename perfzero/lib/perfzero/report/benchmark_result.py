@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Benchmark result object."""
 
-"""Bench result object."""
 
-
-class BenchResult(object):
+class BenchmarkResult(object):
   """Holds results of a benchmark test."""
 
   def __init__(self):

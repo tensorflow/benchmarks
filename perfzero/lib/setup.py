@@ -12,27 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Checkout repository, download data and build docker image."""
+"""Checkout repository, download data and build docker image"""
 from __future__ import print_function
 
 import argparse
 import os
 
-import perfzero.common.device_utils as device_utils
 import perfzero.common.utils as utils
-
-parser = argparse.ArgumentParser()
+import perfzero.common.device_utils as device_utils
+import perfzero.common.perfzero_config as perfzero_config
 
 
 class SetupRunner(object):
   """Checkout repository, download data and build docker image."""
 
   def __init__(self,
-               docker_file,
-               docker_tag='temp/tf-gpu',
+               docker_file=None,
+               docker_tag=None,
                gce_nvme_raid=None,
-               data_dir='/data'):
+               data_dir=None,
+               config=None):
     project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
     workspace_dir = os.path.join(project_dir, 'workspace')
     self.docker_file_path = os.path.join(project_dir, docker_file)
@@ -42,10 +41,10 @@ class SetupRunner(object):
     self.docker_tag = docker_tag
     self.gce_nvme_raid = gce_nvme_raid
     self.data_dir = data_dir
+    self.config = config
 
   def setup(self):
     """Builds and runs docker image with specified test config."""
-    utils.check_and_print_env_var()
 
     # Download gcloud auth token.
     utils.download_from_gcs('gs://tf-performance/auth_tokens/*',
@@ -78,9 +77,11 @@ class SetupRunner(object):
 
   def _get_gcs_downloads(self):
     """Return list of gcs locations to download."""
-    gcs_str = utils.get_env_var('ROGUE_GCS_DOWNLOADS')
+    if self.config.gcs_downloads_str == '':
+      raise ValueError('gcs_downloads_str needs to be defined')
+
     gcs_downloads = []
-    for gcs_entry in gcs_str.split(','):
+    for gcs_entry in self.config.gcs_downloads_str.split(','):
       gcs_parts = gcs_entry.split(';')
       gcs_download = {}
       gcs_download['local_path'] = gcs_parts[0]
@@ -90,9 +91,8 @@ class SetupRunner(object):
 
   def _get_git_repos(self):
     """Return list of repos to checkout."""
-    git_repos_str = utils.get_env_var('ROGUE_GIT_REPOS')
     git_repos = []
-    for repo_entry in git_repos_str.split(','):
+    for repo_entry in self.config.git_repos_str.split(','):
       repo_parts = repo_entry.split(';')
       git_repo = {}
       if len(repo_parts) >= 2:
@@ -117,14 +117,16 @@ if __name__ == '__main__':
       '--docker_file',
       type=str,
       default='docker/Dockerfile',
-      help='Path to docker build file.')
+      help='Path to the docker build file.')
   parser.add_argument(
       '--data_dir', type=str, default='/data', help='Directory to store data.')
-
   FLAGS, unparsed = parser.parse_known_args()
 
+  config = perfzero_config.PerfZeroConfig(mode='env')
   setup_runner = SetupRunner(
-      FLAGS.docker_file,
+      docker_file=FLAGS.docker_file,
+      docker_tag='temp/tf-gpu',
       gce_nvme_raid=FLAGS.gce_nvme_raid,
-      data_dir=FLAGS.data_dir)
+      data_dir=FLAGS.data_dir,
+      config=config)
   setup_runner.setup()

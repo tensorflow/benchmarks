@@ -12,15 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Structures for a variety of different test results."""
 from six import u as unicode  # pylint: disable=W0622
 
 
 def build_test_result(test_id,
-                      result,
+                      result_value,
                       result_type='total_time',
-                      result_units='ms',
+                      result_unit='ms',
                       test_harness='unknown',
                       test_environment='unknown'):
   """Core information about the results of the test.
@@ -31,7 +30,7 @@ def build_test_result(test_id,
       result (float): Float value representing the result of the test.
       result_type (str): Type of result, total_time, exps_per_sec,
         oom_batch_size, or global_step_per_sec.  Defaults to total_time.
-      result_units (str, optional): Unitest of the results, defaults to ms.
+      result_unit (str, optional): Unitest of the results, defaults to ms.
       test_harness (str, optional): Test collection, e.g. tf_cnn_benchmarks,
         keras_benchmarks, model_garden_convergence, or caffe2_bench.
       test_environment (str, optional): Location test was run.
@@ -45,7 +44,7 @@ def build_test_result(test_id,
   test_result['test_environment'] = unicode(test_environment)
 
   results = []
-  result = build_result_info(results, result, result_type, result_units)
+  build_result_info(results, result_value, result_type, result_unit)
 
   return test_result, results
 
@@ -53,7 +52,7 @@ def build_test_result(test_id,
 def build_result_info(results,
                       result,
                       result_type='total_time',
-                      result_units='ms',
+                      result_unit='ms',
                       expected_min=None,
                       expected_max=None,
                       result_status=None):
@@ -64,7 +63,7 @@ def build_result_info(results,
     result (float): Float value representing the result of the test.
     result_type (str): Type of result, total_time, exps_per_sec, oom_batch_size,
       or global_step_per_sec.  Defaults to total_time.
-    result_units (str, optional): Unit of the results, defaults to ms.
+    result_unit (str, optional): Unit of the results, defaults to ms.
     expected_min (float, optional): minimum expected value to determine
       pass/fail of result.
     expected_max (float, optional): max expected value to determine pass/fail of
@@ -78,7 +77,7 @@ def build_result_info(results,
   result_entry = {}
   result_entry['result'] = result
   result_entry['result_type'] = result_type
-  result_entry['result_units'] = result_units
+  result_entry['result_units'] = result_unit
   if expected_min:
     result_entry['expected_min'] = expected_min
   if expected_max:

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Setup the data drive with raid, RAM, or mount network drives."""
 from __future__ import print_function
 
@@ -20,7 +19,6 @@ import perfzero.common.utils as utils
 
 
 def get_nvme_devices():
-  """Returns list paths to nvme devices."""
   devices = []
   cmd = 'sudo lsblk'
   retcode, log = utils.run_command(cmd)

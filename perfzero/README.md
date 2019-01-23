@@ -16,9 +16,9 @@ Tensorflow nighly build.
 
 
 ```
-source staging/scripts/setup_env.sh
+source benchmarks/perfzero/scripts/setup_env.sh
 
-python3 staging/lib/setup.py
+python3 benchmarks/perfzero/lib/setup.py
 
 ```
 
@@ -43,14 +43,13 @@ nvidia-docker run -it -v $(pwd):/workspace \
 -e ROGUE_PLATFORM_TYPE \
 -e ROGUE_GIT_REPOS \
 temp/tf-gpu \
-python /workspace/staging/lib/benchmark.py
-
+python /workspace/benchmarks/perfzero/lib/benchmark.py
 ```
 
 ## Run all unit tests
 
 ```
-cd staging/lib
+cd benchmarks/perfzero/lib
 
 python -B -m unittest discover -p "*_test.py"
 ```
@@ -58,6 +57,6 @@ python -B -m unittest discover -p "*_test.py"
 ## Format python code style
 
 ```
-find lib -name *.py -exec pyformat --in_place {} \;
+find benchmarks/perfzero/lib -name *.py -exec pyformat --in_place {} \;
 ```
 

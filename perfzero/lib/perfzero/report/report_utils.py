@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Reports results of tests."""
 from __future__ import print_function
 
 import tensorflow as tf
+
 import perfzero.common.cpu as cpu_info
-import perfzero.common.upload.result_info as result_info
-import perfzero.common.upload.result_upload as result_upload
 import perfzero.common.utils as utils
+import perfzero.report.result_info as result_info
+import perfzero.report.result_upload as result_upload
 
 
 def report_result(main_result,
@@ -118,7 +118,7 @@ def build_entry(test_id,
   main_result, results = result_info.build_test_result(
       test_id,
       total_time,
-      result_units='ms',
+      result_unit='ms',
       result_type='total_time',
       test_harness='perfzero',
       test_environment=test_environment)
@@ -143,7 +143,7 @@ def add_result(results, result):
       results,
       result['result'],
       result_type=result['result_type'],
-      result_units=result['result_unit'],
+      result_unit=result['result_unit'],
       expected_min=result.get('expected_min'),
       expected_max=result.get('expected_max'),
       result_status=result.get('result_status'))

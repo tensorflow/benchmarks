@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests untils module."""
 import unittest
 
-from mock import patch
 import perfzero.common.utils as utils
+from mock import patch
 
 
 class TestUtils(unittest.TestCase):
