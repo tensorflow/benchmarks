@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Git helper."""
 from __future__ import print_function
 
@@ -51,12 +50,11 @@ def checkout_git_repo(url, local_path, branch=None, sha_hash=None):
   print('Checked out repo from {} to {}'.format(url, local_path))
 
 
-def setup_python_path(library_dir):
-  module_paths_str = get_env_var('ROGUE_PYTHON_PATH', default=None)
-  if module_paths_str:
-    module_paths = module_paths_str.split(',')
-    for module_path in module_paths:
-      sys.path.append(os.path.join(library_dir, module_path))
+def setup_python_path(site_packages_dir, python_paths_str):
+  if python_paths_str:
+    python_paths = python_paths_str.split(',')
+    for python_path in python_paths:
+      sys.path.append(os.path.join(site_packages_dir, python_path))
   print('PYTHONPATH:{}'.format(sys.path))
 
 
@@ -75,7 +73,15 @@ def download_from_gcs(gcs_path, local_path):
   # Splits command into parts due to '-m cp -r'.
   cmds = [['gsutil', '-m', 'cp', '-r', '-n', gcs_path, local_path]]
   run_commands(cmds, shell=False)
-  print('Downloaded data from {} to directory {}'.format(gcs_path, local_path))
+  print('Downloaded data from gcs {} to local directory {}'.format(
+      gcs_path, local_path))
+
+
+def upload_to_gcs(local_dir, output_gcs_dir):
+  cmds = ['gsutil -m cp -r {}/* {}'.format(local_dir, output_gcs_dir)]
+  run_commands(cmds)
+  print('Uploaded data from local directory {} to gcs {}'.format(
+      local_dir, output_gcs_dir))
 
 
 def get_milliseconds_diff(start_time):
@@ -120,41 +126,6 @@ def run_commands(cmds, shell=True):
     if retcode:
       raise Exception('"{}" failed with code:{} and stdout:\n{}'.format(
           cmd, retcode, stdout))
-
-
-def get_env_var(varname, default=None):
-  env_var_val = None
-  if varname in os.environ:
-    env_var_val = os.environ[varname]
-  if env_var_val:
-    return env_var_val
-  else:
-    if default:
-      return default
-    else:
-      raise ValueError('ENV VAR was not found:{}'.format(varname))
-
-
-def check_and_print_env_var():
-  """Prints ENV_VARS and errors on missing required values."""
-  optional_envars = [
-      'ROGUE_CODE_DIR', 'ROGUE_PLATFORM_TYPE', 'ROGUE_PLATFORM',
-      'ROGUE_REPORT_PROJECT', 'ROGUE_TEST_ENV'
-  ]
-
-  required_envars = [
-      'ROGUE_TEST_METHODS', 'ROGUE_TEST_CLASS', 'ROGUE_PYTHON_PATH'
-  ]
-
-  print('Optional ENVIRONMENTAL VARIABLES:')
-  for envar in optional_envars:
-    envar_val = get_env_var(envar, default='not set')
-    print('{}={}'.format(envar, envar_val))
-
-  print('Required ENVIRONMENTAL VARIABLES:')
-  for envar in required_envars:
-    envar_val = get_env_var(envar)
-    print('{}={}'.format(envar, envar_val))
 
 
 def get_gpu_info():

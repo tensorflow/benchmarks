@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Test upload module."""
 from __future__ import print_function
 
@@ -21,8 +20,8 @@ import unittest
 
 import mock
 from mock import patch
-from perfzero.common.upload import result_info
-from perfzero.common.upload import result_upload
+import perfzero.report.result_info as result_info
+import perfzero.report.result_upload as result_upload
 
 
 class TestResultUpload(unittest.TestCase):
@@ -80,7 +79,7 @@ class TestResultUpload(unittest.TestCase):
 
   @patch('google.auth.default')
   @patch('google.cloud.bigquery.Client')
-  @patch('perfzero.common.upload.result_upload._stream_upload')
+  @patch('perfzero.report.result_upload._stream_upload')
   def test_upload_stream(self, stream_upload, bigquery, google):
     """Tests calls to steam upload with mock insert."""
 

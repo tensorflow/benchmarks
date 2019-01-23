@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests data disk config module."""
 from __future__ import print_function
 
@@ -32,4 +31,3 @@ class TestDiskUtils(unittest.TestCase):
     devices = device_utils.get_nvme_devices()
     print(devices)
     self.assertTrue(devices)
-

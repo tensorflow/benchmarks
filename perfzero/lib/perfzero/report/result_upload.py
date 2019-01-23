@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Upload test results."""
 from __future__ import print_function
 
@@ -69,7 +68,6 @@ def upload_result(test_result,
     print('row:{}', row)
   else:
     credentials, _ = google.auth.default()
-
     row = _build_row(credentials, test_result, result_info, test_info,
                      system_info, extras)
 

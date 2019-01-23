@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Setup the data drive with raid, RAM, or mount network drives."""
 from __future__ import print_function
 

@@ -12,32 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests data disk config module."""
 from __future__ import print_function
 
 import os
 import unittest
 
-import perfzero.common.utils as utils
 import setup
+import perfzero.common.utils as utils
+import perfzero.common.perfzero_config as perfzero_config
 
 
 class TestSetupRunner(unittest.TestCase):
 
-  def tearDown(self):
-    # Reset ENV VARs
-    envars = [
-        'ROGUE_CODE_DIR', 'ROGUE_ZERO_PLATFORM_TYPE', 'ROGUE_REPORT_PROJECT',
-        'ROGUE_GIT_REPOS', 'ROGUE_TEST_METHODS', 'ROGUE_TEST_CLASS',
-        'ROGUE_PYTHON_PATH'
-    ]
-    for envar in envars:
-      if os.environ.get(envar) is not None:
-        del os.environ[envar]
-    super(TestSetupRunner, self).tearDown()
+  def setUp(self):
+    self.config = perfzero_config.PerfZeroConfig(mode='mock')
+    super(TestSetupRunner, self).setUp()
 
-  def test_get_gcs_download_list(self):
+  def test_get_gcs_downloads(self):
     """Tests parsing gcs download environment variable."""
     path_0 = [
         'cifar10', 'gs://tf-perf-imagenet-uswest1/tensorflow/cifar10_data/*'
@@ -46,11 +38,10 @@ class TestSetupRunner(unittest.TestCase):
         'imagenet', 'gs://tf-perf-imagenet-uswest1/tensorflow/somethingelse'
     ]
 
-    gcs_envar = '{},{}'.format(';'.join(path_0), ';'.join(path_1))
+    self.config.gcs_downloads_str = '{},{}'.format(';'.join(path_0),
+                                                   ';'.join(path_1))
 
-    os.environ['ROGUE_GCS_DOWNLOADS'] = gcs_envar
-
-    setup_runner = setup.SetupRunner('')
+    setup_runner = setup.SetupRunner(docker_file='', config=self.config)
     gcs_list = setup_runner._get_gcs_downloads()
     actual_gcs_0 = gcs_list[0]
     actual_gcs_1 = gcs_list[1]
@@ -66,11 +57,10 @@ class TestSetupRunner(unittest.TestCase):
         'sha-hash'
     ]
 
-    repo_envar = '{},{}'.format(';'.join(repo_0), ';'.join(repo_1))
+    self.config.git_repos_str = '{},{}'.format(';'.join(repo_0),
+                                               ';'.join(repo_1))
 
-    os.environ['ROGUE_GIT_REPOS'] = repo_envar
-
-    setup_runner = setup.SetupRunner('')
+    setup_runner = setup.SetupRunner(docker_file='', config=self.config)
     repo_list = setup_runner._get_git_repos()
     actual_repo_0 = repo_list[0]
     actual_repo_1 = repo_list[1]
@@ -78,23 +68,3 @@ class TestSetupRunner(unittest.TestCase):
     self.assertEqual(repo_0[1], actual_repo_0['url'])
     self.assertEqual(repo_0[2], actual_repo_0['branch'])
     self.assertEqual(repo_1[3], actual_repo_1['sha_hash'])
-
-  def test_env_var_check_and_print(self):
-    os.environ['ROGUE_TEST_METHODS'] = 'test_method_1,test_method_2'
-    os.environ['ROGUE_TEST_CLASS'] = 'foo.bar.Class'
-    os.environ['ROGUE_PYTHON_PATH'] = 'models'
-    os.environ['ROGUE_GIT_REPOS'] = ('models;'
-                                     'https://github.com/tensorflow/models.git;'
-                                     'master')
-    os.environ['ROGUE_ZERO_PLATFORM_TYPE'] = '8xV100'
-
-    setup_runner = setup.SetupRunner('')
-    utils.check_and_print_env_var()
-
-  def test_env_var_check_and_print_missing(self):
-    os.environ['ROGUE_TEST_METHODS'] = 'test_method_1,test_method_2'
-    os.environ['ROGUE_TEST_CLASS'] = 'foo.bar.Class'
-
-    setup_runner = setup.SetupRunner('')
-    with self.assertRaises(ValueError):
-      utils.check_and_print_env_var()
