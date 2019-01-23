@@ -1,0 +1,15 @@
+NAME    MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
+nvme0n8 259:7    0   375G  0 disk
+nvme0n6 259:5    0   375G  0 disk
+sdb       8:16   0    50G  0 disk
+
+└─sdb1    8:17   0    50G  0 part /tmpfs
+nvme0n4 259:3    0   375G  0 disk
+nvme0n2 259:1    0   375G  0 disk
+nvme0n7 259:6    0   375G  0 disk
+nvme0n5 259:4    0   375G  0 disk
+sda       8:0    0   100G  0 disk
+
+└─sda1    8:1    0   100G  0 part /
+nvme0n3 259:2    0   375G  0 disk
+nvme0n1 259:0    0   375G  0 disk
