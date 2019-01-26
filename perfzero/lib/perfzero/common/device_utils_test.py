@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests data disk config module."""
+"""Tests device_utils module."""
 from __future__ import print_function
 
 import unittest
