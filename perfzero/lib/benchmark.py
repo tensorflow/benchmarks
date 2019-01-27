@@ -17,7 +17,6 @@ from __future__ import print_function
 
 import importlib
 import os
-import sys
 import time
 import uuid
 
@@ -68,8 +67,11 @@ class BenchmarkRunner(object):
     """Report results and upload artifacts."""
     # Upload benchmark ouput
     output_gcs_dir = None
-    if self.config.output_gcs_url_str == '':
-      print('Skipping uploading artifacts. output_gcs_url_str is not set.')
+    if not self.config.output_gcs_url_str:
+      print('Skipping uploading output. output_gcs_url_str is not set.')
+    elif not os.listdir(output_dir):
+      print('Skipping uploading output. Directory is empty:{}'.
+            format(output_dir))
     else:
       output_gcs_dir = '{}/{}/'.format(self.config.output_gcs_url_str, uid)
       utils.upload_to_gcs(output_dir, output_gcs_dir)
