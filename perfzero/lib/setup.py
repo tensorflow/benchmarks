@@ -53,7 +53,7 @@ class SetupRunner(object):
     # Set up the raid array.
     if self.gce_nvme_raid == 'all':
       devices = device_utils.get_nvme_devices()
-      device_utils.create_gce_nvme_raid(self.data_dir, devices)
+      device_utils.create_drive_from_devices(self.data_dir, devices)
 
     # Check out git repos
     git_repos = self._get_git_repos()
