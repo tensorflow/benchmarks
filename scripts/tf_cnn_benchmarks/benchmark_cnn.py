@@ -743,33 +743,12 @@ def create_config_proto(params):
   if params.xla:
     config.graph_options.optimizer_options.global_jit_level = (
         tf.OptimizerOptions.ON_1)
-    # TODO(b/117324590): Re-enable PinToHostOptimizer when b/117324590 is fixed.
-    # Currently we have to disable PinToHostOptimizer w/ XLA since it causes
-    # OOM/perf cliffs.
-    config.graph_options.rewrite_options.pin_to_host_optimization = (
-        rewriter_config_pb2.RewriterConfig.OFF)
   if params.rewriter_config:
     rewriter_config = rewriter_config_pb2.RewriterConfig()
     text_format.Merge(params.rewriter_config, rewriter_config)
-    config.graph_options.rewrite_options.CopyFrom(rewriter_config)
   elif not params.enable_optimizations:
-    off = rewriter_config_pb2.RewriterConfig.OFF
     config.graph_options.optimizer_options.opt_level = tf.OptimizerOptions.L0
-    rewrite_options = config.graph_options.rewrite_options
-    rewrite_options.layout_optimizer = off
-    rewrite_options.constant_folding = off
-    rewrite_options.shape_optimization = off
-    rewrite_options.remapping = off
-    rewrite_options.arithmetic_optimization = off
-    rewrite_options.dependency_optimization = off
-    rewrite_options.loop_optimization = off
-    rewrite_options.function_optimization = off
-    rewrite_options.debug_stripper = off
-    rewrite_options.disable_model_pruning = True
-    rewrite_options.scoped_allocator_optimization = off
-    rewrite_options.memory_optimization = (
-        rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
-    rewrite_options.pin_to_host_optimization = off
+    config.graph_options.rewrite_options.disable_meta_optimizer = True
   elif params.variable_update == 'collective_all_reduce':
     rewrite_options = config.graph_options.rewrite_options
     rewrite_options.scoped_allocator_optimization = (
@@ -784,6 +763,11 @@ def create_config_proto(params):
     config.device_filters.append(
         '/job:%s/replica:0/task:%d' % (params.job_name, params.task_index))
 
+  # TODO(b/117324590): Re-enable PinToHostOptimizer when b/117324590 is fixed.
+  # Currently we have to disable PinToHostOptimizer w/ XLA since it causes
+  # OOM/perf cliffs.
+  config.graph_options.rewrite_options.pin_to_host_optimization = (
+      rewriter_config_pb2.RewriterConfig.OFF)
   return config
 
 

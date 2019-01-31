@@ -31,6 +31,7 @@ import preprocessing
 from models import model
 from platforms import util as platforms_util
 from test_data import tfrecord_image_generator
+from tensorflow.core.protobuf import rewriter_config_pb2  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.platform import test
 
 
@@ -421,7 +422,10 @@ def manually_compute_losses(numpy_inputs, inputs_placeholder, loss, num_workers,
                      for i in range(num_workers)]
   # Set the GPU count to 0, to avoid taking all the GPU memory. Unfortunately,
   # doing so still takes up about ~1GB for some reason.
-  with tf.Session(config=tf.ConfigProto(device_count={'GPU': 0})) as sess:
+  config = tf.ConfigProto(device_count={'GPU': 0})
+  config.graph_options.rewrite_options.pin_to_host_optimization = (
+      rewriter_config_pb2.RewriterConfig.OFF)
+  with tf.Session(config=config) as sess:
     sess.run(tf.global_variables_initializer())
     losses = [[] for _ in range(num_workers)]
     for i in range(params.num_batches):
