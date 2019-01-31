@@ -17,10 +17,11 @@ from __future__ import print_function
 
 import argparse
 import os
+import logging
 
-import perfzero.common.utils as utils
-import perfzero.common.device_utils as device_utils
-import perfzero.common.perfzero_config as perfzero_config
+import perfzero.utils as utils
+import perfzero.device_utils as device_utils
+import perfzero.perfzero_config as perfzero_config
 
 
 class SetupRunner(object):
@@ -33,10 +34,9 @@ class SetupRunner(object):
                data_dir=None,
                config=None):
     project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-    workspace_dir = os.path.join(project_dir, 'workspace')
+    self.workspace_dir = os.path.join(project_dir, 'workspace')
     self.docker_file_path = os.path.join(project_dir, docker_file)
-    self.auth_token_dir = os.path.join(workspace_dir, 'auth_tokens')
-    self.site_packages_dir = os.path.join(workspace_dir, 'site-packages')
+    self.site_packages_dir = os.path.join(self.workspace_dir, 'site-packages')
 
     self.docker_tag = docker_tag
     self.gce_nvme_raid = gce_nvme_raid
@@ -47,8 +47,8 @@ class SetupRunner(object):
     """Builds and runs docker image with specified test config."""
 
     # Download gcloud auth token.
-    utils.download_from_gcs('gs://tf-performance/auth_tokens/*',
-                            self.auth_token_dir)
+    utils.download_from_gcs('gs://tf-performance/auth_tokens',
+                            self.workspace_dir)
 
     # Set up the raid array.
     if self.gce_nvme_raid == 'all':
@@ -65,29 +65,16 @@ class SetupRunner(object):
           sha_hash=git_repo.get('sha_hash'))
 
     # Download data
-    gcs_downloads = self._get_gcs_downloads()
-    for gcs_download in gcs_downloads:
-      local_path = os.path.join(self.data_dir, gcs_download['local_path'])
-      utils.download_from_gcs(gcs_download['gcs_path'], local_path)
+    if self.config.gcs_downloads_str:
+      for gcs_download in self.config.gcs_downloads_str.split(','):
+        utils.download_from_gcs(gcs_download, self.data_dir)
 
     # Build docker image.
     docker_build_cmd = 'docker build --pull -f {} -t {} .'.format(
         self.docker_file_path, self.docker_tag)
     utils.run_commands([docker_build_cmd])
 
-  def _get_gcs_downloads(self):
-    """Return list of gcs locations to download."""
-    if self.config.gcs_downloads_str == '':
-      raise ValueError('gcs_downloads_str needs to be defined')
-
-    gcs_downloads = []
-    for gcs_entry in self.config.gcs_downloads_str.split(','):
-      gcs_parts = gcs_entry.split(';')
-      gcs_download = {}
-      gcs_download['local_path'] = gcs_parts[0]
-      gcs_download['gcs_path'] = gcs_parts[1]
-      gcs_downloads.append(gcs_download)
-    return gcs_downloads
+    logging.info('Completed setup operation')
 
   def _get_git_repos(self):
     """Return list of repos to checkout."""
@@ -120,7 +107,10 @@ if __name__ == '__main__':
       help='Path to the docker build file.')
   parser.add_argument(
       '--data_dir', type=str, default='/data', help='Directory to store data.')
+
   FLAGS, unparsed = parser.parse_known_args()
+  logging.basicConfig(
+      format='%(asctime)s %(levelname)s: %(message)s', level=logging.DEBUG)
 
   config = perfzero_config.PerfZeroConfig(mode='env')
   setup_runner = SetupRunner(

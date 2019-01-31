@@ -20,6 +20,7 @@ import re
 import subprocess
 import sys
 import time
+import logging
 
 
 def checkout_git_repo(url, local_path, branch=None, sha_hash=None):
@@ -47,15 +48,15 @@ def checkout_git_repo(url, local_path, branch=None, sha_hash=None):
     sync_to_hash_cmd = 'git -C {} reset --hard {}'.format(local_path, sha_hash)
     run_command(sync_to_hash_cmd)
 
-  print('Checked out repo from {} to {}'.format(url, local_path))
+  logging.info('Checked out repo from {} to {}'.format(url, local_path))
 
 
-def setup_python_path(site_packages_dir, python_paths_str):
-  if python_paths_str:
-    python_paths = python_paths_str.split(',')
+def setup_python_path(site_packages_dir, python_path_str):
+  if python_path_str:
+    python_paths = python_path_str.split(',')
     for python_path in python_paths:
       sys.path.append(os.path.join(site_packages_dir, python_path))
-  print('PYTHONPATH:{}'.format(sys.path))
+  logging.debug('PYTHONPATH: {}'.format(sys.path))
 
 
 def active_gcloud_service(auth_token_path):
@@ -70,29 +71,23 @@ def active_gcloud_service(auth_token_path):
 def download_from_gcs(gcs_path, local_path):
   make_dir_if_not_exist(local_path)
 
-  # Splits command into parts due to '-m cp -r'.
   cmds = [['gsutil', '-m', 'cp', '-r', '-n', gcs_path, local_path]]
   run_commands(cmds, shell=False)
-  print('Downloaded data from gcs {} to local directory {}'.format(
+  logging.info('Downloaded data from gcs {} to local directory {}'.format(
       gcs_path, local_path))
 
 
 def upload_to_gcs(local_dir, output_gcs_dir):
-  cmds = ['gsutil -m cp -r {}/* {}'.format(local_dir, output_gcs_dir)]
+  cmds = ['gsutil -m cp -r {} {}'.format(local_dir, output_gcs_dir)]
   run_commands(cmds)
-  print('Uploaded data from local directory {} to gcs {}'.format(
+  logging.info('Uploaded data from local directory {} to gcs {}'.format(
       local_dir, output_gcs_dir))
-
-
-def get_milliseconds_diff(start_time):
-  """Convert seconds to int milliseconds."""
-  return int(round((time.time() - start_time) * 1000))
 
 
 def make_dir_if_not_exist(local_path):
   if not os.path.exists(local_path):
     os.makedirs(local_path)
-    print('Created directory {}'.format(local_path))
+    logging.info('Created directory {}'.format(local_path))
 
 
 def run_command(cmd, shell=True):
@@ -105,7 +100,7 @@ def run_command(cmd, shell=True):
   Returns:
     Tuple of the command return value and the standard out in as a string.
   """
-  print('Execute command: {}'.format(cmd))
+  logging.debug('Execute command: {}'.format(cmd))
   p = subprocess.Popen(
       cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=shell)
   stdout = ''
@@ -113,7 +108,7 @@ def run_command(cmd, shell=True):
     retcode = p.poll()
     line = p.stdout.readline()
     line_str = line.decode('utf-8')
-    print(line_str)
+    logging.debug(line_str)
     stdout += line_str
     if retcode is not None:
       return retcode, stdout
@@ -128,84 +123,87 @@ def run_commands(cmds, shell=True):
           cmd, retcode, stdout))
 
 
+def get_cpu_name():
+  cmd = "cat /proc/cpuinfo | grep 'model name' | sort --unique"
+  retcode, result = run_command(cmd)
+  lines = result.splitlines()
+  if retcode == 0 and lines:
+    model_name_parts = lines[0].split(':')
+    return model_name_parts[1].strip()
+  else:
+    logging.error('Error getting cpuinfo model name: {}'.format(result))
+    return ''
+
+
+def get_cpu_core_count():
+  cmd = "cat /proc/cpuinfo | grep 'cpu cores' | sort --unique"
+  retcode, result = run_command(cmd)
+  lines = result.splitlines()
+  if retcode == 0 and lines:
+    core_count_parts = lines[0].split(':')
+    # Cores * sockets = total cores for the system.
+    core_count = int(core_count_parts[1].strip())
+    total_cores = core_count * get_cpu_socket_count()
+    return total_cores
+  else:
+    logging.error('Error getting cpuinfo core count: {}'.format(result))
+    return -1
+
+
+def get_cpu_socket_count():
+  cmd = 'grep -i "physical id" /proc/cpuinfo | sort -u | wc -l'
+  retcode, result = run_command(cmd)
+  lines = result.splitlines()
+  if retcode == 0 and lines:
+    return int(lines[0])
+  else:
+    logging.error('Error getting cpuinfo scocket count: {}'.format(result))
+    return -1
+
+
 def get_gpu_info():
-  """Returns driver and gpu info using nvidia-smi.
+  """Returns gpu information using nvidia-smi.
 
   Note: Assumes if the system has multiple GPUs that they are all the same with
   one exception.  If the first result is a Quadro, the heuristic assumes
   this may be a workstation and takes the second entry.
 
   Returns:
-    Tuple of device driver version and gpu name.
+    A dict containing gpu_driver_version, gpu_model and gpu_count
   """
   cmd = 'nvidia-smi --query-gpu=driver_version,gpu_name --format=csv'
   retcode, result = run_command(cmd)
+
+  if retcode != 0:
+    logging.error('nvidia-smi did not return as expected:{}'.format(result))
+    return {}
+
   lines = result.splitlines()
-  if retcode == 0 and len(lines) > 1:
-    gpu_info = lines[1].split(',')
-    if 'Quadro' in gpu_info[1] and len(lines) > 2:
-      gpu_info = lines[2].split(',')
-      return gpu_info[0].strip(), gpu_info[1].strip()
-    else:
-      return gpu_info[0].strip(), gpu_info[1].strip()
-  else:
-    print('nvidia-smi did not return as expected:{}'.format(result))
-    return '', ''
+  gpu_info_line = lines[1]
+  if 'Quadro' in gpu_info_line and len(lines) >= 3:
+    gpu_info_line = lines[2]
+
+  gpu_info = {}
+  gpu_info['gpu_driver_version'] = gpu_info_line.split(',')[0].strip()
+  gpu_info['gpu_model'] = gpu_info_line.split(',')[1].strip()
+  gpu_info['gpu_count'] = len(lines) - 1
+
+  return gpu_info
 
 
-def get_gpu_count():
-  cmd = 'nvidia-smi --query-gpu=driver_version,gpu_name --format=csv'
-  retcode, result = run_command(cmd)
-  lines = result.splitlines()
-  if retcode == 0 and len(lines) > 1:
-    return len(lines) - 1
-  else:
-    print('nvidia-smi did not return as expected:{}'.format(result))
-    return -1
+def read_benchmark_result(benchmark_result_file_path):
+  from google.protobuf import json_format
+  from tensorflow.core.util import test_log_pb2
 
+  if not os.path.isfile(benchmark_result_file_path):
+    logging.error(
+        'Failed to read benchmark result because file {} does not exist'.format(
+            benchmark_result_file_path))
+    return {}
 
-def get_running_processes():
-  """Returns list of `dict` objects representing running processes on GPUs."""
-  retcode, result = run_command('nvidia-smi')
-  lines = result.splitlines()
-  if retcode == 0 and len(lines) > 1:
-    # Goes to the first line with the word Processes, jumps down one and then
-    # parses the list of processes.
-    look_for_processes = False
-    processes = []
-    for line in lines:
-      # Summary line starts with images/sec
-      if line.find('Processes') > 0:
-        look_for_processes = True
+  with open(benchmark_result_file_path, 'rb') as f:
+    benchmark_entries = test_log_pb2.BenchmarkEntries()
+    benchmark_entries.ParseFromString(f.read())
 
-      if look_for_processes:
-        p = re.compile('[0-1]+')
-        m = p.search(line)
-        if m and m.span()[0] == 5:
-          line_parts = line.strip().replace('|', '').split()
-          processes.append(line_parts)
-
-    return processes
-
-  else:
-    print('nvidia-smi did not return as expected:{}'.format(result))
-    return '', ''
-
-
-def is_ok_to_run():
-  """Returns true if the system is free to run GPU tests.
-
-  Checks the list of processes and if the list is empty or if the list of
-  processes does not contain actual ML jobs returns true.  Non-ML Jobs
-  like 'Xorg' or even 'cinnamon' are not a problem.
-
-  Note: Currently this method returns true if no python processes are found.
-    Which seems more sane than a long list of processes that do not matter. On
-    clean systems the process list should be and normally is zero.
-  """
-  processes = get_running_processes()
-  for process in processes:
-    # Checks process name position for process named 'python'.
-    if process[3].lower().find('python') > 0:
-      return False
-  return True
+    return json_format.MessageToDict(
+        benchmark_entries, preserving_proto_field_name=True)['entry'][0]

@@ -19,8 +19,7 @@ import os
 import unittest
 
 import setup
-import perfzero.common.utils as utils
-import perfzero.common.perfzero_config as perfzero_config
+import perfzero.perfzero_config as perfzero_config
 
 
 class TestSetupRunner(unittest.TestCase):
@@ -28,26 +27,6 @@ class TestSetupRunner(unittest.TestCase):
   def setUp(self):
     self.config = perfzero_config.PerfZeroConfig(mode='mock')
     super(TestSetupRunner, self).setUp()
-
-  def test_get_gcs_downloads(self):
-    """Tests parsing gcs download environment variable."""
-    path_0 = [
-        'cifar10', 'gs://tf-perf-imagenet-uswest1/tensorflow/cifar10_data/*'
-    ]
-    path_1 = [
-        'imagenet', 'gs://tf-perf-imagenet-uswest1/tensorflow/somethingelse'
-    ]
-
-    self.config.gcs_downloads_str = '{},{}'.format(';'.join(path_0),
-                                                   ';'.join(path_1))
-
-    setup_runner = setup.SetupRunner(docker_file='', config=self.config)
-    gcs_list = setup_runner._get_gcs_downloads()
-    actual_gcs_0 = gcs_list[0]
-    actual_gcs_1 = gcs_list[1]
-    self.assertEqual(path_0[0], actual_gcs_0['local_path'])
-    self.assertEqual(path_0[1], actual_gcs_0['gcs_path'])
-    self.assertEqual(path_1[1], actual_gcs_1['gcs_path'])
 
   def test_get_git_repos_list(self):
     """Tests parsing repos environment variables."""
