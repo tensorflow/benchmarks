@@ -36,30 +36,50 @@ def get_nvme_devices():
   return devices
 
 
-def create_gce_nvme_raid(data_dir, list_of_devices):
-  """Creates a raid zero array of nvme drives."""
-
+def create_drive_from_devices(data_dir, devices):
+  """Creates a drive at data_dir based on number of devices passed."""
   cmd = 'sudo mountpoint -q {}'.format(data_dir)
   retcode, _ = utils.run_command(cmd)
   if retcode:
-    cmds = []
-    # GCE nvme drives some times are in an odd state and
-    # think they are in another raid. mdadm doe snot have -y option.
-    # or the kokoro images were left dirty? and that is where the info
-    # comes from.
-    cmds.append('yes | sudo mdadm --create /dev/md0 --level=0 '
-                '--raid-devices={} {}'.format(
-                    len(list_of_devices), ' '.join(list_of_devices)))
-    cmds.append('sudo mkfs.ext4 -F /dev/md0')
-    cmds.append('sudo mkdir -p {}'.format(data_dir))
-    cmds.append('sudo mount /dev/md0 {}'.format(data_dir))
-    cmds.append('sudo chmod a+w {}'.format(data_dir))
-
-    utils.run_commands(cmds)
-    print('Created and mounted RAID array at {}'.format(data_dir))
+    if len(devices) > 1:
+      create_drive_raid(data_dir, devices)
+    else:
+      create_single_drive(data_dir, devices[0])
   else:
-    print('Skipping RAID array creation since path {} already exists'.format(
+    print('Skipping drive creation since path {} already exists'.format(
         data_dir))
+
+
+def create_single_drive(data_dir, device):
+  """Creates a data drive out of a single device."""
+  cmds = []
+  cmds.append('sudo mkfs.ext4 -F {}'.format(device))
+  cmds.append('sudo mkdir -p {}'.format(data_dir))
+  cmds.append('sudo mount {} {}'.format(device, data_dir))
+  cmds.append('sudo chmod a+w {}'.format(data_dir))
+
+  utils.run_commands(cmds)
+  print('Created and mounted device {} at {}'.format(device, data_dir))
+
+
+def create_drive_raid(data_dir, list_of_devices):
+  """Creates a raid zero array of nvme drives."""
+  cmds = []
+  # Passing 'yes' because GCE nvme drive are sometimes in an odd state and
+  # think they are in another raid. mdadm does not have -y option.
+  # Or the kokoro images were left dirty? and that is where the info
+  # comes from.
+  cmds.append('yes | sudo mdadm --create /dev/md0 --level=0 '
+              '--raid-devices={} {}'.format(
+                  len(list_of_devices), ' '.join(list_of_devices)))
+  cmds.append('sudo mkfs.ext4 -F /dev/md0')
+  cmds.append('sudo mkdir -p {}'.format(data_dir))
+  cmds.append('sudo mount /dev/md0 {}'.format(data_dir))
+  cmds.append('sudo chmod a+w {}'.format(data_dir))
+
+  utils.run_commands(cmds)
+  print('Created and mounted RAID array at {}'.format(data_dir))
+
 
 
 def create_ram_disk(data_dir, disk_size):
