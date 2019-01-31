@@ -17,6 +17,7 @@ from __future__ import print_function
 
 import importlib
 import os
+import re
 import time
 import uuid
 
@@ -32,27 +33,48 @@ class BenchmarkRunner(object):
   def __init__(self, config=None):
     project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
     workspace_dir = os.path.join(project_dir, 'workspace')
-    site_packages_dir = os.path.join(workspace_dir, 'site-packages')
-    auth_token_path = os.path.join(workspace_dir,
-                                   'auth_tokens/benchmark_upload_gce.json')
+    self.site_packages_dir = os.path.join(workspace_dir, 'site-packages')
+    self.auth_token_path = os.path.join(workspace_dir,
+                                        'auth_tokens/benchmark_upload_gce.json')
     self.output_root_dir = os.path.join(workspace_dir, 'output')
     self.config = config
-    """Setup environment before executing tests."""
-    utils.setup_python_path(site_packages_dir, config.python_paths_str)
-    utils.active_gcloud_service(auth_token_path)
+    self._setup()
+
+  def _setup(self):
+    """Sets up environment for tests to run."""
+    utils.setup_python_path(self.site_packages_dir,
+                            self.config.python_paths_str)
+    utils.active_gcloud_service(self.auth_token_path)
     utils.make_dir_if_not_exist(self.output_root_dir)
 
   def run_benchmark(self):
     """Run tests."""
-    for benchmark_method in self.config.benchmark_methods_str.split(','):
+
+    filter_prefix = 'filter:'
+    # Check if filter or list of exact methods to execute.
+    methods_str = self.config.benchmark_methods_str
+    if methods_str.startswith(filter_prefix):
+      # Gets test object only to fine methods to execute.
+      match_filter = methods_str[len(filter_prefix):]
+      print('match_filter:{}'.format(match_filter))
+      filter_class = self._instantiate_benchmark_class('/dev/null')
+      benchmark_methods = self._return_methods_to_execute(filter_class,
+                                                          match_filter)
+    else:
+      benchmark_methods = self.config.benchmark_methods_str.split(',')
+    self._exec_benchmarks(benchmark_methods)
+
+  def _exec_benchmarks(self, benchmark_methods):
+    """Executes all benchmark methods."""
+    print('Methods to execute:{}'.format(','.join(benchmark_methods)))
+    for benchmark_method in benchmark_methods:
       uid = str(uuid.uuid4())
       output_dir = os.path.join(self.output_root_dir, uid)
       utils.make_dir_if_not_exist(output_dir)
-
       class_instance = self._instantiate_benchmark_class(output_dir)
       class_method_name = '{}.{}'.format(class_instance.__class__.__name__,
                                          benchmark_method)
-
+      print('Start Benchmark: {}'.format(class_method_name))
       start_time = time.time()
       # Run benchmark method
       getattr(class_instance, benchmark_method)()
@@ -109,6 +131,14 @@ class BenchmarkRunner(object):
     instance.oss_report_object = benchmark_result.BenchmarkResult()
     return instance
 
+  def _return_methods_to_execute(self, class_, match_filter):
+    """Returns methods to execute on class based on filter passed."""
+    found_methods = []
+    possible_methods = dir(class_)
+    for method in possible_methods:
+      if re.match(match_filter, method):
+        found_methods.append(method)
+    return found_methods
 
 if __name__ == '__main__':
 
