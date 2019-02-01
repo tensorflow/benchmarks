@@ -274,7 +274,9 @@ flags.DEFINE_enum('data_format', 'NCHW', ('NHWC', 'NCHW'),
                   'native, requires GPU).')
 flags.DEFINE_integer('num_intra_threads', None,
                      'Number of threads to use for intra-op parallelism. If '
-                     'set to 0, the system will pick an appropriate number.')
+                     'set to 0, the system will pick an appropriate number. '
+                     'None is the same as 0 except that it disables intra-op '
+                     'parallelism on a GPU.')
 flags.DEFINE_integer('num_inter_threads', 0,
                      'Number of threads to use for inter-op parallelism. If '
                      'set to 0, the system will pick an appropriate number.')
