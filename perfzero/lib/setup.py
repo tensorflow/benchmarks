@@ -73,8 +73,6 @@ class SetupRunner(object):
           gcs_download = gcs_download.split(';')[1]
         utils.download_from_gcs(gcs_download, local_path)
 
-    return
-
     # Build docker image.
     docker_build_cmd = 'docker build --pull -f {} -t {} .'.format(
         self.docker_file_path, self.docker_tag)
