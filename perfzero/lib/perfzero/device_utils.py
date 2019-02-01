@@ -15,7 +15,8 @@
 """Setup the data drive with raid, RAM, or mount network drives."""
 from __future__ import print_function
 
-import perfzero.common.utils as utils
+import perfzero.utils as utils
+import logging
 
 
 def get_nvme_devices():
@@ -46,8 +47,8 @@ def create_drive_from_devices(data_dir, devices):
     else:
       create_single_drive(data_dir, devices[0])
   else:
-    print('Skipping drive creation since path {} already exists'.format(
-        data_dir))
+    logging.info(
+        'Skipping drive creation since path {} already exists'.format(data_dir))
 
 
 def create_single_drive(data_dir, device):
@@ -59,7 +60,7 @@ def create_single_drive(data_dir, device):
   cmds.append('sudo chmod a+w {}'.format(data_dir))
 
   utils.run_commands(cmds)
-  print('Created and mounted device {} at {}'.format(device, data_dir))
+  logging.info('Created and mounted device {} at {}'.format(device, data_dir))
 
 
 def create_drive_raid(data_dir, list_of_devices):
@@ -78,8 +79,7 @@ def create_drive_raid(data_dir, list_of_devices):
   cmds.append('sudo chmod a+w {}'.format(data_dir))
 
   utils.run_commands(cmds)
-  print('Created and mounted RAID array at {}'.format(data_dir))
-
+  logging.info('Created and mounted RAID array at {}'.format(data_dir))
 
 
 def create_ram_disk(data_dir, disk_size):
@@ -92,7 +92,8 @@ def create_ram_disk(data_dir, disk_size):
     cmds.append('sudo mkdir -p {}'.format(data_dir))
     cmds.append('sudo mount -t tmpfs -o size={}m tmpfs {}'.format(
         disk_size, data_dir))
-
     utils.run_commands(cmds)
+    logging.info('Created RAM disk at {}'.format(data_dir))
   else:
-    print('RAM disk or something else is mounted at {}'.format(data_dir))
+    logging.debug(
+        'RAM disk or something else is mounted at {}'.format(data_dir))

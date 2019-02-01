@@ -18,16 +18,15 @@ from __future__ import print_function
 import unittest
 
 from mock import patch
-import perfzero.common.device_utils as device_utils
+import perfzero.device_utils as device_utils
 
 
 class TestDiskUtils(unittest.TestCase):
 
-  @patch('perfzero.common.device_utils.get_nvme_devices')
+  @patch('perfzero.device_utils.get_nvme_devices')
   def test_get_device_list(self, mock_device_list):
-    device_test = 'perfzero/common/test_files/nvme_device_log.txt'
+    device_test = 'perfzero/test_files/nvme_device_log.txt'
     with open(device_test) as f:
       mock_device_list.return_value = f.read()
     devices = device_utils.get_nvme_devices()
-    print(devices)
     self.assertTrue(devices)

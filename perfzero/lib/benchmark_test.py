@@ -22,77 +22,53 @@ import unittest
 
 import benchmark
 import mock
-import perfzero.report.benchmark_result as benchmark_result
 
 
-class TestTestRunner(unittest.TestCase):
-
-  def tearDown(self):
-    # Reset ENV VARs
-    envars = ['ROGUE_TEST_CLASS', 'ROGUE_TEST_METHODS', 'ROGUE_PYTHON_PATH']
-    for envar in envars:
-      if os.environ.get(envar) is not None:
-        del os.environ[envar]
-    super(TestTestRunner, self).tearDown()
+class TestBenchmarkRunner(unittest.TestCase):
 
   @mock.patch('benchmark.BenchmarkRunner._setup')
-  def test_load_test_class(self, mock_setup):
+  def test_load_benchmark_class(self, mock_setup):
     """Test loading module and test class."""
 
     # foo.fake is not found unless foo and fake are mocked.
     sys.modules['foo'] = mock.Mock()
     sys.modules['foo.fake'] = mock.Mock()
     config = mock.Mock()
-    config.test_class_str = 'foo.fake.TestClass'
+    config.benchmark_class_str = 'foo.fake.TestClass'
     config.python_paths_str = None
     benchmark_runner = benchmark.BenchmarkRunner(config)
-    class_ = benchmark_runner._instantiate_benchmark_class('/dev/null')
-    self.assertIsInstance(class_.oss_report_object,
-                          type(benchmark_result.BenchmarkResult()))
+    class_instance = benchmark_runner._instantiate_benchmark_class('/dev/null')
     mock_setup.assert_called()
 
   @mock.patch('benchmark.BenchmarkRunner._setup')
-  def test_method_filter(self, _):
+  def test_get_benchmark_methods_filter(self, mock_setup):
     """Tests returning methods on a class based on a filter."""
-    regex_filter = 'bench.*'
     config = mock.Mock()
     config.python_paths_str = None
+    config.benchmark_methods_str = 'filter:bench.*'
+    config.benchmark_class_str = 'new_foo.BenchmarkClass'
     benchmark_runner = benchmark.BenchmarkRunner(config)
-    mock_test_class = mock.Mock()
-    mock_test_class.benchmark_test = 'foo'
-    methods = benchmark_runner._return_methods_to_execute(mock_test_class,
-                                                          regex_filter)
-    self.assertEqual('benchmark_test', methods[0])
 
-  @mock.patch('benchmark.BenchmarkRunner._exec_benchmarks')
+    mock_benchmark_class = mock.Mock()
+    mock_benchmark_class.benchmark_method_1 = 'foo'
+
+    mock_module = mock.Mock()
+    sys.modules['new_foo'] = mock_module
+    mock_module.BenchmarkClass.return_value = mock_benchmark_class
+
+    methods = benchmark_runner._get_benchmark_methods()
+
+    self.assertEqual(1, len(methods))
+    self.assertEqual('benchmark_method_1', methods[0])
+
   @mock.patch('benchmark.BenchmarkRunner._setup')
-  def test_run_benchmarks_filter(self, _, exec_bench_mock):
-    """Test run benchmarks with filters argument."""
-    test_class = mock.Mock()
-    test_class.benchmark_foo = 'foo'
-    module = mock.Mock()
-    sys.modules['new_foo'] = module
-    module.TestClass.return_value = test_class
+  def test_get_benchmark_methods_exact_match(self, mock_setup):
+    """Tests returning methods on a class based on a filter."""
     config = mock.Mock()
-    config.test_class_str = 'new_foo.TestClass'
-    config.benchmark_methods_str = 'filter:bench'
+    config.python_paths_str = None
+    config.benchmark_methods_str = 'benchmark_method_1,benchmark_method_2'
+    config.benchmark_class_str = 'new_foo.BenchmarkClass'
     benchmark_runner = benchmark.BenchmarkRunner(config)
 
-    benchmark_runner.run_benchmark()
-    arg0 = exec_bench_mock.call_args[0][0]
-    self.assertEqual('benchmark_foo', arg0[0])
-
-  @mock.patch('benchmark.BenchmarkRunner._exec_benchmarks')
-  @mock.patch('benchmark.BenchmarkRunner._setup')
-  def test_run_benchmarks_list_of_methods(self, _, exec_bench_mock):
-    """Test run benchmarks with list of methods."""
-    module = mock.Mock()
-    sys.modules['new_foo'] = module
-    config = mock.Mock()
-    config.test_class_str = 'new_foo.TestClass'
-    config.benchmark_methods_str = 'benchmark_1,benchmark_2'
-    benchmark_runner = benchmark.BenchmarkRunner(config)
-
-    benchmark_runner.run_benchmark()
-    arg0 = exec_bench_mock.call_args[0][0]
-    self.assertEqual(config.benchmark_methods_str.split(','), arg0)
+    methods = benchmark_runner._get_benchmark_methods()
+    self.assertEqual(['benchmark_method_1', 'benchmark_method_2'], methods)
