@@ -67,7 +67,13 @@ class SetupRunner(object):
     # Download data
     if self.config.gcs_downloads_str:
       for gcs_download in self.config.gcs_downloads_str.split(','):
-        utils.download_from_gcs(gcs_download, self.data_dir)
+        local_path = self.data_dir
+        if ';' in gcs_download:
+          local_path = os.path.join(local_path, gcs_download.split(';')[0])
+          gcs_download = gcs_download.split(';')[1]
+        utils.download_from_gcs(gcs_download, local_path)
+
+    return
 
     # Build docker image.
     docker_build_cmd = 'docker build --pull -f {} -t {} .'.format(
