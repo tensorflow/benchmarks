@@ -25,11 +25,6 @@ RUN apt-get install -y --no-install-recommends \
 
 # Install / update Python and Python3
 RUN apt-get install -y --no-install-recommends \
-      python \
-      python-dev \
-      python-pip \
-      python-setuptools \
-      virtualenv \
       python3 \
       python3-dev \
       python3-pip \
@@ -40,18 +35,9 @@ RUN apt-get install -y --no-install-recommends \
 # Setup Python3 environment
 RUN pip3 install --upgrade pip==9.0.1
 # setuptools upgraded to fix install requirements from model garden.
-RUN pip3 install --upgrade setuptools google-api-python-client pyyaml paramiko google-cloud google-cloud-bigquery tf-nightly-gpu
-RUN pip3 install wheel pyyaml absl-py mlperf_compliance
+RUN pip3 install --upgrade setuptools google-api-python-client google-cloud google-cloud-bigquery
+RUN pip3 install wheel absl-py
 RUN pip3 install --upgrade --force-reinstall tf-nightly-gpu
 
 RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/requirements.txt > /tmp/requirements.txt
 RUN pip3 install -r /tmp/requirements.txt
-
-# Setup Python2 environment
-RUN python -m pip install --upgrade pip==9.0.1
-# setuptools upgraded to fix install requirements from model garden.
-RUN python -m pip install --upgrade setuptools
-RUN python -m pip install wheel pyyaml absl-py mlperf_compliance
-# Python2 binary was not created for 7.4 cuDNN testing.
-# RUN python -m pip install https://storage.googleapis.com/tf-performance/tf_binary/tensorflow-1.12.0.a6d8ffa.AVX2.CUDA10-cp27-cp27mu-linux_x86_64.whl
-
