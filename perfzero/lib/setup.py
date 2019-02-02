@@ -12,30 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Checkout repository, download data and build docker image"""
+"""Checkout repository, download data and build docker image."""
 from __future__ import print_function
 
 import argparse
-import os
 import logging
+import os
 
-import perfzero.utils as utils
 import perfzero.device_utils as device_utils
 import perfzero.perfzero_config as perfzero_config
+import perfzero.utils as utils
 
 
 class SetupRunner(object):
   """Checkout repository, download data and build docker image."""
 
   def __init__(self,
-               docker_file=None,
                docker_tag=None,
                gce_nvme_raid=None,
                data_dir=None,
                config=None):
     project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
     self.workspace_dir = os.path.join(project_dir, 'workspace')
-    self.docker_file_path = os.path.join(project_dir, docker_file)
+    self.docker_file_path = os.path.join(project_dir,
+                                         config.dockerfile_path_str)
     self.site_packages_dir = os.path.join(self.workspace_dir, 'site-packages')
 
     self.docker_tag = docker_tag
@@ -105,22 +105,16 @@ if __name__ == '__main__':
       default=None,
       help='If set create raid 0 array with devices at disk_dir')
   parser.add_argument(
-      '--docker_file',
-      type=str,
-      default='docker/Dockerfile',
-      help='Path to the docker build file.')
-  parser.add_argument(
       '--data_dir', type=str, default='/data', help='Directory to store data.')
 
   FLAGS, unparsed = parser.parse_known_args()
   logging.basicConfig(
       format='%(asctime)s %(levelname)s: %(message)s', level=logging.DEBUG)
 
-  config = perfzero_config.PerfZeroConfig(mode='env')
+  config_ = perfzero_config.PerfZeroConfig(mode='env')
   setup_runner = SetupRunner(
-      docker_file=FLAGS.docker_file,
       docker_tag='temp/tf-gpu',
       gce_nvme_raid=FLAGS.gce_nvme_raid,
       data_dir=FLAGS.data_dir,
-      config=config)
+      config=config_)
   setup_runner.setup()
