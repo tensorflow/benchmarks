@@ -270,8 +270,11 @@ flags.DEFINE_enum('local_parameter_device', 'gpu', ('cpu', 'gpu', 'CPU', 'GPU'),
 flags.DEFINE_enum('device', 'gpu', ('cpu', 'gpu', 'CPU', 'GPU'),
                   'Device to use for computation: cpu or gpu')
 flags.DEFINE_enum('data_format', 'NCHW', ('NHWC', 'NCHW'),
-                  'Data layout to use: NHWC (TF native) or NCHW (cuDNN '
-                  'native, requires GPU).')
+                  'Data layout to use for model layers: NHWC (TF native) or NCHW '
+                  '(NVIDIA cuDNN native / Intel MKL native).')
+flags.DEFINE_enum('input_data_format', 'NHWC', ('NHWC', 'NCHW'),
+                  'Data format of input image: the image format of input data'
+                  'NHWC by default (tf.image generated data format).')
 flags.DEFINE_integer('num_intra_threads', None,
                      'Number of threads to use for intra-op parallelism. If '
                      'set to 0, the system will pick an appropriate number.')
@@ -1763,6 +1766,7 @@ class BenchmarkCNN(object):
     log_fn('Devices:     %s' % benchmark_info['device_list'])
     log_fn('NUMA bind:   %s' % self.params.use_numa_affinity)
     log_fn('Data format: %s' % self.params.data_format)
+    log_fn('Input image: %s' % self.params.input_data_format)
     if self.rewriter_config:
       log_fn('RewriterConfig: %s' % self.rewriter_config)
     log_fn('Optimizer:   %s' % self.params.optimizer)
@@ -1821,6 +1825,7 @@ class BenchmarkCNN(object):
           'num_batches': self.num_batches,
           'num_epochs': self.num_epochs,
           'data_format': self.params.data_format,
+          'input_data_format': self.params.input_data_format,
           'rewrite_config': self.rewriter_config,
           'optimizer': self.params.optimizer,
           'session_config': create_config_proto(self.params),
@@ -3146,6 +3151,18 @@ class BenchmarkCNN(object):
 
     subset = 'validation' if self._doing_eval else 'train'
     input_shapes = self.model.get_input_shapes(subset)
+
+    # Till now, existing pre-defined input is of NHWC format.
+    # Could extend branch here in the future for the case of feeding native NCHW images.
+    if self.model.input_data_format == 'NCHW':
+      # Temporarily format above NHWC data to NCHW if expecting NCHW data as input
+      images_, labels_ = input_list
+      images_ = tf.transpose(images_, [0, 3, 1, 2])
+      input_list = (images_, labels_)
+      input_shape_, output_shape_ = input_shapes
+      input_shape_ = [input_shape_[0], input_shape_[3], input_shape_[1], input_shape_[2]]
+      input_shapes = [input_shape_, output_shape_]
+
     input_list = [
         device_aware_reshape(input_list[i], shape=input_shapes[i])
         for i in range(len(input_list))
