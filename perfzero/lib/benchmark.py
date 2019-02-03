@@ -94,15 +94,17 @@ class BenchmarkRunner(object):
                                         benchmark_method)
 
         # tf.test.Benchmark.report_benchmark() will write benchmark results to
-        # the file whose path is benchmark_result_file_path_prefix + benchmark_name
+        # the file whose path is benchmark_result_file_path_prefix +
+        # benchmark_name
         benchmark_result_file_path_prefix = os.path.join(output_dir, 'proto_')
         os.environ[
             'TEST_REPORT_FILE_PREFIX'] = benchmark_result_file_path_prefix
         benchmark_result_file_path = benchmark_result_file_path_prefix + benchmark_name
 
         # Run benchmark method
+        logging.info('Start benchmark: %s', benchmark_name)
         getattr(class_instance, benchmark_method)()
-
+        logging.info('End benchmark: %s', benchmark_name)
         # Read and upload benchmark results
         benchmark_result = utils.read_benchmark_result(
             benchmark_result_file_path)
@@ -122,8 +124,8 @@ class BenchmarkRunner(object):
           'Skipped uploading output because output_gcs_url_str is not set.')
     elif not os.listdir(output_dir):
       logging.info(
-          'Skipped uploading output because there is no file in directory {}'
-          .format(output_dir))
+          'Skipped uploading output because there is no file in directory %s',
+          output_dir)
     else:
       output_gcs_dir_with_uid = '{}/{}/'.format(self.config.output_gcs_url_str,
                                                 execution_id)
@@ -133,8 +135,8 @@ class BenchmarkRunner(object):
         execution_id, self.config.test_env_str, self.config.platform_name_str,
         self.config.system_name_str, output_gcs_dir_with_uid, benchmark_result)
 
-    logging.info('Benchmark summary is {}'.format(
-        json.dumps(execution_summary, indent=2)))
+    logging.info('Benchmark summary is %s',
+                 json.dumps(execution_summary, indent=2))
 
     report_utils.upload_execution_summary(self.config.bigquery_project_name_str,
                                           self.config.bigquery_table_name_str,
