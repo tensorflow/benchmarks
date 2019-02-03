@@ -61,7 +61,7 @@ class PerfZeroConfig(object):
           'ROGUE_REPORT_PROJECT', False, default='')
       self.bigquery_table_name_str = 'benchmark_results.result'
 
-      if self.bigquery_project_name_str:
+      if not self.bigquery_project_name_str:
         self.bigquery_project_name_str = 'google.com:tensorflow-performance'
         self.bigquery_table_name_str = 'benchmark_results_dev.result'
 
