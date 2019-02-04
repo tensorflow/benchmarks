@@ -15,17 +15,17 @@
 """Tests data disk config module."""
 from __future__ import print_function
 
-import os
 import unittest
 
-import setup
 import perfzero.perfzero_config as perfzero_config
+import setup
 
 
 class TestSetupRunner(unittest.TestCase):
 
   def setUp(self):
     self.config = perfzero_config.PerfZeroConfig(mode='mock')
+    self.config.dockerfile_path_str = '/docker/DockerFileFoo'
     super(TestSetupRunner, self).setUp()
 
   def test_get_git_repos_list(self):
@@ -39,7 +39,7 @@ class TestSetupRunner(unittest.TestCase):
     self.config.git_repos_str = '{},{}'.format(';'.join(repo_0),
                                                ';'.join(repo_1))
 
-    setup_runner = setup.SetupRunner(docker_file='', config=self.config)
+    setup_runner = setup.SetupRunner(config=self.config)
     repo_list = setup_runner._get_git_repos()
     actual_repo_0 = repo_list[0]
     actual_repo_1 = repo_list[1]
