@@ -65,6 +65,14 @@ def get_test_data_dir():
   return os.path.join(_ROOT_PROJECT_DIR, 'test_data')
 
 
+def get_ssd_backborn_model_file():
+  raise NotImplementedError
+
+
+def get_ssd_backboard_data_dir():
+  raise NotImplementedError
+
+
 def _initialize(params, config_proto):
   # Currently, no platform initialization needs to be done.
   del params, config_proto

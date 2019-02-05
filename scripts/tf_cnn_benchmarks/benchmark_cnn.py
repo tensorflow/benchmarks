@@ -2362,6 +2362,7 @@ class BenchmarkCNN(object):
     mlperf.logger.log(key=mlperf.tags.TRAIN_LOOP)
     skip_final_eval = False
     accuracy_at_1 = None
+    accuracy_at_5 = None
     last_eval_step = local_step
     loop_start_time = time.time()
     last_average_loss = None
@@ -2420,7 +2421,7 @@ class BenchmarkCNN(object):
             value=num_steps_since_last_eval * self.batch_size)
         log_fn('Running evaluation at global_step {}'.format(
             python_global_step))
-        accuracy_at_1, _ = self._eval_once(
+        accuracy_at_1, accuracy_at_5 = self._eval_once(
             sess, summary_writer, eval_graph_info.fetches,
             eval_graph_info.summary_op, eval_image_producer,
             python_global_step)
@@ -2475,7 +2476,7 @@ class BenchmarkCNN(object):
     if eval_graph_info and not skip_final_eval:
       log_fn('Running final evaluation at global_step {}'.format(
           python_global_step))
-      accuracy_at_1, _ = self._eval_once(
+      accuracy_at_1, accuracy_at_5 = self._eval_once(
           sess, summary_writer, eval_graph_info.fetches,
           eval_graph_info.summary_op, eval_image_producer, python_global_step)
     num_epochs_ran = (python_global_step * self.batch_size /
@@ -2508,6 +2509,11 @@ class BenchmarkCNN(object):
     }
     if last_average_loss is not None:
       stats['last_average_loss'] = last_average_loss
+    if accuracy_at_1 is not None:
+      stats['top_1_accuracy'] = accuracy_at_1
+    if accuracy_at_5 is not None:
+      stats['top_5_accuracy'] = accuracy_at_5
+
     success = bool(self.model.reached_target() or
                    (accuracy_at_1 and self.params.stop_at_top_1_accuracy and
                     accuracy_at_1 >= self.params.stop_at_top_1_accuracy))
