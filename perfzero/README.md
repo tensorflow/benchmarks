@@ -19,11 +19,8 @@ Here is the full list of environment variables and their documentation:
 
 
 ```
-# Benchmark method name
-PERFZERO_BENCHMARK_METHODS
-
-# Benchmark class path
-PERFZERO_BENCHMARK_CLASS
+# Benchmark method including its module, class and method name
+PERFZERO_BENCHMARK_METHOD
 
 # Name that describes the platform (e.g. aws)
 PERFZERO_PLATFORM_NAME
@@ -31,16 +28,13 @@ PERFZERO_PLATFORM_NAME
 # Name that describes the system hardware (e.g. z420)
 PERFZERO_SYSTEM_NAME
 
-# Name of the test environment (e.g. kokora)
-PERFZERO_TEST_ENV
-
 # List of paths separated by ',' to be added to python path environment variable
 PERFZERO_PYTHON_PATH
 
-# List of git repository url separated by ',' to be downloaded
+# List of git repository url separated by ',' to be checked-out
 PERFZERO_GIT_REPOS
 
-# GCS url to upload the benchmark log files 
+# GCS url to upload the benchmark log files
 PERFZERO_OUTPUT_GCS_URL
 
 # List of GCS urls separated by ',' to download data
@@ -65,10 +59,7 @@ Tensorflow nighly build.
 
 
 ```
-source benchmarks/perfzero/scripts/setup_env.sh
-
-python3 benchmarks/perfzero/lib/setup.py
-
+python benchmarks/perfzero/lib/setup.py
 ```
 
 
@@ -78,11 +69,11 @@ The commands below run benchmarks specificed in `staging/scripts/setup_env.sh`
 
 
 ```
+source benchmarks/perfzero/scripts/setup_env.sh
+
 nvidia-docker run -it --rm -v $(pwd):/workspace \
 -v /data:/data \
--e PERFZERO_BENCHMARK_METHODS \
--e PERFZERO_BENCHMARK_CLASS \
--e PERFZERO_TEST_ENV \
+-e PERFZERO_BENCHMARK_METHOD \
 -e PERFZERO_PLATFORM_NAME \
 -e PERFZERO_SYSTEM_NAME \
 -e PERFZERO_PYTHON_PATH \
@@ -91,9 +82,27 @@ nvidia-docker run -it --rm -v $(pwd):/workspace \
 -e PERFZERO_GCS_DOWNLOADS \
 -e PERFZERO_BIGQUERY_TABLE_NAME \
 -e PERFZERO_BIGQUERY_PROJECT_NAME \
+-e PERFZERO_GCE_NVME_RAID \
 temp/tf-gpu \
 python /workspace/benchmarks/perfzero/lib/benchmark.py
 ```
+
+Alterantively, run the following command
+
+
+```
+nvidia-docker run -it --rm -v $(pwd):/workspace -v /data:/data temp/tf-gpu \
+python /workspace/benchmarks/perfzero/lib/benchmark.py \
+--git_repos=https://github.com/tensorflow/models.git,https://github.com/tensorflow/benchmarks.git \
+--gcs_downloads=gs://tf-perf-imagenet-uswest1/tensorflow/cifar10_data/ \
+--output_gcs_url=gs://tf-performance/test-results \
+--bigquery_project_name=google.com:tensorflow-performance \
+--bigquery_dataset_table_name=benchmark_results_dev.result \
+--python_path=models,benchmarks/scripts/tf_cnn_benchmarks \
+--benchmark_method=official.resnet.estimator_cifar_benchmark.EstimatorCifar10BenchmarkTests.unit_test \
+--config_mode=flags
+```
+
 
 ## Run all unit tests
 
@@ -107,5 +116,7 @@ python3 -B -m unittest discover -p "*_test.py"
 
 ```
 find perfzero/lib -name *.py -exec pyformat --in_place {} \;
+
+find perfzero/lib -name *.py -exec gpylint --mode=oss_tensorflow {} \;
 ```
 

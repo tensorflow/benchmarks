@@ -15,11 +15,12 @@
 """Setup the data drive with raid, RAM, or mount network drives."""
 from __future__ import print_function
 
-import perfzero.utils as utils
 import logging
 
+import perfzero.utils as utils
 
-def get_nvme_devices():
+
+def _get_nvme_devices():
   """Returns list paths to nvme devices."""
   devices = []
   cmd = 'sudo lsblk'
@@ -37,21 +38,22 @@ def get_nvme_devices():
   return devices
 
 
-def create_drive_from_devices(data_dir, devices):
+def create_drive_from_devices(data_dir, gce_nvme_raid):
   """Creates a drive at data_dir based on number of devices passed."""
+  if not gce_nvme_raid:
+    return
+
+  devices = _get_nvme_devices()
   cmd = 'sudo mountpoint -q {}'.format(data_dir)
   retcode, _ = utils.run_command(cmd)
   if retcode:
     if len(devices) > 1:
-      create_drive_raid(data_dir, devices)
+      _create_drive_raid(data_dir, devices)
     else:
-      create_single_drive(data_dir, devices[0])
-  else:
-    logging.info(
-        'Skipping drive creation since path {} already exists'.format(data_dir))
+      _create_single_drive(data_dir, devices[0])
 
 
-def create_single_drive(data_dir, device):
+def _create_single_drive(data_dir, device):
   """Creates a data drive out of a single device."""
   cmds = []
   cmds.append('sudo mkfs.ext4 -F {}'.format(device))
@@ -60,10 +62,10 @@ def create_single_drive(data_dir, device):
   cmds.append('sudo chmod a+w {}'.format(data_dir))
 
   utils.run_commands(cmds)
-  logging.info('Created and mounted device {} at {}'.format(device, data_dir))
+  logging.info('Created and mounted device %s at %s', device, data_dir)
 
 
-def create_drive_raid(data_dir, list_of_devices):
+def _create_drive_raid(data_dir, devices):
   """Creates a raid zero array of nvme drives."""
   cmds = []
   # Passing 'yes' because GCE nvme drive are sometimes in an odd state and
@@ -72,14 +74,14 @@ def create_drive_raid(data_dir, list_of_devices):
   # comes from.
   cmds.append('yes | sudo mdadm --create /dev/md0 --level=0 '
               '--raid-devices={} {}'.format(
-                  len(list_of_devices), ' '.join(list_of_devices)))
+                  len(devices), ' '.join(devices)))
   cmds.append('sudo mkfs.ext4 -F /dev/md0')
   cmds.append('sudo mkdir -p {}'.format(data_dir))
   cmds.append('sudo mount /dev/md0 {}'.format(data_dir))
   cmds.append('sudo chmod a+w {}'.format(data_dir))
 
   utils.run_commands(cmds)
-  logging.info('Created and mounted RAID array at {}'.format(data_dir))
+  logging.info('Created and mounted RAID array at %s', data_dir)
 
 
 def create_ram_disk(data_dir, disk_size):
@@ -93,7 +95,6 @@ def create_ram_disk(data_dir, disk_size):
     cmds.append('sudo mount -t tmpfs -o size={}m tmpfs {}'.format(
         disk_size, data_dir))
     utils.run_commands(cmds)
-    logging.info('Created RAM disk at {}'.format(data_dir))
+    logging.info('Created RAM disk at %s', data_dir)
   else:
-    logging.debug(
-        'RAM disk or something else is mounted at {}'.format(data_dir))
+    logging.debug('RAM disk or something else is mounted at %s', data_dir)

@@ -15,43 +15,43 @@
 """Git helper."""
 from __future__ import print_function
 
+import logging
 import os
-import re
 import subprocess
 import sys
-import time
-import logging
 
 
-def checkout_git_repo(url, local_path, branch=None, git_hash=None):
-  """Clone, update, or synce a repo.
-
-  If the clone already exists the repo will be updated via a pull.
+def checkout_git_repos(git_repos, force_update):
+  """Clone, update, or sync a repo.
 
   Args:
-    url (str): Git repo url
-    local_path (str): Local path to place the repo
-    branch (str, optional): Branch to checkout.
-    git_hash (str, optional): Hash to reset to.
+    git_repos: array of dict containing attributes of the git repo to checkout
+    force_update: Always do git pull if True
+
+  Returns:
+    A dict containing attributes of the git repositories
   """
-  if os.path.isdir(local_path):
-    git_clone_or_pull = 'git -C {} pull'.format(local_path)
-  else:
-    git_clone_or_pull = 'git clone {} {}'.format(url, local_path)
-  run_command(git_clone_or_pull)
+  site_package_info = {}
+  for repo in git_repos:
+    if not os.path.isdir(repo['local_path']):
+      run_commands(['git clone {} {}'.format(repo['url'], repo['local_path'])])
+    if 'branch' in repo:
+      run_commands(['git -C {} checkout {}'.format(
+          repo['local_path'], repo['branch'])])
+    if force_update or 'git_hash' in repo:
+      run_commands(['git -C {} pull'.format(repo['local_path'])])
+    if 'git_hash' in repo:
+      run_commands(['git -C {} reset --hard {}'.format(
+          repo['local_path'], repo['git_hash'])])
+    logging.info('Checked-out repo from %s to %s',
+                 repo['url'], repo['local_path'])
+    site_package_info[repo['dir_name']] = get_git_repo_info(repo['local_path'])
 
-  if branch:
-    branch_cmd = 'git -C {} checkout {}'.format(local_path, branch)
-    run_command(branch_cmd)
-
-  if git_hash:
-    sync_to_hash_cmd = 'git -C {} reset --hard {}'.format(local_path, git_hash)
-    run_command(sync_to_hash_cmd)
-
-  logging.info('Checked out repo from {} to {}'.format(url, local_path))
+  return site_package_info
 
 
 def get_git_repo_info(local_path):
+  """Get information of the git repository specified by the local_path."""
   git_repo_info = {}
 
   # Get git url
@@ -61,8 +61,8 @@ def get_git_repo_info(local_path):
   if retcode == 0 and lines:
     git_repo_info['url'] = lines[0]
   else:
-    logging.error('Error getting git url for repository {} due to {}'.format(
-        local_path, result))
+    logging.error('Error getting git url for repository %s due to %s',
+                  local_path, result)
     return {}
 
   # Get git branch
@@ -72,8 +72,8 @@ def get_git_repo_info(local_path):
   if retcode == 0 and lines:
     git_repo_info['branch'] = lines[0]
   else:
-    logging.error('Error getting git branch for repository {} due to {}'.format(
-        local_path, result))
+    logging.error('Error getting git branch for repository %s due to %s',
+                  local_path, result)
     return {}
 
   # Get git hash
@@ -83,8 +83,8 @@ def get_git_repo_info(local_path):
   if retcode == 0 and lines:
     git_repo_info['hash'] = lines[0]
   else:
-    logging.error('Error getting git hash for repository {} due to {}'.format(
-        local_path, result))
+    logging.error('Error getting git hash for repository %s due to %s',
+                  local_path, result)
     return {}
 
   return git_repo_info
@@ -95,42 +95,37 @@ def setup_python_path(site_packages_dir, python_path_str):
     python_paths = python_path_str.split(',')
     for python_path in python_paths:
       sys.path.append(os.path.join(site_packages_dir, python_path))
-  logging.debug('PYTHONPATH: {}'.format(sys.path))
+  logging.debug('PYTHONPATH: %s', sys.path)
 
 
 def active_gcloud_service(auth_token_path):
   os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = auth_token_path
-  cmds = [
-      'gcloud auth activate-service-account --key-file {}'.format(
-          auth_token_path)
-  ]
-  run_commands(cmds)
+  run_commands(['gcloud auth activate-service-account --key-file {}'.format(
+      auth_token_path)])
 
 
-def download_from_gcs(gcs_path, local_path):
-  make_dir_if_not_exist(local_path)
-
-  cmds = [['gsutil', '-m', 'cp', '-r', '-n', gcs_path, local_path]]
-  run_commands(cmds, shell=False)
-  logging.info('Downloaded data from gcs {} to local directory {}'.format(
-      gcs_path, local_path))
+def download_from_gcs(gcs_downloads):
+  for info in gcs_downloads:
+    make_dir_if_not_exist(info['local_path'])
+    cmd = ['gsutil', '-m', 'cp', '-r', '-n', info['gcs_url'], info['local_path']]
+    run_commands([cmd], shell=False)
+    logging.info('Downloaded data from gcs %s to local directory %s',
+                 info['gcs_url'], info['local_path'])
 
 
 def maybe_upload_to_gcs(local_dir, output_gcs_url):
   if not output_gcs_url:
-    logging.info(
-        'Skipped uploading output because output_gcs_url_str is not set.')
+    logging.info('Skipped uploading output because output_gcs_url is not set.')
     return
-  cmds = ['gsutil -m cp -r {} {}'.format(local_dir, output_gcs_url)]
-  run_commands(cmds)
-  logging.info('Uploaded data from local directory {} to gcs {}'.format(
-      local_dir, output_gcs_url))
+  run_commands(['gsutil -m cp -r {} {}'.format(local_dir, output_gcs_url)])
+  logging.info('Uploaded data from local directory %s to gcs %s',
+               local_dir, output_gcs_url)
 
 
 def make_dir_if_not_exist(local_path):
   if not os.path.exists(local_path):
     os.makedirs(local_path)
-    logging.info('Created directory {}'.format(local_path))
+    logging.info('Created directory %s', local_path)
 
 
 def run_command(cmd, shell=True):
@@ -143,9 +138,9 @@ def run_command(cmd, shell=True):
   Returns:
     Tuple of the command return value and the standard out in as a string.
   """
-  logging.debug('Execute command: {}'.format(cmd))
-  p = subprocess.Popen(
-      cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=shell)
+  logging.debug('Execute command: %s', cmd)
+  p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT, shell=shell)
   stdout = ''
   while True:
     retcode = p.poll()
@@ -174,11 +169,12 @@ def get_cpu_name():
     model_name_parts = lines[0].split(':')
     return model_name_parts[1].strip()
   else:
-    logging.error('Error getting cpuinfo model name: {}'.format(result))
+    logging.error('Error getting cpuinfo model name: %s', result)
     return ''
 
 
 def get_cpu_core_count():
+  """Get cpu core number."""
   cmd = "cat /proc/cpuinfo | grep 'cpu cores' | sort --unique"
   retcode, result = run_command(cmd)
   lines = result.splitlines()
@@ -189,7 +185,7 @@ def get_cpu_core_count():
     total_cores = core_count * get_cpu_socket_count()
     return total_cores
   else:
-    logging.error('Error getting cpuinfo core count: {}'.format(result))
+    logging.error('Error getting cpuinfo core count: %s', result)
     return -1
 
 
@@ -200,7 +196,7 @@ def get_cpu_socket_count():
   if retcode == 0 and lines:
     return int(lines[0])
   else:
-    logging.error('Error getting cpuinfo scocket count: {}'.format(result))
+    logging.error('Error getting cpuinfo scocket count: %s', result)
     return -1
 
 
@@ -218,7 +214,7 @@ def get_gpu_info():
   retcode, result = run_command(cmd)
 
   if retcode != 0:
-    logging.error('nvidia-smi did not return as expected:{}'.format(result))
+    logging.error('nvidia-smi did not return as expected: %s', result)
     return {}
 
   lines = result.splitlines()
@@ -235,13 +231,13 @@ def get_gpu_info():
 
 
 def read_benchmark_result(benchmark_result_file_path):
-  from google.protobuf import json_format
-  from tensorflow.core.util import test_log_pb2
+  """Read benchmark result from the protobuf file."""
+  from google.protobuf import json_format  # pylint: disable=g-import-not-at-top
+  from tensorflow.core.util import test_log_pb2  # pylint: disable=g-import-not-at-top
 
   if not os.path.isfile(benchmark_result_file_path):
-    logging.error(
-        'Failed to read benchmark result because file {} does not exist'.format(
-            benchmark_result_file_path))
+    logging.error('Failed to read benchmark result because '
+                  'file %s does not exist', benchmark_result_file_path)
     return {}
 
   with open(benchmark_result_file_path, 'rb') as f:
