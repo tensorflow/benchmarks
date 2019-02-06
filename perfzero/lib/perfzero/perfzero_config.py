@@ -22,6 +22,10 @@ class PerfZeroConfig(object):
   """Creates and contains config for PerfZero."""
 
   def __init__(self, mode):
+    # In this mode, PERFZERO_BENCHMARK_CLASS and PERFZERO_BENCHMARK_METHODS
+    # are used to dertermine the benchmark methods we want to execute. This mode is
+    # deprecated because it constraints one perfzero execution to only run
+    # benchmark methods from one class
     if mode == 'env' and 'PERFZERO_BENCHMARK_CLASS' in os.environ:
       benchmark_methods_str = self._get_env_var(
           'PERFZERO_BENCHMARK_METHODS')
@@ -47,6 +51,11 @@ class PerfZeroConfig(object):
       self.ml_framework_build_label_str = self._get_env_var(
           'PERFZERO_ML_FRAMEWORK_BUILD_LABEL', False)
       self.execution_label_str = self._get_env_var('PERFZERO_EXECUTION_LABEL', False)
+    # In this mode, environment variables with prefix PERFZERO_BENCHMARK_METHOD
+    # are used to dertermine the benchmark methods we want to execute. The
+    # value of these environment variables encodes both the benchmark class and
+    # benchmark method name. And it allows user to run arbitrary combination of
+    # benchmark methods in one perfzero execution
     elif mode == 'env' and 'PERFZERO_PLATFORM_NAME' in os.environ:
       self.benchmark_methods_maybe_filter = []
       for key in os.environ.keys():
@@ -70,6 +79,9 @@ class PerfZeroConfig(object):
       self.ml_framework_build_label_str = self._get_env_var(
           'PERFZERO_ML_FRAMEWORK_BUILD_LABEL', False)
       self.execution_label_str = self._get_env_var('PERFZERO_EXECUTION_LABEL', False)
+    # In this mode, ROGUE_TEST_CLASS and ROGUE_TEST_METHODS
+    # are used to dertermine the benchmark methods we want to execute. This mode is
+    # deprecated because the variable name should start with PERFZERO
     elif mode == 'env' and 'ROGUE_TEST_CLASS' in os.environ:
       benchmark_methods_str = self._get_env_var('ROGUE_TEST_METHODS')
       benchmark_class_str = self._get_env_var('ROGUE_TEST_CLASS')

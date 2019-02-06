@@ -118,13 +118,13 @@ class BenchmarkRunner(object):
           setup_info = json.load(f)
         benchmark_result = report_utils.build_benchmark_result(raw_benchmark_result)
         execution_summary = report_utils.build_execution_summary(
-            execution_timestamp, execution_id, self.config.test_env_str,
+            execution_timestamp, execution_id,
             self.config.ml_framework_build_label_str,
             self.config.execution_label_str, self.config.platform_name_str,
             self.config.system_name_str, self.config.output_gcs_url_str,
             benchmark_result, self.config.get_env_vars(), setup_info, has_exception)
         report_utils.upload_execution_summary(
-            self.config.bigquery_project_name_str,
+            self.config.bigquery_project_name_str, self.config.test_env_str,
             self.config.bigquery_dataset_table_name_str, execution_summary,
             raw_benchmark_result)
         logging.info('Benchmark execution completed with summary:\n %s',

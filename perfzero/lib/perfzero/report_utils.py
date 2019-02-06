@@ -31,7 +31,7 @@ from six import u as unicode  # pylint: disable=W0622
 import perfzero.utils as utils
 
 
-def upload_execution_summary(bigquery_project_name, bigquery_dataset_table_name,
+def upload_execution_summary(bigquery_project_name, test_environment, bigquery_dataset_table_name,
                              execution_summary, raw_benchmark_result):
   """Upload benchmark summary.
 
@@ -64,7 +64,7 @@ def upload_execution_summary(bigquery_project_name, bigquery_dataset_table_name,
       project=bigquery_project_name, credentials=credentials)
 
   bigquery_input = _translate_summary_into_old_bigquery_format(
-      execution_summary, raw_benchmark_result, credentials)
+      execution_summary, raw_benchmark_result, credentials, test_environment)
   logging.info('Bigquery input is {}'.format(json.dumps(bigquery_input, indent=2)))
 
   table_ref = client.dataset(dataset_name).table(table_name)
@@ -115,14 +115,13 @@ def upload_execution_summary(bigquery_project_name, bigquery_dataset_table_name,
 
 
 def _translate_summary_into_old_bigquery_format(
-    execution_summary, raw_benchmark_result, credentials):
+    execution_summary, raw_benchmark_result, credentials, test_environment):
   entry = {}
   entry['result_id'] = unicode(execution_summary['execution_id'])
   entry['test_id'] = unicode(raw_benchmark_result['name'])
   entry['test_harness'] = unicode(
       execution_summary['benchmark_info']['harness_name'])
-  entry['test_environment'] = unicode(
-      execution_summary['benchmark_info']['test_environment'])
+  entry['test_environment'] = unicode(test_environment)
 
   result_info_list = []
   result_info = {}
@@ -220,8 +219,8 @@ def _translate_summary_into_old_bigquery_format(
 
   test_info = {}
   test_info['framework'] = execution_summary['ml_framework_info']['name']
-  test_info['channel'] = execution_summary['ml_framework_info']['channel']
-  test_info['build_type'] = execution_summary['ml_framework_info']['build_type']
+  test_info['channel'] = 'NIGHTLY'
+  test_info['build_type'] = 'OTB'
   test_info['accel_cnt'] = execution_summary['system_info']['accelerator_count']
   test_info['framework_version'] = execution_summary['ml_framework_info'][
       'version']
@@ -269,14 +268,13 @@ def build_benchmark_result(raw_benchmark_result):
   return benchmark_result
 
 
-def build_execution_summary(execution_timestamp, execution_id, test_environment,
+def build_execution_summary(execution_timestamp, execution_id,
                             ml_framework_build_label, execution_label,
                             platform_name, system_name, output_gcs_url,
                             benchmark_result, env_vars, setup_info, has_exception):
   import tensorflow as tf
 
   benchmark_info = {}
-  benchmark_info['test_environment'] = test_environment
   benchmark_info['harness_name'] = 'perfzero'
   benchmark_info['has_exception'] = has_exception
   if execution_label:
@@ -293,8 +291,6 @@ def build_execution_summary(execution_timestamp, execution_id, test_environment,
     ml_framework_info['build_version'] = tf.__git_version__[2:-1]
   else:
     ml_framework_info['build_version'] = tf.__git_version__
-  ml_framework_info['channel'] = 'NIGHTLY'
-  ml_framework_info['build_type'] = 'OTB'
 
   if ml_framework_build_label:
     ml_framework_info['build_label'] = ml_framework_build_label
