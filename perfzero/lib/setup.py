@@ -17,6 +17,7 @@ from __future__ import print_function
 
 import argparse
 import logging
+import json
 import os
 
 import perfzero.device_utils as device_utils
@@ -56,13 +57,17 @@ class SetupRunner(object):
       device_utils.create_drive_from_devices(self.data_dir, devices)
 
     # Check out git repos
+    site_package_info = {}
     git_repos = self._get_git_repos()
     for git_repo in git_repos:
+      dir_name = git_repo.get('dir_name')
+      local_path = os.path.join(self.site_packages_dir, dir_name)
       utils.checkout_git_repo(
           git_repo.get('url'),
-          os.path.join(self.site_packages_dir, git_repo.get('local_path')),
+          local_path,
           branch=git_repo.get('branch'),
-          sha_hash=git_repo.get('sha_hash'))
+          git_hash=git_repo.get('git_hash'))
+      site_package_info[dir_name] = utils.get_git_repo_info(local_path)
 
     # Download data
     if self.config.gcs_downloads_str:
@@ -78,22 +83,35 @@ class SetupRunner(object):
         self.docker_file_path, self.docker_tag)
     utils.run_commands([docker_build_cmd])
 
-    logging.info('Completed setup operation')
+    # Write setup info to log file
+    setup_info = {}
+    setup_info['env_vars'] = self.config.get_env_vars()
+    setup_info['site_package_info'] = site_package_info
+    with open(os.path.join(self.workspace_dir, 'setup_info.log'), 'w') as f:
+      json.dump(setup_info, f)
+    logging.info('Setup operation completed with summary:\n %s',
+                 json.dumps(setup_info, indent=2))
 
   def _get_git_repos(self):
     """Return list of repos to checkout."""
     git_repos = []
     for repo_entry in self.config.git_repos_str.split(','):
-      repo_parts = repo_entry.split(';')
+      parts = repo_entry.split(';')
       git_repo = {}
-      if len(repo_parts) >= 2:
-        git_repo['local_path'] = repo_parts[0]
-        git_repo['url'] = repo_parts[1]
-      if len(repo_parts) >= 3:
-        git_repo['branch'] = repo_parts[2]
-      if len(repo_parts) >= 4:
-        git_repo['sha_hash'] = repo_parts[3]
+
+      if len(parts) == 1:
+        # Assume the git url has format */{dir_name}.git
+        git_repo['dir_name'] = parts[0].rsplit('/', 1)[-1].rsplit('.', 1)[0]
+        git_repo['url'] = parts[0]
+      if len(parts) >= 2:
+        git_repo['dir_name'] = parts[0]
+        git_repo['url'] = parts[1]
+      if len(parts) >= 3:
+        git_repo['branch'] = parts[2]
+      if len(parts) >= 4:
+        git_repo['git_hash'] = parts[3]
       git_repos.append(git_repo)
+
     return git_repos
 
 

@@ -22,10 +22,17 @@ class PerfZeroConfig(object):
   """Creates and contains config for PerfZero."""
 
   def __init__(self, mode):
-    if mode == 'env' and 'PERFZERO_BENCHMARK_METHODS' in os.environ:
-      self.benchmark_methods_str = self._get_env_var(
+    # In this mode, PERFZERO_BENCHMARK_CLASS and PERFZERO_BENCHMARK_METHODS
+    # are used to dertermine the benchmark methods we want to execute. This mode is
+    # deprecated because it constraints one perfzero execution to only run
+    # benchmark methods from one class
+    if mode == 'env' and 'PERFZERO_BENCHMARK_CLASS' in os.environ:
+      benchmark_methods_str = self._get_env_var(
           'PERFZERO_BENCHMARK_METHODS')
-      self.benchmark_class_str = self._get_env_var('PERFZERO_BENCHMARK_CLASS')
+      benchmark_class_str = self._get_env_var('PERFZERO_BENCHMARK_CLASS')
+      self.benchmark_methods_maybe_filter = []
+      for benchmark_method in benchmark_methods_str.split(','):
+        self.benchmark_methods_maybe_filter.append(benchmark_class_str + '.' + benchmark_method)
       self.platform_name_str = self._get_env_var('PERFZERO_PLATFORM_NAME')
       self.system_name_str = self._get_env_var('PERFZERO_SYSTEM_NAME')
       self.test_env_str = self._get_env_var('PERFZERO_TEST_ENV')
@@ -35,16 +42,52 @@ class PerfZeroConfig(object):
                                                   False)
       self.gcs_downloads_str = self._get_env_var('PERFZERO_GCS_DOWNLOADS',
                                                  False)
-      self.bigquery_table_name_str = self._get_env_var(
-          'PERFZERO_BIGQUERY_TABLE_NAME')
+      self.bigquery_dataset_table_name_str = self._get_env_var(
+          'PERFZERO_BIGQUERY_TABLE_NAME', False)
       self.bigquery_project_name_str = self._get_env_var(
-          'PERFZERO_BIGQUERY_PROJECT_NAME')
+          'PERFZERO_BIGQUERY_PROJECT_NAME', False)
       self.dockerfile_path_str = self._get_env_var('PERFZERO_DOCKERFILE_PATH',
-                                                   False,
-                                                   'docker/Dockerfile')
-    elif mode == 'env' and 'PERFZERO_BENCHMARK_METHODS' not in os.environ:
-      self.benchmark_methods_str = self._get_env_var('ROGUE_TEST_METHODS')
-      self.benchmark_class_str = self._get_env_var('ROGUE_TEST_CLASS')
+                                                   False, 'docker/Dockerfile')
+      self.ml_framework_build_label_str = self._get_env_var(
+          'PERFZERO_ML_FRAMEWORK_BUILD_LABEL', False)
+      self.execution_label_str = self._get_env_var('PERFZERO_EXECUTION_LABEL', False)
+    # In this mode, environment variables with prefix PERFZERO_BENCHMARK_METHOD
+    # are used to dertermine the benchmark methods we want to execute. The
+    # value of these environment variables encodes both the benchmark class and
+    # benchmark method name. And it allows user to run arbitrary combination of
+    # benchmark methods in one perfzero execution
+    elif mode == 'env' and 'PERFZERO_PLATFORM_NAME' in os.environ:
+      self.benchmark_methods_maybe_filter = []
+      for key in os.environ.keys():
+        if key.startswith('PERFZERO_BENCHMARK_METHOD'):
+          self.benchmark_methods_maybe_filter.append(os.environ[key])
+      self.platform_name_str = self._get_env_var('PERFZERO_PLATFORM_NAME')
+      self.system_name_str = self._get_env_var('PERFZERO_SYSTEM_NAME')
+      self.test_env_str = self._get_env_var('PERFZERO_TEST_ENV')
+      self.python_path_str = self._get_env_var('PERFZERO_PYTHON_PATH')
+      self.git_repos_str = self._get_env_var('PERFZERO_GIT_REPOS')
+      self.output_gcs_url_str = self._get_env_var('PERFZERO_OUTPUT_GCS_URL',
+                                                  False)
+      self.gcs_downloads_str = self._get_env_var('PERFZERO_GCS_DOWNLOADS',
+                                                 False)
+      self.bigquery_dataset_table_name_str = self._get_env_var(
+          'PERFZERO_BIGQUERY_TABLE_NAME', False)
+      self.bigquery_project_name_str = self._get_env_var(
+          'PERFZERO_BIGQUERY_PROJECT_NAME', False)
+      self.dockerfile_path_str = self._get_env_var('PERFZERO_DOCKERFILE_PATH',
+                                                   False, 'docker/Dockerfile')
+      self.ml_framework_build_label_str = self._get_env_var(
+          'PERFZERO_ML_FRAMEWORK_BUILD_LABEL', False)
+      self.execution_label_str = self._get_env_var('PERFZERO_EXECUTION_LABEL', False)
+    # In this mode, ROGUE_TEST_CLASS and ROGUE_TEST_METHODS
+    # are used to dertermine the benchmark methods we want to execute. This mode is
+    # deprecated because the variable name should start with PERFZERO
+    elif mode == 'env' and 'ROGUE_TEST_CLASS' in os.environ:
+      benchmark_methods_str = self._get_env_var('ROGUE_TEST_METHODS')
+      benchmark_class_str = self._get_env_var('ROGUE_TEST_CLASS')
+      self.benchmark_methods_maybe_filter = []
+      for benchmark_method in benchmark_methods_str.split(','):
+        self.benchmark_methods_maybe_filter.append(benchmark_class_str + '.' + benchmark_method)
       self.platform_name_str = self._get_env_var(
           'ROGUE_PLATFORM', False, default='unknown')
       self.system_name_str = self._get_env_var(
@@ -59,21 +102,26 @@ class PerfZeroConfig(object):
           'ROGUE_GCS_DOWNLOADS', False, default='')
       self.bigquery_project_name_str = self._get_env_var(
           'ROGUE_REPORT_PROJECT', False, default='')
-      self.bigquery_table_name_str = 'benchmark_results.result'
-
+      self.bigquery_dataset_table_name_str = 'benchmark_results.result'
+      self.ml_framework_build_label_str = None
+      self.execution_label_str = None
       if not self.bigquery_project_name_str:
         self.bigquery_project_name_str = 'google.com:tensorflow-performance'
-        self.bigquery_table_name_str = 'benchmark_results_dev.result'
-
+        self.bigquery_dataset_table_name_str = 'benchmark_results_dev.result'
     elif mode == 'mock':
       pass
+
+  def get_env_vars(self):
+    env_vars = {}
+    for key in os.environ.keys():
+      if key.startswith('PERFZERO_') or key.startswith('ROGUE_'):
+        env_vars[key] = os.environ[key]
+    return env_vars
 
   def _get_env_var(self, key, is_required=True, default=None):
     if key in os.environ and os.environ[key]:
       return os.environ[key]
-
     if is_required:
       raise ValueError(
           'Environment variable {} needs to be defined'.format(key))
-
     return default

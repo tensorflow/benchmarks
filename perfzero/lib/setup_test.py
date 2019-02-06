@@ -43,7 +43,7 @@ class TestSetupRunner(unittest.TestCase):
     repo_list = setup_runner._get_git_repos()
     actual_repo_0 = repo_list[0]
     actual_repo_1 = repo_list[1]
-    self.assertEqual(repo_0[0], actual_repo_0['local_path'])
+    self.assertEqual(repo_0[0], actual_repo_0['dir_name'])
     self.assertEqual(repo_0[1], actual_repo_0['url'])
     self.assertEqual(repo_0[2], actual_repo_0['branch'])
-    self.assertEqual(repo_1[3], actual_repo_1['sha_hash'])
+    self.assertEqual(repo_1[3], actual_repo_1['git_hash'])

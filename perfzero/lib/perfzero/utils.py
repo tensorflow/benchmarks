@@ -23,7 +23,7 @@ import time
 import logging
 
 
-def checkout_git_repo(url, local_path, branch=None, sha_hash=None):
+def checkout_git_repo(url, local_path, branch=None, git_hash=None):
   """Clone, update, or synce a repo.
 
   If the clone already exists the repo will be updated via a pull.
@@ -32,7 +32,7 @@ def checkout_git_repo(url, local_path, branch=None, sha_hash=None):
     url (str): Git repo url
     local_path (str): Local path to place the repo
     branch (str, optional): Branch to checkout.
-    sha_hash (str, optional): Hash to reset to.
+    git_hash (str, optional): Hash to reset to.
   """
   if os.path.isdir(local_path):
     git_clone_or_pull = 'git -C {} pull'.format(local_path)
@@ -40,15 +40,54 @@ def checkout_git_repo(url, local_path, branch=None, sha_hash=None):
     git_clone_or_pull = 'git clone {} {}'.format(url, local_path)
   run_command(git_clone_or_pull)
 
-  if branch is not None:
+  if branch:
     branch_cmd = 'git -C {} checkout {}'.format(local_path, branch)
     run_command(branch_cmd)
 
-  if sha_hash is not None:
-    sync_to_hash_cmd = 'git -C {} reset --hard {}'.format(local_path, sha_hash)
+  if git_hash:
+    sync_to_hash_cmd = 'git -C {} reset --hard {}'.format(local_path, git_hash)
     run_command(sync_to_hash_cmd)
 
   logging.info('Checked out repo from {} to {}'.format(url, local_path))
+
+
+def get_git_repo_info(local_path):
+  git_repo_info = {}
+
+  # Get git url
+  cmd = 'git -C {} config --get remote.origin.url'.format(local_path)
+  retcode, result = run_command(cmd)
+  lines = result.splitlines()
+  if retcode == 0 and lines:
+    git_repo_info['url'] = lines[0]
+  else:
+    logging.error('Error getting git url for repository {} due to {}'.format(
+        local_path, result))
+    return {}
+
+  # Get git branch
+  cmd = 'git -C {} rev-parse --abbrev-ref HEAD'.format(local_path)
+  retcode, result = run_command(cmd)
+  lines = result.splitlines()
+  if retcode == 0 and lines:
+    git_repo_info['branch'] = lines[0]
+  else:
+    logging.error('Error getting git branch for repository {} due to {}'.format(
+        local_path, result))
+    return {}
+
+  # Get git hash
+  cmd = 'git -C {} rev-parse HEAD'.format(local_path)
+  retcode, result = run_command(cmd)
+  lines = result.splitlines()
+  if retcode == 0 and lines:
+    git_repo_info['hash'] = lines[0]
+  else:
+    logging.error('Error getting git hash for repository {} due to {}'.format(
+        local_path, result))
+    return {}
+
+  return git_repo_info
 
 
 def setup_python_path(site_packages_dir, python_path_str):
@@ -77,11 +116,15 @@ def download_from_gcs(gcs_path, local_path):
       gcs_path, local_path))
 
 
-def upload_to_gcs(local_dir, output_gcs_dir):
-  cmds = ['gsutil -m cp -r {} {}'.format(local_dir, output_gcs_dir)]
+def maybe_upload_to_gcs(local_dir, output_gcs_url):
+  if not output_gcs_url:
+    logging.info(
+        'Skipped uploading output because output_gcs_url_str is not set.')
+    return
+  cmds = ['gsutil -m cp -r {} {}'.format(local_dir, output_gcs_url)]
   run_commands(cmds)
   logging.info('Uploaded data from local directory {} to gcs {}'.format(
-      local_dir, output_gcs_dir))
+      local_dir, output_gcs_url))
 
 
 def make_dir_if_not_exist(local_path):
