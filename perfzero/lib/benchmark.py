@@ -25,6 +25,7 @@ import re
 import argparse
 import logging
 import datetime
+import traceback
 
 import perfzero.utils as utils
 import perfzero.perfzero_config as perfzero_config
@@ -36,11 +37,11 @@ class BenchmarkRunner(object):
 
   def __init__(self, config=None):
     project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-    workspace_dir = os.path.join(project_dir, 'workspace')
-    self.site_packages_dir = os.path.join(workspace_dir, 'site-packages')
+    self.workspace_dir = os.path.join(project_dir, 'workspace')
+    self.site_packages_dir = os.path.join(self.workspace_dir, 'site-packages')
     self.auth_token_path = os.path.join(
-        workspace_dir, 'auth_tokens/benchmark_upload_gce.json')
-    self.output_root_dir = os.path.join(workspace_dir, 'output')
+        self.workspace_dir, 'auth_tokens/benchmark_upload_gce.json')
+    self.output_root_dir = os.path.join(self.workspace_dir, 'output')
     self.config = config
     self._setup()
 
@@ -56,31 +57,32 @@ class BenchmarkRunner(object):
 
   def _get_benchmark_methods(self):
     filter_prefix = 'filter:'
-    # Check if filter or list of exact methods to execute.
-    methods_str = self.config.benchmark_methods_str
+    benchmark_methods = []
+    for benchmark_method_maybe_filter in self.config.benchmark_methods_maybe_filter:
+      if filter_prefix not in benchmark_method_maybe_filter:
+        benchmark_methods.append(benchmark_method_maybe_filter)
+      else:
+        index = benchmark_method_maybe_filter.find(filter_prefix)
+        benchmark_class = benchmark_method_maybe_filter[:index - 1]
+        pattern = benchmark_method_maybe_filter[index + len(filter_prefix):]
+        class_instance = self._instantiate_benchmark_class(benchmark_class, '/dev/null')
+        for benchmark_method_name in dir(class_instance):
+          if re.match(pattern, benchmark_method_name):
+            benchmark_methods.append(benchmark_class + '.' + benchmark_method_name)
 
-    if not methods_str.startswith(filter_prefix):
-      return methods_str.split(',')
-
-    # Instantiate benchmark class to find methods that match the given pattern
-    methods_matching_pattern = []
-    pattern = methods_str[len(filter_prefix):]
-    class_instance = self._instantiate_benchmark_class('/dev/null')
-    for method in dir(class_instance):
-      if re.match(pattern, method):
-        methods_matching_pattern.append(method)
-
-    logging.info('Methods {} matched the pattern {}'.format(
-        methods_matching_pattern, pattern))
-    return methods_matching_pattern
+    return benchmark_methods
 
   def run_benchmark(self):
     """Run benchmark."""
     for benchmark_method in self._get_benchmark_methods():
       try:
         execution_id = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S-%f')
+        execution_timestamp = time.time()
         output_dir = os.path.join(self.output_root_dir, execution_id)
         utils.make_dir_if_not_exist(output_dir)
+        has_exception = False
+        benchmark_class, benchmark_method_name = benchmark_method.rsplit('.', 1)
+        benchmark_module, benchmark_class_name = benchmark_class.rsplit('.', 1)
 
         # Setup per-method file logger
         filehandler = logging.FileHandler(
@@ -88,64 +90,51 @@ class BenchmarkRunner(object):
         filehandler.setFormatter(
             logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
         logging.getLogger().addHandler(filehandler)
-
-        class_instance = self._instantiate_benchmark_class(output_dir)
-        benchmark_name = '{}.{}'.format(class_instance.__class__.__name__,
-                                        benchmark_method)
+        class_instance = self._instantiate_benchmark_class(benchmark_class, output_dir)
 
         # tf.test.Benchmark.report_benchmark() will write benchmark results to
-        # the file whose path is benchmark_result_file_path_prefix +
-        # benchmark_name
+        # the file whose path is benchmark_result_file_path_prefix + benchmark_method
         benchmark_result_file_path_prefix = os.path.join(output_dir, 'proto_')
-        os.environ[
-            'TEST_REPORT_FILE_PREFIX'] = benchmark_result_file_path_prefix
-        benchmark_result_file_path = benchmark_result_file_path_prefix + benchmark_name
+        os.environ['TEST_REPORT_FILE_PREFIX'] = benchmark_result_file_path_prefix
+        benchmark_result_file_path = benchmark_result_file_path_prefix + \
+                                     benchmark_class_name + "." + benchmark_method_name
 
         # Run benchmark method
-        logging.info('Start benchmark: %s', benchmark_name)
-        getattr(class_instance, benchmark_method)()
-        logging.info('End benchmark: %s', benchmark_name)
-        # Read and upload benchmark results
-        benchmark_result = utils.read_benchmark_result(
-            benchmark_result_file_path)
-        self._upload_execution_summary(benchmark_result, execution_id,
-                                       output_dir)
-
+        logging.info('Start benchmark: %s', benchmark_method)
+        getattr(class_instance, benchmark_method_name)()
+        logging.info('End benchmark: %s', benchmark_method)
+        # Read and build benchmark results
+        raw_benchmark_result = utils.read_benchmark_result(benchmark_result_file_path)
+      except Exception as e:
+        logging.error('Benchmark execution for %s failed due to error:\n %s',
+                      benchmark_method, traceback.format_exc())
+        has_exception = True
+        raw_benchmark_result = {}
+        raw_benchmark_result['name'] = benchmark_method
+        raw_benchmark_result['wall_time'] = -1
+        raw_benchmark_result['extras'] = {}
       finally:
+        with open(os.path.join(self.workspace_dir, 'setup_info.log'), 'r') as f:
+          setup_info = json.load(f)
+        benchmark_result = report_utils.build_benchmark_result(raw_benchmark_result)
+        execution_summary = report_utils.build_execution_summary(
+            execution_timestamp, execution_id, self.config.test_env_str,
+            self.config.ml_framework_build_label_str,
+            self.config.execution_label_str, self.config.platform_name_str,
+            self.config.system_name_str, self.config.output_gcs_url_str,
+            benchmark_result, self.config.get_env_vars(), setup_info, has_exception)
+        report_utils.upload_execution_summary(
+            self.config.bigquery_project_name_str,
+            self.config.bigquery_dataset_table_name_str, execution_summary,
+            raw_benchmark_result)
+        logging.info('Benchmark execution completed with summary:\n %s',
+                     json.dumps(execution_summary, indent=2))
+        utils.maybe_upload_to_gcs(output_dir, self.config.output_gcs_url_str)
         logging.getLogger().removeHandler(filehandler)
 
-  def _upload_execution_summary(self, benchmark_result, execution_id,
-                                output_dir):
-    """Report results and upload artifacts."""
-    # Upload benchmark ouput
-    output_gcs_dir_with_uid = ''
-    if not self.config.output_gcs_url_str:
-      logging.info(
-          'Skipped uploading output because output_gcs_url_str is not set.')
-    elif not os.listdir(output_dir):
-      logging.info(
-          'Skipped uploading output because there is no file in directory %s',
-          output_dir)
-    else:
-      output_gcs_dir_with_uid = '{}/{}/'.format(self.config.output_gcs_url_str,
-                                                execution_id)
-      utils.upload_to_gcs(output_dir, self.config.output_gcs_url_str)
-
-    execution_summary = report_utils.build_execution_summary(
-        execution_id, self.config.test_env_str, self.config.platform_name_str,
-        self.config.system_name_str, output_gcs_dir_with_uid, benchmark_result)
-
-    logging.info('Benchmark summary is %s',
-                 json.dumps(execution_summary, indent=2))
-
-    report_utils.upload_execution_summary(self.config.bigquery_project_name_str,
-                                          self.config.bigquery_table_name_str,
-                                          execution_summary)
-
-  def _instantiate_benchmark_class(self, output_dir):
+  def _instantiate_benchmark_class(self, benchmark_class, output_dir):
     """Return initialized benchmark class."""
-    module_import_path, class_name = self.config.benchmark_class_str.rsplit(
-        '.', 1)
+    module_import_path, class_name = benchmark_class.rsplit('.', 1)
     module = importlib.import_module(module_import_path)
     class_ = getattr(module, class_name)
     instance = class_(output_dir=output_dir)
