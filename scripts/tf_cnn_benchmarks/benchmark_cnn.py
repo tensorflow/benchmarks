@@ -748,6 +748,7 @@ def create_config_proto(params):
   if params.rewriter_config:
     rewriter_config = rewriter_config_pb2.RewriterConfig()
     text_format.Merge(params.rewriter_config, rewriter_config)
+    config.graph_options.rewrite_options.CopyFrom(rewriter_config)
   elif not params.enable_optimizations:
     config.graph_options.optimizer_options.opt_level = tf.OptimizerOptions.L0
     config.graph_options.rewrite_options.disable_meta_optimizer = True
