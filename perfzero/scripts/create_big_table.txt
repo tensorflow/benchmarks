@@ -1,6 +1,6 @@
 [
   {
-    "name": "execution_time",
+    "name": "execution_timestamp",
     "type": "TIMESTAMP",
     "mode": "REQUIRED"
   },
