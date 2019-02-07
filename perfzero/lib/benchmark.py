@@ -15,21 +15,20 @@
 """Execute benchmark."""
 from __future__ import print_function
 
+import argparse
+import datetime
 import importlib
-import os
 import json
+import logging
+import os
+import re
 import sys
 import time
-import uuid
-import re
-import argparse
-import logging
-import datetime
 import traceback
 
-import perfzero.utils as utils
 import perfzero.perfzero_config as perfzero_config
 import perfzero.report_utils as report_utils
+import perfzero.utils as utils
 
 
 class BenchmarkRunner(object):
@@ -46,16 +45,17 @@ class BenchmarkRunner(object):
     self._setup()
 
   def _setup(self):
-    utils.setup_python_path(self.site_packages_dir, config.python_path_str)
+    utils.setup_python_path(self.site_packages_dir, self.config.python_path_str)
     utils.active_gcloud_service(self.auth_token_path)
     utils.make_dir_if_not_exist(self.output_root_dir)
 
-    self.streamHandler = logging.StreamHandler(sys.stdout)
-    self.streamHandler.setFormatter(
+    self.stream_handler = logging.StreamHandler(sys.stdout)
+    self.stream_handler.setFormatter(
         logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
-    logging.getLogger().addHandler(self.streamHandler)
+    logging.getLogger().addHandler(self.stream_handler)
 
   def _get_benchmark_methods(self):
+    """Returns list of benchmark methods to execute."""
     filter_prefix = 'filter:'
     benchmark_methods = []
     for benchmark_method_maybe_filter in self.config.benchmark_methods_maybe_filter:
@@ -65,10 +65,12 @@ class BenchmarkRunner(object):
         index = benchmark_method_maybe_filter.find(filter_prefix)
         benchmark_class = benchmark_method_maybe_filter[:index - 1]
         pattern = benchmark_method_maybe_filter[index + len(filter_prefix):]
-        class_instance = self._instantiate_benchmark_class(benchmark_class, '/dev/null')
+        class_instance = self._instantiate_benchmark_class(benchmark_class,
+                                                           '/dev/null')
         for benchmark_method_name in dir(class_instance):
           if re.match(pattern, benchmark_method_name):
-            benchmark_methods.append(benchmark_class + '.' + benchmark_method_name)
+            benchmark_methods.append(benchmark_class + '.' +
+                                     benchmark_method_name)
 
     return benchmark_methods
 
@@ -82,7 +84,7 @@ class BenchmarkRunner(object):
         utils.make_dir_if_not_exist(output_dir)
         has_exception = False
         benchmark_class, benchmark_method_name = benchmark_method.rsplit('.', 1)
-        benchmark_module, benchmark_class_name = benchmark_class.rsplit('.', 1)
+        _, benchmark_class_name = benchmark_class.rsplit('.', 1)
 
         # Setup per-method file logger
         filehandler = logging.FileHandler(
@@ -90,22 +92,26 @@ class BenchmarkRunner(object):
         filehandler.setFormatter(
             logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
         logging.getLogger().addHandler(filehandler)
-        class_instance = self._instantiate_benchmark_class(benchmark_class, output_dir)
+        class_instance = self._instantiate_benchmark_class(benchmark_class,
+                                                           output_dir)
 
-        # tf.test.Benchmark.report_benchmark() will write benchmark results to
-        # the file whose path is benchmark_result_file_path_prefix + benchmark_method
+        # tf.test.Benchmark.report_benchmark() writes results to a file with
+        # path benchmark_result_file_path_prefix + benchmark_method
         benchmark_result_file_path_prefix = os.path.join(output_dir, 'proto_')
         os.environ['TEST_REPORT_FILE_PREFIX'] = benchmark_result_file_path_prefix
-        benchmark_result_file_path = benchmark_result_file_path_prefix + \
-                                     benchmark_class_name + "." + benchmark_method_name
+        benchmark_result_file_path = '{}{}.{}'.format(
+            benchmark_result_file_path_prefix,
+            benchmark_class_name,
+            benchmark_method_name)
 
         # Run benchmark method
         logging.info('Start benchmark: %s', benchmark_method)
         getattr(class_instance, benchmark_method_name)()
         logging.info('End benchmark: %s', benchmark_method)
         # Read and build benchmark results
-        raw_benchmark_result = utils.read_benchmark_result(benchmark_result_file_path)
-      except Exception as e:
+        raw_benchmark_result = utils.read_benchmark_result(
+            benchmark_result_file_path)
+      except Exception:  # pylint: disable=W0703
         logging.error('Benchmark execution for %s failed due to error:\n %s',
                       benchmark_method, traceback.format_exc())
         has_exception = True
@@ -116,17 +122,23 @@ class BenchmarkRunner(object):
       finally:
         with open(os.path.join(self.workspace_dir, 'setup_info.log'), 'r') as f:
           setup_info = json.load(f)
-        benchmark_result = report_utils.build_benchmark_result(raw_benchmark_result)
-        execution_summary = report_utils.build_execution_summary(
-            execution_timestamp, execution_id,
-            self.config.ml_framework_build_label_str,
-            self.config.execution_label_str, self.config.platform_name_str,
-            self.config.system_name_str, self.config.output_gcs_url_str,
-            benchmark_result, self.config.get_env_vars(), setup_info, has_exception)
-        report_utils.upload_execution_summary(
-            self.config.bigquery_project_name_str, self.config.test_env_str,
-            self.config.bigquery_dataset_table_name_str, execution_summary,
+        benchmark_result = report_utils.build_benchmark_result(
             raw_benchmark_result)
+        execution_summary = report_utils.build_execution_summary(
+            execution_timestamp,
+            execution_id,
+            self.config.ml_framework_build_label_str,
+            self.config.execution_label_str,
+            self.config.platform_name_str,
+            self.config.system_name_str,
+            self.config.output_gcs_url_str,
+            benchmark_result,
+            self.config.get_env_vars(),
+            setup_info, has_exception)
+        report_utils.upload_execution_summary(
+            self.config.bigquery_project_name_str,
+            self.config.bigquery_dataset_table_name_str,
+            execution_summary)
         logging.info('Benchmark execution completed with summary:\n %s',
                      json.dumps(execution_summary, indent=2))
         utils.maybe_upload_to_gcs(output_dir, self.config.output_gcs_url_str)
@@ -153,6 +165,6 @@ if __name__ == '__main__':
   logging.basicConfig(
       format='%(asctime)s %(levelname)s: %(message)s', level=level)
 
-  config = perfzero_config.PerfZeroConfig(mode='env')
-  benchmark_runner = BenchmarkRunner(config)
+  config_ = perfzero_config.PerfZeroConfig(mode='env')
+  benchmark_runner = BenchmarkRunner(config_)
   benchmark_runner.run_benchmark()
