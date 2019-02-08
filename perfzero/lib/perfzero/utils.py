@@ -104,12 +104,40 @@ def active_gcloud_service(auth_token_path):
       auth_token_path)])
 
 
+def setup_gsutil_credential():
+  run_commands(['gcloud config set pass_credentials_to_gsutil true'])
+
+
 def download_from_gcs(gcs_downloads):
+  """Download data from gcs_url to local_path.
+
+  If gcs_url points to a file, then local_path will be the file with the same
+  content. If gcs_url points to a directory, then local path will be the
+  directory with the same content. The basename of the local_path may be
+  different from the base name of the gcs_url
+
+  Args:
+    gcs_downloads: array of dict which specifies the gcs_url and local_path for
+                   every downloads
+  """
   for info in gcs_downloads:
-    make_dir_if_not_exist(info['local_path'])
-    cmd = ['gsutil', '-m', 'cp', '-r', '-n', info['gcs_url'], info['local_path']]
+    if os.path.exists(info['local_path']):
+      continue
+    original_base_name = os.path.basename(info['gcs_url'])
+    expected_base_name = os.path.basename(info['local_path'])
+    local_path_parent = os.path.dirname(info['local_path'])
+
+    make_dir_if_not_exist(local_path_parent)
+    # Download data to the local disk
+    cmd = ['gsutil', '-m', 'cp', '-r', '-n', info['gcs_url'], local_path_parent]
     run_commands([cmd], shell=False)
-    logging.info('Downloaded data from gcs %s to local directory %s',
+    # Move data to the expected local path
+    if original_base_name != expected_base_name:
+      run_commands(['mv {} {}'.format(
+          os.path.join(local_path_parent, original_base_name),
+          os.path.join(local_path_parent, expected_base_name))])
+
+    logging.info('Downloaded data from gcs %s to local path %s',
                  info['gcs_url'], info['local_path'])
 
 

@@ -38,7 +38,7 @@ class BenchmarkRunner(object):
   def __init__(self, config):
     self.config = config
     project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-    self.workspace_dir = os.path.join(project_dir, config.workspace_dir)
+    self.workspace_dir = os.path.join(project_dir, config.workspace)
     self.site_packages_dir = os.path.join(self.workspace_dir, 'site-packages')
     self.auth_token_path = os.path.join(
         self.workspace_dir, 'auth_tokens/benchmark_upload_gce.json')
@@ -55,8 +55,6 @@ class BenchmarkRunner(object):
 
     # Download gcloud auth token and data
     start_time = time.time()
-    utils.download_from_gcs([{'gcs_url': 'gs://tf-performance/auth_tokens',
-                              'local_path': self.workspace_dir}])
     utils.download_from_gcs(self.config.get_gcs_downloads('/data'))
     self.benchmark_execution_time['download_data'] = time.time() - start_time
 

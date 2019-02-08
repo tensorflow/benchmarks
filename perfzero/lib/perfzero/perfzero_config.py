@@ -80,7 +80,7 @@ def add_parser_arguments(parser):
       type=str,
       default=None)
   parser.add_argument(
-      '--workspace_dir',
+      '--workspace',
       type=str,
       default='workspace')
 
@@ -121,7 +121,7 @@ class PerfZeroConfig(object):
                                                    False)
       self.gce_nvme_raid_str = self._get_env_var('PERFZERO_GCE_NVME_RAID',
                                                  False)
-      self.workspace_dir = self._get_env_var('PERFZERO_WORKSPACE_DIR',
+      self.workspace = self._get_env_var('PERFZERO_WORKSPACE',
                                              False, 'workspace')
       self.force_update = False
     # In this mode, environment variables with prefix PERFZERO_BENCHMARK_METHOD
@@ -152,7 +152,7 @@ class PerfZeroConfig(object):
                                                    False)
       self.gce_nvme_raid_str = self._get_env_var('PERFZERO_GCE_NVME_RAID',
                                                  False)
-      self.workspace_dir = self._get_env_var('PERFZERO_WORKSPACE_DIR',
+      self.workspace = self._get_env_var('PERFZERO_WORKSPACE',
                                              False, 'workspace')
       self.force_update = False
     elif mode == 'flags':
@@ -169,7 +169,7 @@ class PerfZeroConfig(object):
       self.bigquery_dataset_table_name_str = flags.bigquery_dataset_table_name
       self.output_gcs_url_str = flags.output_gcs_url
       self.python_path_str = flags.python_path
-      self.workspace_dir = flags.workspace_dir
+      self.workspace = flags.workspace
       self.force_update = flags.force_update
     elif mode == 'mock':
       pass
@@ -229,12 +229,18 @@ class PerfZeroConfig(object):
 
     for entry in self.gcs_downloads_str.split(','):
       gcs_download = {}
+      # Canonicalize gcs url to remove trailing '/' and '*'
+      if entry.endswith('*'):
+        entry = entry[:-1]
+      if entry.endswith('/'):
+        entry = entry[:-1]
+
       if ';' in entry:
         gcs_download['gcs_url'] = entry.split(';')[1]
         gcs_download['local_path'] = os.path.join(data_dir, entry.split(';')[0])
       else:
         gcs_download['gcs_url'] = entry
-        gcs_download['local_path'] = data_dir
+        gcs_download['local_path'] = os.path.join(data_dir, os.path.basename(entry))
     gcs_downloads.append(gcs_download)
 
     return gcs_downloads

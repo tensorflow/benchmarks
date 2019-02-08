@@ -23,7 +23,7 @@ import perfzero.utils as utils
 def _get_nvme_devices():
   """Returns list paths to nvme devices."""
   devices = []
-  cmd = 'sudo lsblk'
+  cmd = 'lsblk'
   retcode, log = utils.run_command(cmd)
   if retcode:
     raise Exception('"{}" failed with code:{} and log:\n{}'.format(
@@ -44,7 +44,7 @@ def create_drive_from_devices(data_dir, gce_nvme_raid):
     return
 
   devices = _get_nvme_devices()
-  cmd = 'sudo mountpoint -q {}'.format(data_dir)
+  cmd = 'mountpoint -q {}'.format(data_dir)
   retcode, _ = utils.run_command(cmd)
   if retcode:
     if len(devices) > 1:
@@ -56,10 +56,10 @@ def create_drive_from_devices(data_dir, gce_nvme_raid):
 def _create_single_drive(data_dir, device):
   """Creates a data drive out of a single device."""
   cmds = []
-  cmds.append('sudo mkfs.ext4 -F {}'.format(device))
-  cmds.append('sudo mkdir -p {}'.format(data_dir))
-  cmds.append('sudo mount {} {}'.format(device, data_dir))
-  cmds.append('sudo chmod a+w {}'.format(data_dir))
+  cmds.append('mkfs.ext4 -F {}'.format(device))
+  cmds.append('mkdir -p {}'.format(data_dir))
+  cmds.append('mount {} {}'.format(device, data_dir))
+  cmds.append('chmod a+w {}'.format(data_dir))
 
   utils.run_commands(cmds)
   logging.info('Created and mounted device %s at %s', device, data_dir)
@@ -72,13 +72,13 @@ def _create_drive_raid(data_dir, devices):
   # think they are in another raid. mdadm does not have -y option.
   # Or the kokoro images were left dirty? and that is where the info
   # comes from.
-  cmds.append('yes | sudo mdadm --create /dev/md0 --level=0 '
+  cmds.append('yes | mdadm --create /dev/md0 --level=0 '
               '--raid-devices={} {}'.format(
                   len(devices), ' '.join(devices)))
-  cmds.append('sudo mkfs.ext4 -F /dev/md0')
-  cmds.append('sudo mkdir -p {}'.format(data_dir))
-  cmds.append('sudo mount /dev/md0 {}'.format(data_dir))
-  cmds.append('sudo chmod a+w {}'.format(data_dir))
+  cmds.append('mkfs.ext4 -F /dev/md0')
+  cmds.append('mkdir -p {}'.format(data_dir))
+  cmds.append('mount /dev/md0 {}'.format(data_dir))
+  cmds.append('chmod a+w {}'.format(data_dir))
 
   utils.run_commands(cmds)
   logging.info('Created and mounted RAID array at %s', data_dir)
@@ -87,12 +87,12 @@ def _create_drive_raid(data_dir, devices):
 def create_ram_disk(data_dir, disk_size):
   """Create a RAM disk."""
 
-  cmd = 'sudo mountpoint -q {}'.format(data_dir)
+  cmd = 'mountpoint -q {}'.format(data_dir)
   retcode, _ = utils.run_command(cmd)
   if retcode:
     cmds = []
-    cmds.append('sudo mkdir -p {}'.format(data_dir))
-    cmds.append('sudo mount -t tmpfs -o size={}m tmpfs {}'.format(
+    cmds.append('mkdir -p {}'.format(data_dir))
+    cmds.append('mount -t tmpfs -o size={}m tmpfs {}'.format(
         disk_size, data_dir))
     utils.run_commands(cmds)
     logging.info('Created RAM disk at %s', data_dir)
