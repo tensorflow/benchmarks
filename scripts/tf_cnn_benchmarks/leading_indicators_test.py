@@ -24,6 +24,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ctypes
+import logging
 import os
 import sys
 
@@ -58,6 +59,7 @@ class BenchmarkBase(tf.test.Benchmark):
       params: Params tuple, typically created by benchmark_cnn.make_params or
         benchmark_cnn.make_params_from_flags.
     """
+    logging.info('Running benchmark [%s]', self._get_name())
     params = benchmark_cnn.setup(params)
     bench = benchmark_cnn.BenchmarkCNN(params)
     bench.print_info()
