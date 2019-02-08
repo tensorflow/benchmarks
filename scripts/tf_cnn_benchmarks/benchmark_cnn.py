@@ -364,6 +364,13 @@ flags.DEFINE_float('gpu_memory_frac_for_testing', 0,
 flags.DEFINE_boolean('use_unified_memory', None,
                      'If True, allocate unified memory enabling larger models '
                      'to fit in available device RAM.')
+flags.DEFINE_boolean('timestamped_allocator', False,
+                     'If True marks free BFCAllocator::Chunks with time '
+                     'at which they are freed which can allow more efficient '
+                     'memory allocation in cases like RDMA networking.')
+flags.DEFINE_integer('gpu_pending_cap', 0, 'If > 0 then then number of pending '
+                     '(queued but not yet known to have terminated) kernels '
+                     'per GPU device will be capped to this number.')
 flags.DEFINE_boolean('use_tf_layers', True,
                      'If True, use tf.layers for neural network layers. This '
                      'should not affect performance or accuracy in any way.')
@@ -742,6 +749,11 @@ def create_config_proto(params):
   if params.use_unified_memory:
     config.gpu_options.experimental.use_unified_memory = (
         params.use_unified_memory)
+  if params.timestamped_allocator:
+    config.gpu_options.experimental.timestamped_allocator = (
+        params.timestamped_allocator)
+  if params.gpu_pending_cap > 0:
+    config.gpu_options.experimental.pending_cap = params.gpu_pending_cap
   if params.xla:
     config.graph_options.optimizer_options.global_jit_level = (
         tf.OptimizerOptions.ON_1)
