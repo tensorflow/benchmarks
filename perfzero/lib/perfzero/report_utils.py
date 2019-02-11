@@ -17,12 +17,11 @@ from __future__ import print_function
 
 import json
 import logging
+import perfzero.utils as utils
 
+from six import u as unicode  # pylint: disable=W0622
 import google.auth
 from google.cloud import bigquery
-from six import u as unicode  # pylint: disable=W0622
-
-import perfzero.utils as utils
 
 
 def upload_execution_summary(bigquery_project_name, bigquery_dataset_table_name,
@@ -98,13 +97,13 @@ def upload_execution_summary(bigquery_project_name, bigquery_dataset_table_name,
         bigquery_project_name)
 
 
-def build_benchmark_result(raw_benchmark_result):
+def build_benchmark_result(raw_benchmark_result, has_exception):
   """Converts test_log.proto format to PerfZero format."""
   benchmark_result = {}
   benchmark_result['name'] = raw_benchmark_result['name']
   benchmark_result['wall_time'] = raw_benchmark_result['wall_time']
 
-  succeeded = True
+  succeeded = not has_exception
   metrics = []
   for name in raw_benchmark_result['extras']:
     entry = {}
@@ -132,7 +131,7 @@ def build_benchmark_result(raw_benchmark_result):
 def build_execution_summary(execution_timestamp, execution_id,
                             ml_framework_build_label, execution_label,
                             platform_name, system_name, output_gcs_url,
-                            benchmark_result, env_vars, setup_info,
+                            benchmark_result, env_vars, flags, site_package_info,
                             has_exception):
   """Builds summary of the execution."""
   # Avoids module not found during setup phase when tf is not installed yet.
@@ -146,7 +145,11 @@ def build_execution_summary(execution_timestamp, execution_id,
     benchmark_info['execution_label'] = execution_label
   if output_gcs_url:
     benchmark_info['output_url'] = '{}/{}/'.format(output_gcs_url, execution_id)
-  benchmark_info['env_vars'] = env_vars
+  if env_vars:
+    benchmark_info['env_vars'] = env_vars
+  if flags:
+    benchmark_info['flags'] = flags
+  benchmark_info['site_package_info'] = site_package_info
 
   ml_framework_info = {}
   ml_framework_info['name'] = 'tensorflow'
@@ -176,7 +179,7 @@ def build_execution_summary(execution_timestamp, execution_id,
   execution_summary['execution_timestamp'] = execution_timestamp
   execution_summary['benchmark_result'] = benchmark_result
   execution_summary['benchmark_info'] = benchmark_info
-  execution_summary['setup_info'] = setup_info
+  execution_summary['setup_info'] = {}
   execution_summary['ml_framework_info'] = ml_framework_info
   execution_summary['system_info'] = system_info
 
