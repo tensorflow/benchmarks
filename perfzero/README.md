@@ -51,15 +51,24 @@ PERFZERO_BIGQUERY_PROJECT_NAME
 ## Setup benchmark environment
 
 The commands below builds the docker image named `temp/tf-gpu` which contains the
-libraries needed for benchmark. It also downloads data and checkouts dependent libraries.
+libraries needed for benchmark. It also downloads access token from GCS.
 
 This setup script only needs to be executed when we need to create docker image for the
 first time, or when we need to update docker image based on the latest
 Tensorflow nighly build.
 
+The commands below performs setup operation using the configs specified in `staging/scripts/setup_env.sh`
 
 ```
+source benchmarks/perfzero/scripts/setup_env.sh
+
 python benchmarks/perfzero/lib/setup.py
+```
+
+Alternatively, run the following command:
+
+```
+python benchmarks/perfzero/lib/setup.py --config_mode=flags
 ```
 
 

@@ -83,6 +83,11 @@ def add_parser_arguments(parser):
       '--workspace',
       type=str,
       default='workspace')
+  parser.add_argument(
+      '--dockerfile_path',
+      type=str,
+      default='docker/Dockerfile',
+      help='Path to docker file')
 
 
 class PerfZeroConfig(object):
@@ -123,13 +128,15 @@ class PerfZeroConfig(object):
                                                  False)
       self.workspace = self._get_env_var('PERFZERO_WORKSPACE',
                                              False, 'workspace')
+      self.dockerfile_path = self._get_env_var('PERFZERO_DOCKERFILE_PATH',
+                                               False, 'docker/Dockerfile')
       self.force_update = False
     # In this mode, environment variables with prefix PERFZERO_BENCHMARK_METHOD
     # are used to dertermine the benchmark methods we want to execute. The
     # value of these environment variables encodes both the benchmark class and
     # benchmark method name. And it allows user to run arbitrary combination of
     # benchmark methods in one perfzero execution
-    elif mode == 'env' and 'PERFZERO_PLATFORM_NAME' in os.environ:
+    elif mode == 'env':
       self.benchmark_method_patterns = []
       for key in os.environ.keys():
         if key.startswith('PERFZERO_BENCHMARK_METHOD'):
@@ -153,7 +160,9 @@ class PerfZeroConfig(object):
       self.gce_nvme_raid_str = self._get_env_var('PERFZERO_GCE_NVME_RAID',
                                                  False)
       self.workspace = self._get_env_var('PERFZERO_WORKSPACE',
-                                             False, 'workspace')
+                                         False, 'workspace')
+      self.dockerfile_path = self._get_env_var('PERFZERO_DOCKERFILE_PATH',
+                                               False, 'docker/Dockerfile')
       self.force_update = False
     elif mode == 'flags':
       self.gce_nvme_raid_str = flags.gce_nvme_raid
@@ -171,6 +180,7 @@ class PerfZeroConfig(object):
       self.python_path_str = flags.python_path
       self.workspace = flags.workspace
       self.force_update = flags.force_update
+      self.dockerfile_path = flags.dockerfile_path
     elif mode == 'mock':
       pass
 
