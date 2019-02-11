@@ -53,6 +53,13 @@ class BenchmarkRunner(object):
                                            self.config.gce_nvme_raid_str)
     self.benchmark_execution_time['create_drive'] = time.time() - start_time
 
+    # Acticate gcloud service
+    start_time = time.time()
+    utils.setup_python_path(self.site_packages_dir, self.config.python_path_str)
+    utils.active_gcloud_service(self.auth_token_path)
+    utils.make_dir_if_not_exist(self.output_root_dir)
+    self.benchmark_execution_time['activate_gcloud_service'] = time.time() - start_time
+
     # Download gcloud auth token and data
     start_time = time.time()
     utils.download_from_gcs(self.config.get_gcs_downloads('/data'))
@@ -64,12 +71,6 @@ class BenchmarkRunner(object):
         self.config.get_git_repos(self.site_packages_dir),
         self.config.force_update)
     self.benchmark_execution_time['checkout_repository'] = time.time() - start_time
-
-    start_time = time.time()
-    utils.setup_python_path(self.site_packages_dir, self.config.python_path_str)
-    utils.active_gcloud_service(self.auth_token_path)
-    utils.make_dir_if_not_exist(self.output_root_dir)
-    self.benchmark_execution_time['activate_gcloud_service'] = time.time() - start_time
 
     self.stream_handler = logging.StreamHandler(sys.stdout)
     self.stream_handler.setFormatter(
