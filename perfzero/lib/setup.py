@@ -21,22 +21,15 @@ import logging
 import os
 import time
 
+import perfzero.perfzero_config as perfzero_config
 import perfzero.utils as utils
 
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
-  parser.add_argument(
-      '--dockerfile_path',
-      type=str,
-      default='docker/Dockerfile',
-      help='Path to docker file')
-  parser.add_argument(
-      '--workspace',
-      type=str,
-      default='workspace')
-
+  perfzero_config.add_parser_arguments(parser)
   FLAGS, unparsed = parser.parse_known_args()
+  config = perfzero_config.PerfZeroConfig(mode=FLAGS.config_mode, flags=FLAGS)
 
   logging.basicConfig(
       format='%(asctime)s %(levelname)s: %(message)s', level=logging.DEBUG)
@@ -44,7 +37,7 @@ if __name__ == '__main__':
   setup_execution_time = {}
 
   project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-  workspace_dir = os.path.join(project_dir, FLAGS.workspace)
+  workspace_dir = os.path.join(project_dir, config.workspace)
 
   # Download gcloud auth token and data
   # This step won't be necessary if GCE instance uses # <google-cloud-sdk-path>/bin/gsutil with
@@ -56,7 +49,7 @@ if __name__ == '__main__':
   setup_execution_time['download_token'] = time.time() - start_time
 
   start_time = time.time()
-  dockerfile_path = os.path.join(project_dir, FLAGS.dockerfile_path)
+  dockerfile_path = os.path.join(project_dir, config.dockerfile_path)
   docker_tag = 'temp/tf-gpu'
   cmd = 'docker build --pull -t {} - < {}'.format(docker_tag, dockerfile_path)
   utils.run_commands([cmd])
