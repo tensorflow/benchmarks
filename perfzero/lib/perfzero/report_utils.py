@@ -67,8 +67,8 @@ def upload_execution_summary(bigquery_project_name, bigquery_dataset_table_name,
       benchmark_summary_input[key] = unicode(json.dumps(value))
     else:
       benchmark_summary_input[key] = unicode(value)
-  logging.info('Bigquery input for benchmark_summary table is %s',
-               json.dumps(benchmark_summary_input, indent=2))
+  logging.debug('Bigquery input for benchmark_summary table is %s',
+                json.dumps(benchmark_summary_input, indent=2))
 
   errors = []
   # TODO(tobyboyd): Shim to direct results to new table until all jobs
@@ -165,8 +165,10 @@ def build_execution_summary(execution_timestamp, execution_id,
 
   system_info = {}
   gpu_info = utils.get_gpu_info()
-  system_info['platform_name'] = platform_name
-  system_info['system_name'] = system_name
+  if platform_name:
+    system_info['platform_name'] = platform_name
+  if system_name:
+    system_info['system_name'] = system_name
   system_info['accelerator_driver_version'] = gpu_info['gpu_driver_version']
   system_info['accelerator_model'] = gpu_info['gpu_model']
   system_info['accelerator_count'] = gpu_info['gpu_count']

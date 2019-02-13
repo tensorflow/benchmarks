@@ -24,11 +24,6 @@ def add_parser_arguments(parser):
       '--force_update',
       action='store_true')
   parser.add_argument(
-      '--config_mode',
-      type=str,
-      default='env',
-      help='Configuration mode')
-  parser.add_argument(
       '--gce_nvme_raid',
       type=str,
       default=None,
@@ -44,9 +39,10 @@ def add_parser_arguments(parser):
       default=None,
       help='List of git repository url separated by \',\' to be checked-out')
   parser.add_argument(
-      '--benchmark_method',
+      '--benchmark_methods',
+      action='append',
       type=str,
-      default=None)
+      default=[])
   parser.add_argument(
       '--ml_framework_build_label',
       type=str,
@@ -96,79 +92,11 @@ class PerfZeroConfig(object):
   def __init__(self, mode, flags=None):
     self.mode = mode
     self.flags = flags
-    # In this mode, PERFZERO_BENCHMARK_CLASS and PERFZERO_BENCHMARK_METHODS
-    # are used to determine the benchmark methods to execute. This mode is
-    # deprecated because it constraints one perfzero execution to only run
-    # benchmark methods from one class
-    if mode == 'env' and 'PERFZERO_BENCHMARK_CLASS' in os.environ:
-      benchmark_methods_str = self._get_env_var(
-          'PERFZERO_BENCHMARK_METHODS')
-      benchmark_class_str = self._get_env_var('PERFZERO_BENCHMARK_CLASS')
-      self.benchmark_method_patterns = []
-      for benchmark_method in benchmark_methods_str.split(','):
-        self.benchmark_method_patterns.append(benchmark_class_str + '.' +
-                                              benchmark_method)
-      self.platform_name_str = self._get_env_var('PERFZERO_PLATFORM_NAME')
-      self.system_name_str = self._get_env_var('PERFZERO_SYSTEM_NAME')
-      self.python_path_str = self._get_env_var('PERFZERO_PYTHON_PATH')
-      self.git_repos_str = self._get_env_var('PERFZERO_GIT_REPOS')
-      self.output_gcs_url_str = self._get_env_var('PERFZERO_OUTPUT_GCS_URL',
-                                                  False)
-      self.gcs_downloads_str = self._get_env_var('PERFZERO_GCS_DOWNLOADS',
-                                                 False)
-      self.bigquery_dataset_table_name_str = self._get_env_var(
-          'PERFZERO_BIGQUERY_TABLE_NAME', False)
-      self.bigquery_project_name_str = self._get_env_var(
-          'PERFZERO_BIGQUERY_PROJECT_NAME', False)
-      self.ml_framework_build_label_str = self._get_env_var(
-          'PERFZERO_ML_FRAMEWORK_BUILD_LABEL', False)
-      self.execution_label_str = self._get_env_var('PERFZERO_EXECUTION_LABEL',
-                                                   False)
-      self.gce_nvme_raid_str = self._get_env_var('PERFZERO_GCE_NVME_RAID',
-                                                 False)
-      self.workspace = self._get_env_var('PERFZERO_WORKSPACE',
-                                             False, 'workspace')
-      self.dockerfile_path = self._get_env_var('PERFZERO_DOCKERFILE_PATH',
-                                               False, 'docker/Dockerfile')
-      self.force_update = False
-    # In this mode, environment variables with prefix PERFZERO_BENCHMARK_METHOD
-    # are used to dertermine the benchmark methods we want to execute. The
-    # value of these environment variables encodes both the benchmark class and
-    # benchmark method name. And it allows user to run arbitrary combination of
-    # benchmark methods in one perfzero execution
-    elif mode == 'env':
-      self.benchmark_method_patterns = []
-      for key in os.environ.keys():
-        if key.startswith('PERFZERO_BENCHMARK_METHOD'):
-          self.benchmark_method_patterns.append(os.environ[key])
-      self.platform_name_str = self._get_env_var('PERFZERO_PLATFORM_NAME')
-      self.system_name_str = self._get_env_var('PERFZERO_SYSTEM_NAME')
-      self.python_path_str = self._get_env_var('PERFZERO_PYTHON_PATH')
-      self.git_repos_str = self._get_env_var('PERFZERO_GIT_REPOS')
-      self.output_gcs_url_str = self._get_env_var('PERFZERO_OUTPUT_GCS_URL',
-                                                  False)
-      self.gcs_downloads_str = self._get_env_var('PERFZERO_GCS_DOWNLOADS',
-                                                 False)
-      self.bigquery_dataset_table_name_str = self._get_env_var(
-          'PERFZERO_BIGQUERY_TABLE_NAME', False)
-      self.bigquery_project_name_str = self._get_env_var(
-          'PERFZERO_BIGQUERY_PROJECT_NAME', False)
-      self.ml_framework_build_label_str = self._get_env_var(
-          'PERFZERO_ML_FRAMEWORK_BUILD_LABEL', False)
-      self.execution_label_str = self._get_env_var('PERFZERO_EXECUTION_LABEL',
-                                                   False)
-      self.gce_nvme_raid_str = self._get_env_var('PERFZERO_GCE_NVME_RAID',
-                                                 False)
-      self.workspace = self._get_env_var('PERFZERO_WORKSPACE',
-                                         False, 'workspace')
-      self.dockerfile_path = self._get_env_var('PERFZERO_DOCKERFILE_PATH',
-                                               False, 'docker/Dockerfile')
-      self.force_update = False
-    elif mode == 'flags':
+    if mode == 'flags':
       self.gce_nvme_raid_str = flags.gce_nvme_raid
       self.gcs_downloads_str = flags.gcs_downloads
       self.git_repos_str = flags.git_repos
-      self.benchmark_method_patterns = [flags.benchmark_method]
+      self.benchmark_method_patterns = flags.benchmark_methods
       self.ml_framework_build_label_str = flags.ml_framework_build_label
       self.execution_label_str = flags.execution_label
       self.platform_name_str = flags.platform_name
@@ -181,13 +109,8 @@ class PerfZeroConfig(object):
       self.workspace = flags.workspace
       self.force_update = flags.force_update
       self.dockerfile_path = flags.dockerfile_path
-    elif mode == 'mock':
-      pass
 
   def get_env_vars(self):
-    if self.mode != 'env':
-      return {}
-
     env_vars = {}
     for key in os.environ.keys():
       if key.startswith('PERFZERO_'):
@@ -195,9 +118,6 @@ class PerfZeroConfig(object):
     return env_vars
 
   def get_flags(self):
-    if self.mode != 'flags':
-      return {}
-
     not_none_flags = {}
     for key in vars(self.flags):
       value = getattr(self.flags, key)
@@ -255,10 +175,3 @@ class PerfZeroConfig(object):
 
     return gcs_downloads
 
-  def _get_env_var(self, key, is_required=True, default=None):
-    if key in os.environ and os.environ[key]:
-      return os.environ[key]
-    if is_required:
-      raise ValueError(
-          'Environment variable {} needs to be defined'.format(key))
-    return default
