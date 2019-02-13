@@ -29,7 +29,7 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   perfzero_config.add_parser_arguments(parser)
   FLAGS, unparsed = parser.parse_known_args()
-  config = perfzero_config.PerfZeroConfig(mode=FLAGS.config_mode, flags=FLAGS)
+  config = perfzero_config.PerfZeroConfig(mode='flags', flags=FLAGS)
 
   logging.basicConfig(
       format='%(asctime)s %(levelname)s: %(message)s', level=logging.DEBUG)
@@ -39,10 +39,8 @@ if __name__ == '__main__':
   project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
   workspace_dir = os.path.join(project_dir, config.workspace)
 
-  # Download gcloud auth token and data
-  # This step won't be necessary if GCE instance uses # <google-cloud-sdk-path>/bin/gsutil with
-  # version 4.35 or higher which will pass gcloud credential to the docker instance.
-  # See https://g3doc.corp.google.com/cloud/storage/g3doc/bigstore/bigstore-in-prod/bigstore-ops-playbook/gsutil-playbook.md?cl=head
+  # Download gcloud auth token. Remove this operation in the future when
+  # docker in Kokoro can accesss the GCP metadata server
   start_time = time.time()
   utils.download_from_gcs([{'gcs_url': 'gs://tf-performance/auth_tokens',
                             'local_path': os.path.join(workspace_dir, 'auth_tokens')}])

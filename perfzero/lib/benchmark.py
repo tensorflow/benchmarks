@@ -53,6 +53,12 @@ class BenchmarkRunner(object):
                                            self.config.gce_nvme_raid_str)
     self.benchmark_execution_time['create_drive'] = time.time() - start_time
 
+
+    start_time = time.time()
+    utils.download_from_gcs([{'gcs_url': 'gs://tf-performance/auth_tokens',
+                              'local_path': os.path.join(self.workspace_dir, 'auth_tokens')}])
+    self.benchmark_execution_time['download_token'] = time.time() - start_time
+
     # Acticate gcloud service
     start_time = time.time()
     utils.setup_python_path(self.site_packages_dir, self.config.python_path_str)
@@ -60,7 +66,7 @@ class BenchmarkRunner(object):
     utils.make_dir_if_not_exist(self.output_root_dir)
     self.benchmark_execution_time['activate_gcloud_service'] = time.time() - start_time
 
-    # Download gcloud auth token and data
+    # Download data
     start_time = time.time()
     utils.download_from_gcs(self.config.get_gcs_downloads('/data'))
     self.benchmark_execution_time['download_data'] = time.time() - start_time
@@ -209,6 +215,6 @@ if __name__ == '__main__':
   logging.basicConfig(
       format='%(asctime)s %(levelname)s: %(message)s', level=level)
 
-  config_ = perfzero_config.PerfZeroConfig(mode=FLAGS.config_mode, flags=FLAGS)
+  config_ = perfzero_config.PerfZeroConfig(mode='flags', flags=FLAGS)
   benchmark_runner = BenchmarkRunner(config_)
   benchmark_runner.run_benchmark()
