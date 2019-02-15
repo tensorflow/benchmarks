@@ -42,7 +42,7 @@ class BenchmarkRunner(object):
     self.site_packages_dir = os.path.join(self.workspace_dir, 'site-packages')
     self.auth_token_path = os.path.join(
         self.workspace_dir, 'auth_tokens/benchmark_upload_gce.json')
-    self.output_root_dir = os.path.join(self.workspace_dir, 'output')
+    self.root_output_dir = os.path.join(self.workspace_dir, 'output')
     self.benchmark_execution_time = {}
 
   def _setup(self):
@@ -53,18 +53,17 @@ class BenchmarkRunner(object):
                                            self.config.gce_nvme_raid_str)
     self.benchmark_execution_time['create_drive'] = time.time() - start_time
 
-
     start_time = time.time()
     utils.download_from_gcs([{'gcs_url': 'gs://tf-performance/auth_tokens',
-                              'local_path': os.path.join(self.workspace_dir, 'auth_tokens')}])
+                              'local_path': os.path.join(self.workspace_dir, 'auth_tokens')}])  # pylint: disable=line-too-long
     self.benchmark_execution_time['download_token'] = time.time() - start_time
 
     # Acticate gcloud service
     start_time = time.time()
     utils.setup_python_path(self.site_packages_dir, self.config.python_path_str)
     utils.active_gcloud_service(self.auth_token_path)
-    utils.make_dir_if_not_exist(self.output_root_dir)
-    self.benchmark_execution_time['activate_gcloud_service'] = time.time() - start_time
+    utils.make_dir_if_not_exist(self.root_output_dir)
+    self.benchmark_execution_time['activate_gcloud_service'] = time.time() - start_time  # pylint: disable=line-too-long
 
     # Download data
     start_time = time.time()
@@ -76,7 +75,7 @@ class BenchmarkRunner(object):
     site_package_info = utils.checkout_git_repos(
         self.config.get_git_repos(self.site_packages_dir),
         self.config.force_update)
-    self.benchmark_execution_time['checkout_repository'] = time.time() - start_time
+    self.benchmark_execution_time['checkout_repository'] = time.time() - start_time  # pylint: disable=line-too-long
 
     self.stream_handler = logging.StreamHandler(sys.stdout)
     self.stream_handler.setFormatter(
@@ -114,7 +113,7 @@ class BenchmarkRunner(object):
       method_has_exception = False
       execution_id = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S-%f')
       execution_timestamp = time.time()
-      output_dir = os.path.join(self.output_root_dir, execution_id)
+      output_dir = os.path.join(self.root_output_dir, execution_id)
       utils.make_dir_if_not_exist(output_dir)
       benchmark_class, benchmark_method_name = benchmark_method.rsplit('.', 1)
       benchmark_class_name = benchmark_class.rsplit('.', 1)[1]
@@ -132,7 +131,7 @@ class BenchmarkRunner(object):
         # tf.test.Benchmark.report_benchmark() writes results to a file with
         # path benchmark_result_file_path_prefix + benchmark_method
         benchmark_result_file_path_prefix = os.path.join(output_dir, 'proto_')
-        os.environ['TEST_REPORT_FILE_PREFIX'] = benchmark_result_file_path_prefix
+        os.environ['TEST_REPORT_FILE_PREFIX'] = benchmark_result_file_path_prefix  # pylint: disable=line-too-long
         benchmark_result_file_path = '{}{}.{}'.format(
             benchmark_result_file_path_prefix,
             benchmark_class_name,
@@ -142,7 +141,7 @@ class BenchmarkRunner(object):
         getattr(class_instance, benchmark_method_name)()
         logging.info('End benchmark: %s', benchmark_method)
         # Read and build benchmark results
-        raw_benchmark_result = utils.read_benchmark_result(benchmark_result_file_path)
+        raw_benchmark_result = utils.read_benchmark_result(benchmark_result_file_path)  # pylint: disable=line-too-long
         # Explicitly overwrite the name to be the full path to benchmark method
         raw_benchmark_result['name'] = benchmark_method
       except Exception:  # pylint: disable=W0703
@@ -158,7 +157,7 @@ class BenchmarkRunner(object):
       upload_timestamp = time.time()
       benchmark_result = report_utils.build_benchmark_result(
           raw_benchmark_result, method_has_exception)
-      benchmark_success_results[benchmark_method] = benchmark_result['succeeded']
+      benchmark_success_results[benchmark_method] = benchmark_result['succeeded']  # pylint: disable=line-too-long
       execution_summary = report_utils.build_execution_summary(
           execution_timestamp,
           execution_id,
@@ -181,8 +180,8 @@ class BenchmarkRunner(object):
       utils.maybe_upload_to_gcs(output_dir, self.config.output_gcs_url_str)
       logging.getLogger().removeHandler(filehandler)
       self.benchmark_execution_time[benchmark_method] = {}
-      self.benchmark_execution_time[benchmark_method]['benchmark_time'] = upload_timestamp - start_timestamp
-      self.benchmark_execution_time[benchmark_method]['upload_time'] = time.time() - upload_timestamp
+      self.benchmark_execution_time[benchmark_method]['benchmark_time'] = upload_timestamp - start_timestamp  # pylint: disable=line-too-long
+      self.benchmark_execution_time[benchmark_method]['upload_time'] = time.time() - upload_timestamp  # pylint: disable=line-too-long
 
     print('Benchmark execution time in seconds by operation:\n {}'.format(
         json.dumps(self.benchmark_execution_time, indent=2)))
@@ -202,11 +201,13 @@ class BenchmarkRunner(object):
 
 
 if __name__ == '__main__':
-  parser = argparse.ArgumentParser()
+  parser = argparse.ArgumentParser(
+      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   perfzero_config.add_parser_arguments(parser)
   parser.add_argument(
       '--debug',
-      action='store_true')
+      action='store_true',
+      help='If set, use debug level logging. Otherwise, use info level logging')
   FLAGS, unparsed = parser.parse_known_args()
 
   level = logging.INFO
@@ -214,6 +215,9 @@ if __name__ == '__main__':
     level = logging.DEBUG
   logging.basicConfig(
       format='%(asctime)s %(levelname)s: %(message)s', level=level)
+
+  if unparsed:
+    logging.warn('Arguments %s are not recognized', unparsed)
 
   config_ = perfzero_config.PerfZeroConfig(mode='flags', flags=FLAGS)
   benchmark_runner = BenchmarkRunner(config_)

@@ -39,7 +39,7 @@ def _get_nvme_devices():
 
 
 def create_drive_from_devices(data_dir, gce_nvme_raid):
-  """Creates a drive at data_dir based on number of devices passed."""
+  """Creates a drive at data directory."""
   if not gce_nvme_raid:
     return
 

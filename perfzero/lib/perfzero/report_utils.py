@@ -20,8 +20,6 @@ import logging
 import perfzero.utils as utils
 
 from six import u as unicode  # pylint: disable=W0622
-import google.auth
-from google.cloud import bigquery
 
 
 def upload_execution_summary(bigquery_project_name, bigquery_dataset_table_name,
@@ -42,6 +40,10 @@ def upload_execution_summary(bigquery_project_name, bigquery_dataset_table_name,
     bigquery_dataset_table_name: data_set and table name.
     execution_summary: benchmark summary dictionary of results.
   """
+
+  # pylint: disable=C6204
+  import google.auth
+  from google.cloud import bigquery
 
   if not bigquery_project_name:
     logging.info(
@@ -131,8 +133,8 @@ def build_benchmark_result(raw_benchmark_result, has_exception):
 def build_execution_summary(execution_timestamp, execution_id,
                             ml_framework_build_label, execution_label,
                             platform_name, system_name, output_gcs_url,
-                            benchmark_result, env_vars, flags, site_package_info,
-                            has_exception):
+                            benchmark_result, env_vars, flags,
+                            site_package_info, has_exception):
   """Builds summary of the execution."""
   # Avoids module not found during setup phase when tf is not installed yet.
   # pylint: disable=C6204
