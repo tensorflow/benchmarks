@@ -63,40 +63,39 @@ Optional flag values:
 The command below executes the benchmark method specified by `--benchmark_methods`:
 
 ```
-nvidia-docker run -it --rm -v $(pwd):/workspace -v /data:/data temp/tf-gpu \
+export ROOT_DATA_DIR=/data
+
+nvidia-docker run -it --rm -v $(pwd):/workspace -v $ROOT_DATA_DIR:$ROOT_DATA_DIR temp/tf-gpu \
 python3 /workspace/benchmarks/perfzero/lib/benchmark.py \
+--gcloud_key_file_url="" \
 --git_repos=https://github.com/tensorflow/models.git \
 --python_path=models \
---benchmark_methods=official.resnet.estimator_cifar_benchmark.EstimatorCifar10BenchmarkTests.unit_test
+--data_downloads="https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz" \
+--benchmark_methods=official.resnet.estimator_cifar_benchmark.EstimatorCifar10BenchmarkTests.unit_test \
+--root_data_dir=$ROOT_DATA_DIR
 ```
 
-Note that if there is data required by the benchmark method, make sure the data
-is available at the path expected by the benchmark method. For example,
-benchmark methods defined in
-[tensorflow/models](https://github.com/tensorflow/models) expects data to be
-under the path `/data`. You can manually copy the data to `${path}` and then run
-nvidia-docker with argument `-v ${path}:/data`. This allows *benchmark.py* to get
-the data at the path `/data` when it is executed insider docker.
+`${ROOT_DATA_DIR}` should be the directory which contains the dataset files
+required by the benchmark method. If the flag `--data_downloads` is specified,
+PerfZero will download files from the specified url to the directory specified
+by the flag `--root_data_dir`. Otherwise, user needs to manually download and
+move the dataset files into the directory specified by `--root_data_dirs`. The
+default `root_data_dir` is `/data`
 
-Alternatively, upload the data to Google Cloud Storage and provide the url to
-the argument `--gcs_downloads`, which lets *benchmark.py* download the data from
-GCS to the path `/data`.
+Here are a few useful optional flags. Run `python3 benchmark.py --help` to see
+detailed documentation for each flag.
 
-Here are a few commonly used optional flag values. Run `python3 benchmarkpy.py --help` for detail.
-
-1) Use `--gcs_downloads=gs://tf-perf-imagenet-uswest1/tensorflow/cifar10_data`
-to download data for imagenet benchmark defined in tensorflow/models (if you
-have the permission).
-
-2) Use `--workspace=unique_workspace_name` if you need to run multiple benchmark
+1) Use `--workspace=unique_workspace_name` if you need to run multiple benchmark
 using different workspace setup. One example usecase is that you may want to
 test a branch from a pull request without changing your existing workspace.
 
-3) Use `--debug` if you need to see the debug level logging
+2) Use `--debug` if you need to see the debug level logging
 
-4) Use `--git_repos=git_url;git_branch;git_hash` to checkout a git
-repo with the specified git_branch at the specified git_hash to the local folder
-with specified folder name.
+3) Use `--git_repos="git_url;git_branch;git_hash"` to checkout a git repo with
+the specified git_branch at the specified git_hash to the local folder with the
+specified folder name.  Specify the flag once for each repository you want to
+checkout.  Note that we added `"` in the `--git_repos` value string so that `;`
+will not be interpreted by the bash as the end of the command.
 
 5) Use `--profiler_enabled_time=start_time:end_time` to collect profiler data
 during period `[start_time, end_time)` after the benchmark method execution
@@ -163,7 +162,7 @@ key when the name of the key is not sufficiently self-explanary.
   "benchmark_result": {                       # Summary of the benchmark execution results. This is pretty much the same data structure defined in test_log.proto.
                                               # Most values are read from test_log.proto which is written by tf.test.Benchmark.report_benchmark() defined in Tensorflow library.
 
-    "metrics": [                              # This is derived from `extras` [test_log.proto](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/test_log.proto) 
+    "metrics": [                              # This is derived from `extras` [test_log.proto](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/test_log.proto)
                                               # which is written by report_benchmark().
                                               # If the EntryValue is double, then name is the extra's key and value is extra's double value.
                                               # If the EntryValue is string, then name is the extra's key. The string value will be a json formated string whose keys
@@ -196,7 +195,7 @@ should put all generated files (e.g. logs) in `output_dir` so that PerfZero can
 upload these files to Google Cloud Storage when `--output_gcs_url` is specified.
 See [EstimatorCifar10BenchmarkTests](https://github.com/tensorflow/models/blob/master/official/resnet/estimator_cifar_benchmark.py) for example.
 
-2) At the end of the benchmark method execution, the method should call [report_benchmark()](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/platform/benchmark.py) 
+2) At the end of the benchmark method execution, the method should call [report_benchmark()](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/platform/benchmark.py)
 with the following parameters:
 
 ```
@@ -232,7 +231,12 @@ libraries directly and execute benchmark with the local change.
 
 # Instructions for PerfZero developer
 
-Here are the instructions for developers who want to contribute code to PerfZero
+
+Avoid importing `tensorflow` package in any place that requires the `logging`
+package because tensorflow package appears to prevent logging from working
+properly. Importing `tensorflow` package only in the method that requires it.
+
+Here are the commands to run unit tests and check code style.
 
 ```
 # Run all unit tests
@@ -243,7 +247,7 @@ python3 -B -m unittest discover -p "*_test.py"
 find perfzero/lib -name *.py -exec pyformat --in_place {} \;
 
 # Check python code format and report warning and errors
-find perfzero/lib -name *.py -exec pylint {} \;
+find perfzero/lib -name *.py -exec gpylint3 {} \;
 ```
 
 Here is the command to generate table-of-cotents for this README. Run this

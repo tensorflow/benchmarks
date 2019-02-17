@@ -107,7 +107,7 @@ def build_benchmark_result(raw_benchmark_result, has_exception):
 
   succeeded = not has_exception
   metrics = []
-  for name in raw_benchmark_result['extras']:
+  for name in raw_benchmark_result.get('extras', {}):
     entry = {}
     entry['name'] = name
 

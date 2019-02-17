@@ -40,8 +40,6 @@ class BenchmarkRunner(object):
     project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
     self.workspace_dir = os.path.join(project_dir, config.workspace)
     self.site_packages_dir = os.path.join(self.workspace_dir, 'site-packages')
-    self.auth_token_path = os.path.join(
-        self.workspace_dir, 'auth_tokens/benchmark_upload_gce.json')
     self.root_output_dir = os.path.join(self.workspace_dir, 'output')
     self.benchmark_execution_time = {}
 
@@ -49,25 +47,21 @@ class BenchmarkRunner(object):
     """Download data and checkout git repository."""
     # Set up the raid array.
     start_time = time.time()
-    device_utils.create_drive_from_devices('/data',
-                                           self.config.gce_nvme_raid_str)
+    device_utils.create_drive_from_devices(self.config.root_data_dir,
+                                           self.config.gce_nvme_raid)
     self.benchmark_execution_time['create_drive'] = time.time() - start_time
-
-    start_time = time.time()
-    utils.download_from_gcs([{'gcs_url': 'gs://tf-performance/auth_tokens',
-                              'local_path': os.path.join(self.workspace_dir, 'auth_tokens')}])  # pylint: disable=line-too-long
-    self.benchmark_execution_time['download_token'] = time.time() - start_time
 
     # Acticate gcloud service
     start_time = time.time()
     utils.setup_python_path(self.site_packages_dir, self.config.python_path_str)
-    utils.active_gcloud_service(self.auth_token_path)
+    utils.active_gcloud_service(self.config.gcloud_key_file_url, self.workspace_dir)  # pylint: disable=line-too-long
     utils.make_dir_if_not_exist(self.root_output_dir)
     self.benchmark_execution_time['activate_gcloud_service'] = time.time() - start_time  # pylint: disable=line-too-long
 
     # Download data
     start_time = time.time()
-    utils.download_from_gcs(self.config.get_gcs_downloads('/data'))
+    utils.download_data(utils.parse_data_downloads_str(self.config.root_data_dir, self.config.gcs_downloads_str))  # pylint: disable=line-too-long
+    utils.download_data(utils.parse_data_downloads_str(self.config.root_data_dir, self.config.data_downloads_str))  # pylint: disable=line-too-long
     self.benchmark_execution_time['download_data'] = time.time() - start_time
 
     # Checkout git repositories
@@ -95,7 +89,8 @@ class BenchmarkRunner(object):
         benchmark_class = benchmark_method_pattern[:index - 1]
         pattern = benchmark_method_pattern[index + len(filter_prefix):]
         class_instance = self._instantiate_benchmark_class(benchmark_class,
-                                                           '/dev/null')
+                                                           '/dev/null',
+                                                           None)
         for benchmark_method_name in dir(class_instance):
           if re.match(pattern, benchmark_method_name):
             benchmark_methods.append(benchmark_class + '.' +
@@ -107,14 +102,16 @@ class BenchmarkRunner(object):
     site_package_info = self._setup()
     has_exception = False
     benchmark_success_results = {}
+    benchmark_output_dirs = {}
 
     for benchmark_method in self._get_benchmark_methods():
       start_timestamp = time.time()
+      execution_timestamp = start_timestamp
       method_has_exception = False
       execution_id = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S-%f')
-      execution_timestamp = time.time()
       output_dir = os.path.join(self.root_output_dir, execution_id)
       utils.make_dir_if_not_exist(output_dir)
+      benchmark_output_dirs[benchmark_method] = output_dir
       benchmark_class, benchmark_method_name = benchmark_method.rsplit('.', 1)
       benchmark_class_name = benchmark_class.rsplit('.', 1)[1]
 
@@ -126,8 +123,8 @@ class BenchmarkRunner(object):
       logging.getLogger().addHandler(filehandler)
 
       try:
-        class_instance = self._instantiate_benchmark_class(benchmark_class,
-                                                           output_dir)
+        class_instance = self._instantiate_benchmark_class(
+            benchmark_class, output_dir, self.config.root_data_dir)
         # tf.test.Benchmark.report_benchmark() writes results to a file with
         # path benchmark_result_file_path_prefix + benchmark_method
         benchmark_result_file_path_prefix = os.path.join(output_dir, 'proto_')
@@ -140,9 +137,10 @@ class BenchmarkRunner(object):
         scheduler = utils.schedule_profiler_events(
             self.config.profiler_enabled_time_str, output_dir)
         # Run benchmark method
-        logging.info('Start benchmark: %s', benchmark_method)
+        execution_timestamp = time.time()
+        logging.info('Starting benchmark execution: %s', benchmark_method)
         getattr(class_instance, benchmark_method_name)()
-        logging.info('End benchmark: %s', benchmark_method)
+        logging.info('Stopped benchmark: %s', benchmark_method)
         utils.cancel_profiler_events(scheduler, output_dir)
         # Read and build benchmark results
         raw_benchmark_result = utils.read_benchmark_result(benchmark_result_file_path)  # pylint: disable=line-too-long
@@ -165,46 +163,49 @@ class BenchmarkRunner(object):
       execution_summary = report_utils.build_execution_summary(
           execution_timestamp,
           execution_id,
-          self.config.ml_framework_build_label_str,
-          self.config.execution_label_str,
-          self.config.platform_name_str,
-          self.config.system_name_str,
-          self.config.output_gcs_url_str,
+          self.config.ml_framework_build_label,
+          self.config.execution_label,
+          self.config.platform_name,
+          self.config.system_name,
+          self.config.output_gcs_url,
           benchmark_result,
           self.config.get_env_vars(),
           self.config.get_flags(),
           site_package_info,
           method_has_exception)
       report_utils.upload_execution_summary(
-          self.config.bigquery_project_name_str,
-          self.config.bigquery_dataset_table_name_str,
+          self.config.bigquery_project_name,
+          self.config.bigquery_dataset_table_name,
           execution_summary)
       logging.info('Benchmark execution for %s completed with summary:\n %s',
                    benchmark_method, json.dumps(execution_summary, indent=2))
-      utils.maybe_upload_to_gcs(output_dir, self.config.output_gcs_url_str)
+      utils.maybe_upload_to_gcs(output_dir, self.config.output_gcs_url)
       logging.getLogger().removeHandler(filehandler)
       self.benchmark_execution_time[benchmark_method] = {}
-      self.benchmark_execution_time[benchmark_method]['benchmark_time'] = upload_timestamp - start_timestamp  # pylint: disable=line-too-long
-      self.benchmark_execution_time[benchmark_method]['upload_time'] = time.time() - upload_timestamp  # pylint: disable=line-too-long
+      self.benchmark_execution_time[benchmark_method]['class_initialization'] = execution_timestamp - start_timestamp  # pylint: disable=line-too-long
+      self.benchmark_execution_time[benchmark_method]['method_execution'] = upload_timestamp - execution_timestamp  # pylint: disable=line-too-long
+      self.benchmark_execution_time[benchmark_method]['log_upload'] = time.time() - upload_timestamp  # pylint: disable=line-too-long
 
       if self.config.profiler_enabled_time_str:
         relative_output_dir = output_dir[output_dir.find('benchmark'):]
-        print('\nExecute the command below to start tensorboard server using the collected profiler data:\n'
+        print('\nExecute the command below to start tensorboard server using the collected profiler data:\n'  # pylint: disable=line-too-long
               'tensorboard --logdir={}\n'.format(relative_output_dir))
 
     print('Benchmark execution time in seconds by operation:\n {}'.format(
         json.dumps(self.benchmark_execution_time, indent=2)))
-    print('benchmark success results:\n{}'.format(
+    print('Benchmark success results:\n{}'.format(
         json.dumps(benchmark_success_results, indent=2)))
+    print('Benchmark local output directories:\n{}'.format(
+        json.dumps(benchmark_output_dirs, indent=2)))
     if has_exception:
       sys.exit(1)
 
-  def _instantiate_benchmark_class(self, benchmark_class, output_dir):
+  def _instantiate_benchmark_class(self, benchmark_class, output_dir, root_data_dir):  # pylint: disable=line-too-long
     """Return initialized benchmark class."""
     module_import_path, class_name = benchmark_class.rsplit('.', 1)
     module = importlib.import_module(module_import_path)
     class_ = getattr(module, class_name)
-    instance = class_(output_dir=output_dir)
+    instance = class_(output_dir=output_dir, root_data_dir=root_data_dir)
 
     return instance
 
@@ -212,21 +213,14 @@ class BenchmarkRunner(object):
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(
       formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  perfzero_config.add_parser_arguments(parser)
-  parser.add_argument(
-      '--debug',
-      action='store_true',
-      help='If set, use debug level logging. Otherwise, use info level logging')
+  perfzero_config.add_benchmark_parser_arguments(parser)
   FLAGS, unparsed = parser.parse_known_args()
 
-  level = logging.INFO
-  if FLAGS.debug:
-    level = logging.DEBUG
-  logging.basicConfig(
-      format='%(asctime)s %(levelname)s: %(message)s', level=level)
+  level = logging.DEBUG if FLAGS.debug else logging.INFO
+  logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', level=level)  # pylint: disable=line-too-long
 
   if unparsed:
-    logging.warn('Arguments %s are not recognized', unparsed)
+    logging.warning('Arguments %s are not recognized', unparsed)
 
   config_ = perfzero_config.PerfZeroConfig(mode='flags', flags=FLAGS)
   benchmark_runner = BenchmarkRunner(config_)

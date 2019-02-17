@@ -21,30 +21,20 @@ import logging
 import os
 import time
 
+import perfzero.perfzero_config as perfzero_config
 import perfzero.utils as utils
 
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(
       formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  parser.add_argument(
-      '--dockerfile_path',
-      default='docker/Dockerfile',
-      type=str,
-      help='''Build the docker image using docker file located at
-      path_to_perfzero/{dockerfile_path}''')
-  parser.add_argument(
-      '--workspace',
-      default='workspace',
-      type=str,
-      help='''The gcs token file will be downloaded under directory
-      path_to_perfzero/{workspace}''')
+  perfzero_config.add_setup_parser_arguments(parser)
   FLAGS, unparsed = parser.parse_known_args()
 
   logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
                       level=logging.DEBUG)
   if unparsed:
-    logging.warn('Arguments %s are not recognized', unparsed)
+    logging.warning('Arguments %s are not recognized', unparsed)
 
   setup_execution_time = {}
   project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
@@ -53,8 +43,7 @@ if __name__ == '__main__':
   # Download gcloud auth token. Remove this operation in the future when
   # docker in Kokoro can accesss the GCP metadata server
   start_time = time.time()
-  utils.download_from_gcs([{'gcs_url': 'gs://tf-performance/auth_tokens',
-                            'local_path': os.path.join(workspace_dir, 'auth_tokens')}])  # pylint: disable=line-too-long
+  utils.active_gcloud_service(FLAGS.gcloud_key_file_url, workspace_dir, download_only=True)  # pylint: disable=line-too-long
   setup_execution_time['download_token'] = time.time() - start_time
 
   start_time = time.time()
