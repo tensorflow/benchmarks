@@ -17,8 +17,22 @@ from __future__ import print_function
 
 import logging
 import os
+import sched
 import subprocess
 import sys
+import threading
+import time
+import traceback
+
+exit_event = threading.Event()
+
+
+def sleep_until_exit(timeout):
+  start_time = time.time()
+  cur_time = time.time()
+  while cur_time - start_time < timeout and not exit_event.is_set():
+    time.sleep(min(1, timeout + start_time - cur_time))
+    cur_time = time.time()
 
 
 def checkout_git_repos(git_repos, force_update):
@@ -143,7 +157,6 @@ def download_from_gcs(gcs_downloads):
 
 def maybe_upload_to_gcs(local_dir, output_gcs_url):
   if not output_gcs_url:
-    logging.info('Skipped uploading output because output_gcs_url is not set.')
     return
   run_commands(['gsutil -m cp -r {} {}'.format(local_dir, output_gcs_url)])
   logging.info('Uploaded data from local directory %s to gcs %s',
@@ -274,3 +287,100 @@ def read_benchmark_result(benchmark_result_file_path):
 
     return json_format.MessageToDict(
         benchmark_entries, preserving_proto_field_name=True)['entry'][0]
+
+
+def cancel_profiler_events(scheduler, output_dir):
+  """Stop scheduler and save profiler data if any event is cancelled.
+
+  Args:
+    scheduler: the scheduler instance
+    output_dir: log directory to place the profiler data
+  """
+
+  event_canceled = False
+  for event in scheduler.queue:
+    try:
+      scheduler.cancel(event)
+      event_canceled = True
+    except ValueError:
+      # This is OK because the event may have been just canceled
+      pass
+
+  # Signal the scheduler thread to stop sleeping
+  exit_event.set()
+  # Cancelled events must include _stop_and_save_profiler(). Make sure we save
+  # the profiler data before for the execution.
+  if event_canceled:
+    _stop_and_save_profiler(output_dir)
+
+
+def _start_profiler():
+  from tensorflow.python.eager import profiler  # pylint: disable=g-import-not-at-top
+
+  try:
+    logging.info('Starting profiler')
+    profiler.start()
+  except Exception:  # pylint: disable=W0703
+    logging.error('Profiler failed to start due to error:\n %s',
+                  traceback.format_exc())
+
+
+def _stop_and_save_profiler(output_dir):
+  """Stop profiler and save profiler data.
+
+  Args:
+    output_dir: log directory to place the profiler data
+  """
+  from tensorflow.python.eager import profiler  # pylint: disable=g-import-not-at-top
+
+  try:
+    profiler_data_dir = os.path.join(output_dir, 'profiler_data')
+    logging.info('Stopping profiler and saving data to dir %s',
+                 profiler_data_dir)
+    make_dir_if_not_exist(profiler_data_dir)
+    result = profiler.stop()
+    with open(os.path.join(profiler_data_dir, 'local.trace'), 'wb') as f:
+      f.write(result)
+  except Exception:  # pylint: disable=W0703
+    logging.error('Profiler failed to stop due to error:\n %s',
+                  traceback.format_exc())
+
+
+def schedule_profiler_events(profiler_enabled_time_str, output_dir):
+  """Schedule start/stop event for profiler if instructed by config.
+
+  Args:
+    profiler_enabled_time_str: the value of the config --profiler_enabled_time
+    output_dir: log directory to place the profiler data
+
+  Returns:
+    The scheduler instance, or None if nothing is scheduled
+  """
+  scheduler = sched.scheduler(time.time, sleep_until_exit)
+  if not profiler_enabled_time_str:
+    return scheduler
+
+  last_end_time = -1
+  for time_str in profiler_enabled_time_str.split(','):
+    begin_time = int(time_str.split(':')[0].strip())
+    end_time_str = time_str.split(':')[1].strip() if ':' in time_str else None
+    end_time = int(end_time_str) if end_time_str else 365 * 24 * 60 * 60
+    if begin_time <= last_end_time:
+      raise ValueError('begin_time {} is no larger than the last end_time {}'.format(begin_time, last_end_time))  # pylint: disable=line-too-long
+    if end_time <= begin_time:
+      raise ValueError('end_time {} is no larger than begin_time {}'.format(end_time, begin_time))  # pylint: disable=line-too-long
+    scheduler.enter(begin_time, 1, _start_profiler, ())
+    scheduler.enter(end_time, 1, _stop_and_save_profiler,
+                    argument=(output_dir,))
+    last_end_time = end_time
+
+  threading.Thread(target=scheduler.run).start()
+  return scheduler
+
+
+def print_thread_stacktrace():
+  print('Here is the stacktrace for all threads:')
+  thread_names = {t.ident: t.name for t in threading.enumerate()}
+  for thread_id, frame in sys._current_frames().items():  # pylint: disable=protected-access
+    print('Thread {}'.format(thread_names.get(thread_id, thread_id)))
+    traceback.print_stack(frame)

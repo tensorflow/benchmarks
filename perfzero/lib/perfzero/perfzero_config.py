@@ -114,6 +114,15 @@ def add_parser_arguments(parser):
       help='''The log files, gcs token file and git repositories will be generated and downloaded under
       directory path_to_perfzero/${workspace}
       ''')
+  parser.add_argument(
+      '--profiler_enabled_time',
+      default=None,
+      type=str,
+      help='''A string of format begin_time_1:end_time_1,begin_time_2:end_time_2,.... PerfZero will start to collect profiler
+      data ${begin_time} sec after benchmark method execution starts. The data collection continues for ${end_time - begin_time}
+      sec or until the benchmark method execution finishes, whichever occurs first. If ${end_time} is not explicitly
+      specified, it is assumed to be MAX_LONG.
+      ''')
 
 
 class PerfZeroConfig(object):
@@ -138,6 +147,7 @@ class PerfZeroConfig(object):
       self.python_path_str = flags.python_path
       self.workspace = flags.workspace
       self.force_update = flags.force_update
+      self.profiler_enabled_time_str = flags.profiler_enabled_time
 
       if not flags.benchmark_methods:
         logging.warn('No benchmark method is specified by --benchmark_methods')
