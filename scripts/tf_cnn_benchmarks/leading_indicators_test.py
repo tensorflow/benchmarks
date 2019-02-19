@@ -41,12 +41,15 @@ flags.DEFINE_integer('num_batches', None,
 class BenchmarkBase(tf.test.Benchmark):
   """Base class for all benchmarks in this file."""
 
-  def __init__(self, output_dir=None, root_data_dir=None):
+  def __init__(self, output_dir=None, root_data_dir=None, **kwargs):
     """Base class for all benchmarks in this file.
 
     Args:
       output_dir: directory where to output e.g. log files
       root_data_dir: directory under which to look for dataset
+      **kwargs: arbitrary named arguments. This is needed to make the
+                constructor forward compatible in case PerfZero provides more
+                named arguments before updating the constructor.
     """
 
     # Load default values if the benchmark is not run with absl.app.run()

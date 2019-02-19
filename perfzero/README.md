@@ -1,13 +1,15 @@
 Table of Contents
 =================
 
+   * [Table of Contents](#table-of-contents)
    * [Introduction](#introduction)
    * [Instructions for PerfZero user](#instructions-for-perfzero-user)
       * [Build docker image](#build-docker-image)
       * [Run benchmark](#run-benchmark)
       * [Understand benchmark summary](#understand-benchmark-summary)
-   * [Instructions for benchmark developer](#instructions-for-benchmark-developer)
+   * [Instructions for developer who writes benchmark classes](#instructions-for-developer-who-writes-benchmark-classes)
    * [Instructions for PerfZero developer](#instructions-for-perfzero-developer)
+   * [Intructions for managing Google Cloud Platform computing instance](#intructions-for-managing-google-cloud-platform-computing-instance)
 
 # Introduction
 
@@ -35,8 +37,6 @@ summarize the result in a easy-to-read json string and upload the result to
 bigquery table. Using the data in the bigquery table, user can then visualize
 the performance change in a dashboard, compare performance between different
 setup in a table, and trigger alert on when there is performance regression.
-
-
 
 
 # Instructions for PerfZero user
@@ -183,17 +183,25 @@ key when the name of the key is not sufficiently self-explanary.
 }
 ```
 
-# Instructions for benchmark developer
+# Instructions for developer who writes benchmark classes
 
 Here are the instructions that developers of benchmark method needs to follow in
 order to run benchmark method in PerfZero.
 
 1) The benchmark class should extend the Tensorflow python class
 [tensorflow.test.Benchmark](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/platform/benchmark.py). The benchmark class constructor should have a
-constructor with signature `__init__(self, output_dir)`. Benchmark method
-should put all generated files (e.g. logs) in `output_dir` so that PerfZero can
+constructor with signature `__init__(self, output_dir, data_dir, **kwargs)`.
+Below is the usage for each arguments:
+
+- Benchmark method should put all generated files (e.g. logs) in `output_dir` so that PerfZero can
 upload these files to Google Cloud Storage when `--output_gcs_url` is specified.
 See [EstimatorCifar10BenchmarkTests](https://github.com/tensorflow/models/blob/master/official/resnet/estimator_cifar_benchmark.py) for example.
+
+- Benchmark method should read data from `root_data_dir`. For example, the benchmark method can read data from e.g. `${root_data_dir}/cifar-10-binary`
+
+- `**kwargs` is useful to make the benchmark constructor forward compatible when PerfZero provides more named arguments to the benchmark constructor before
+  updating the benchmark class.
+
 
 2) At the end of the benchmark method execution, the method should call [report_benchmark()](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/platform/benchmark.py)
 with the following parameters:
@@ -256,4 +264,41 @@ command and copy/paste it to the README.md.
 ```
 ./perfzero/scripts/generate-readme-header.sh perfzero/README.md
 ```
+
+
+# Intructions for managing Google Cloud Platform computing instance
+
+PerfZero aims to make it easy to run and debug Tensorflow which is usually run
+with GPU. However, most users do not have dedicated machine with the expensive
+hardware. One cost-effective solution is for users to create machine with the
+desired hardward on demand in a public cloud when they need to debug Tensorflow.
+
+We provide a script in PerfZero to make it easy to manage computing instance in
+Google Cloud Platform. This assumes that you have access to an existing project
+in GCP.
+
+Run `python perfzero/lib/cloud_manager.py --help` for list of commands supported
+by the script. Run e.g. `cloud_manager.py <command> --help` to see helper message
+for each command.
+
+
+In most cases, user only needs to run the following commands:
+
+```
+# Create a new instance that is unique to your username
+python perfzero/lib/cloud_manager.py create --project=project_name
+
+# Query the status of the existing instanced created by your and its IP address
+python perfzero/lib/cloud_manager.py status --project=project_name
+
+# Stop the instance
+python perfzero/lib/cloud_manager.py stop --project=project_name
+
+# Start the instance
+python perfzero/lib/cloud_manager.py start --project=project_name
+
+# Delete the instance
+python perfzero/lib/cloud_manager.py delete --project=project_name
+```
+
 
