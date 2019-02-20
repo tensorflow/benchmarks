@@ -556,7 +556,7 @@ flags.DEFINE_integer('fp16_inc_loss_scale_every_n', 1000,
 flags.DEFINE_enum('variable_update', 'parameter_server',
                   ('parameter_server', 'replicated', 'distributed_replicated',
                    'independent', 'distributed_all_reduce',
-                   'collective_all_reduce', 'horovod'),
+                   'collective_all_reduce', 'horovod', 'kungfu'),
                   'The method for managing variables: parameter_server, '
                   'replicated, distributed_replicated, independent, '
                   'distributed_all_reduce, collective_all_reduce, horovod')
@@ -1492,6 +1492,11 @@ class BenchmarkCNN(object):
     elif self.params.variable_update == 'horovod':
       import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
       self.num_workers = hvd.size()
+    elif self.params.variable_update == 'kungfu':
+      import json, os
+      cluster_spec = json.loads(os.getenv('KUNGFU_CLUSTER_SPEC'))
+      cluster_size = len(cluster_spec['Peers'])
+      self.num_workers = cluster_size
     else:
       self.num_workers = 1
     self.num_ps = self.cluster_manager.num_ps() if self.cluster_manager else 0
@@ -1619,7 +1624,7 @@ class BenchmarkCNN(object):
         raise ValueError('Invalid variable_update in local mode: %s' %
                          self.params.variable_update)
       self.variable_mgr = variable_mgr.VariableMgrDistributedReplicated(self)
-    elif self.params.variable_update in ('independent', 'horovod'):
+    elif self.params.variable_update in ('independent', 'horovod', 'kungfu'):
       if self.job_name:
         raise ValueError('Invalid variable_update in distributed mode: %s' %
                          self.params.variable_update)
@@ -2166,6 +2171,8 @@ class BenchmarkCNN(object):
       # First worker will be 'chief' - it will write summaries and
       # save checkpoints.
       is_chief = hvd.rank() == 0
+    if self.params.variable_update == 'kungfu':
+      is_chief = int(os.getenv('KUNGFU_SELF_RANK')) == 0
     else:
       is_chief = (not self.job_name or self.task_index == 0)
 
@@ -2213,6 +2220,9 @@ class BenchmarkCNN(object):
     if self.params.variable_update == 'horovod':
       import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
       bcast_global_variables_op = hvd.broadcast_global_variables(0)
+    elif self.params.variable_update == 'kungfu':
+      import kungfu as kf
+      bcast_global_variables_op = kf.distributed_variables_initializer()
     else:
       bcast_global_variables_op = None
 
@@ -2237,7 +2247,7 @@ class BenchmarkCNN(object):
         # since we want session to be initialized symmetrically on all the
         # workers.
         is_chief=is_chief or (self.params.variable_update == 'horovod'
-                              or self.distributed_collective),
+                              or self.distributed_collective or self.params.variable_update == 'kungfu'),
         # Log dir should be unset on non-chief workers to prevent Horovod
         # workers from corrupting each other's checkpoints.
         logdir=self.params.train_dir if is_chief else None,
@@ -2768,6 +2778,9 @@ class BenchmarkCNN(object):
     if self.params.variable_update == 'horovod':
       import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
       seed_adjustment = hvd.rank()
+    elif self.params.variable_update == 'kungfu':
+      import os
+      seed_adjustment = int(os.getenv('KUNGFU_SELF_RANK'))
     else:
       seed_adjustment = 0
     mlperf.logger.log(key=mlperf.tags.RUN_SET_RANDOM_SEED,
@@ -2900,7 +2913,8 @@ class BenchmarkCNN(object):
 
     # TODO(reedwm): Greatly simplify the learning rate code.
     if (self.params.variable_update == 'horovod' or
-        self.params.variable_update == 'collective_all_reduce'):
+        self.params.variable_update == 'collective_all_reduce' or
+        self.params.variable_update == 'kungfu'):
       # Each worker independently increments global_step.
       examples_per_step = self.batch_size * self.num_workers
     else:
@@ -3253,6 +3267,10 @@ class BenchmarkCNN(object):
         # All-reduce gradients using Horovod.
         grads = [hvd.allreduce(grad, average=False, device_dense=horovod_device)
                  for grad in grads]
+      elif self.params.variable_update == 'kungfu':
+        from kungfu.optimizers.core import lazy_load_op_lib
+        _op_lib = lazy_load_op_lib()
+        grads = [_op_lib.all_reduce(grad) for grad in grads]
 
       if self.params.staged_vars:
         grad_dtypes = [grad.dtype for grad in grads]
