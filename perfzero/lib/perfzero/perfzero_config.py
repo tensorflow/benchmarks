@@ -19,63 +19,90 @@ import logging
 import os
 
 
-def add_parser_arguments(parser):
-  """Add arguments to the parser intance."""
+def add_setup_parser_arguments(parser):
+  """Add arguments to the parser used by the setup.py."""
+  parser.add_argument(
+      '--dockerfile_path',
+      default='docker/Dockerfile',
+      type=str,
+      help='''Build the docker image using docker file located at path_to_perfzero/{dockerfile_path}
+      ''')
+  parser.add_argument(
+      '--workspace',
+      default='workspace',
+      type=str,
+      help='''The gcloud key file will be downloaded under directory path_to_perfzero/{workspace}
+      ''')
+  parser.add_argument(
+      '--gcloud_key_file_url',
+      default='gs://tf-performance/auth_tokens/benchmark_upload_gce.json',
+      type=str,
+      help='''The gcloud key file url. When specified, it will be downloaded to the directory specified by the flag --workspace.
+      ''')
+
+
+def add_benchmark_parser_arguments(parser):
+  """Add arguments to the parser used by the benchmark.py."""
   parser.add_argument(
       '--force_update',
       action='store_true',
-      help='If set, do git pull for dependent git repositories')
+      help='If set, do git pull for dependent git repositories'
+      )
   parser.add_argument(
       '--gce_nvme_raid',
       default=None,
       type=str,
-      help='If set to non-empty string, create raid 0 array with devices at /data')  # pylint: disable=line-too-long
+      help='If set to non-empty string, create raid 0 array with devices at the directory specified by the flag --root_data_dir'
+      )
   parser.add_argument(
       '--gcs_downloads',
       default=None,
       type=str,
-      help='''The format is url_1;folder_name_1,url_2;folder_name_2,...
-      Data will be copied from ${url} to /data/${folder_name}. ${folder_name} can be skipped if it is the same as the
-      folder name in GCS url, which shortens the format to url_1,url_2,...''')
+      help='This flag is deprecated. Use the flag --data_downloads instead')
   parser.add_argument(
       '--git_repos',
       default=None,
       type=str,
-      help='''Git repositories to checkout to local disk. The format is url_1;branch_1;hash_1,url_2;branch_2;hash_2,...
+      help='''A string representing git repositories to checkout. The format is url_1;branch_1;hash_1,url_2;branch_2;hash_2,...
       Git repositories will be checked-out under directory path_to_perfzero/${workspace}/site-packages,
       where ${workspace} either defaults to 'workspace', or takes the value of the flag --workspace.
       branch and hash can be skipped if user wants to use the head of the master branch,
-      which shortens the format to url_1,url_2,...''')
+      which shortens the format to url_1,url_2,...
+      ''')
   parser.add_argument(
       '--benchmark_methods',
       action='append',
+      default=[],
       type=str,
       help='''This string specifies the benchmark_method to be executed. The flag can be specified multiple times in which case
       the union of methods matched by these flags will be executed. The format can be module_path.class_name.method_name in which
       case the corresponding method is executed. The format can also be module_path.class_name.filter:regex_pattern, in which case all methods
       of the given class whose method name matches the given regular expression are executed.
-      ''',
-      default=[])
+      ''')
   parser.add_argument(
       '--ml_framework_build_label',
+      default=None,
       type=str,
-      help='A string that identified the machine learning framework build, e.g. nightly-gpu-build',
-      default=None)
+      help='A string that identified the machine learning framework build, e.g. nightly-gpu-build'
+      )
   parser.add_argument(
       '--execution_label',
       default=None,
       type=str,
-      help='A string that identified the benchmark execution type, e.g. test, prod')  # pylint: disable=line-too-long
+      help='A string that identified the benchmark execution type, e.g. test, prod'
+      )
   parser.add_argument(
       '--platform_name',
       default=None,
       type=str,
-      help='A string that identified the computing platform, e.g. gcp, aws')  # pylint: disable=line-too-long
+      help='A string that identified the computing platform, e.g. gcp, aws'
+      )
   parser.add_argument(
       '--system_name',
       default=None,
       type=str,
-      help='A string that identified the hardware system, e.g. n1-standard-64-8xV100')  # pylint: disable=line-too-long
+      help='A string that identified the hardware system, e.g. n1-standard-64-8xV100'
+      )
   parser.add_argument(
       '--output_gcs_url',
       default=None,
@@ -103,7 +130,7 @@ def add_parser_arguments(parser):
       '--python_path',
       default=None,
       type=str,
-      help='''A common separated string of the format path_1,path_2,... For each ${path} specified in the string,
+      help='''A string of format path_1,path_2,... For each ${path} specified in the string,
       path_to_perfzero/${workspace}/site-packages/${path} will be added to python path so that libraies downloaded by --git_repos can
       be loaded and executed.
       ''')
@@ -111,9 +138,35 @@ def add_parser_arguments(parser):
       '--workspace',
       default='workspace',
       type=str,
-      help='''The log files, gcs token file and git repositories will be generated and downloaded under
+      help='''The log files, gcloud key file and git repositories will be generated and downloaded under the
       directory path_to_perfzero/${workspace}
       ''')
+  parser.add_argument(
+      '--root_data_dir',
+      default='/data',
+      type=str,
+      help='The directory which should contain the dataset required by the becnhmark method.'
+      )
+  parser.add_argument(
+      '--data_downloads',
+      default=None,
+      type=str,
+      help='''A string of format url_1;relative_path_1,url_2;relative_path_2,...
+      Data will be copied from ${url} to ${root_data_dir}/${relative_path}. ${relative_path} can be skipped if it is the same as the
+      base name of the url, which shortens the format to url_1,url_2,... ${root_data_dir} is specified by the flag --root_data_dir.
+      File will be de-compressed in ${root_data_dir} if its name ends with 'gz'. Only url prefixed with gcs, http or https are supported.
+      ''')
+  parser.add_argument(
+      '--gcloud_key_file_url',
+      default='gs://tf-performance/auth_tokens/benchmark_upload_gce.json',
+      type=str,
+      help='The gcloud key file url. When specified, it will be activated and used as the gcloud authentication credential.'
+      )
+  parser.add_argument(
+      '--debug',
+      action='store_true',
+      help='If set, use debug level logging. Otherwise, use info level logging'
+      )
   parser.add_argument(
       '--profiler_enabled_time',
       default=None,
@@ -132,25 +185,27 @@ class PerfZeroConfig(object):
     self.mode = mode
     self.flags = flags
     if mode == 'flags':
-      self.gce_nvme_raid_str = flags.gce_nvme_raid
+      self.gce_nvme_raid = flags.gce_nvme_raid
       self.gcs_downloads_str = flags.gcs_downloads
+      self.data_downloads_str = flags.data_downloads
       self.git_repos_str = flags.git_repos
       self.benchmark_method_patterns = flags.benchmark_methods
-      self.ml_framework_build_label_str = flags.ml_framework_build_label
-      self.execution_label_str = flags.execution_label
-      self.platform_name_str = flags.platform_name
-      self.system_name_str = flags.system_name
-      self.output_gcs_url_str = flags.output_gcs_url
-      self.bigquery_project_name_str = flags.bigquery_project_name
-      self.bigquery_dataset_table_name_str = flags.bigquery_dataset_table_name
-      self.output_gcs_url_str = flags.output_gcs_url
+      self.ml_framework_build_label = flags.ml_framework_build_label
+      self.execution_label = flags.execution_label
+      self.platform_name = flags.platform_name
+      self.system_name = flags.system_name
+      self.output_gcs_url = flags.output_gcs_url
+      self.bigquery_project_name = flags.bigquery_project_name
+      self.bigquery_dataset_table_name = flags.bigquery_dataset_table_name
       self.python_path_str = flags.python_path
       self.workspace = flags.workspace
       self.force_update = flags.force_update
+      self.root_data_dir = flags.root_data_dir
+      self.gcloud_key_file_url = flags.gcloud_key_file_url
       self.profiler_enabled_time_str = flags.profiler_enabled_time
 
       if not flags.benchmark_methods:
-        logging.warn('No benchmark method is specified by --benchmark_methods')
+        logging.warning('No benchmark method is specified by --benchmark_methods')
 
       if flags.bigquery_project_name and not flags.bigquery_dataset_table_name:
         raise ValueError('--bigquery_project_name is specified but --bigquery_dataset_table_name is not')  # pylint: disable=line-too-long
@@ -195,27 +250,4 @@ class PerfZeroConfig(object):
 
     return git_repos
 
-  def get_gcs_downloads(self, data_dir):
-    """Download data from GCS."""
-    gcs_downloads = []
-    if not self.gcs_downloads_str:
-      return gcs_downloads
-
-    for entry in self.gcs_downloads_str.split(','):
-      gcs_download = {}
-      # Canonicalize gcs url to remove trailing '/' and '*'
-      if entry.endswith('*'):
-        entry = entry[:-1]
-      if entry.endswith('/'):
-        entry = entry[:-1]
-
-      if ';' in entry:
-        gcs_download['gcs_url'] = entry.split(';')[0]
-        gcs_download['local_path'] = os.path.join(data_dir, entry.split(';')[1])
-      else:
-        gcs_download['gcs_url'] = entry
-        gcs_download['local_path'] = os.path.join(data_dir, os.path.basename(entry))  # pylint: disable=line-too-long
-    gcs_downloads.append(gcs_download)
-
-    return gcs_downloads
 
