@@ -19,9 +19,10 @@ regression.
 
 PerfZero makes it easy to execute the pre-defined test by consolidating the
 docker image build, GPU driver installation, Tensorflow installation, benchmark
-library checkout, data download, system statistics collection, benchmark
-metrics collection and so on into 2 to 3 commands. This allows developer to focus
-on investigating the issue rather than setting up the test environment.
+library checkout, data download, system statistics collection, benchmark metrics
+collection, profiler data collection and so on into 2 to 3 commands. This allows
+developer to focus on investigating the issue rather than setting up the test
+environment.
 
 2) For user who wants to track the performance change of Tensorflow for a
 variety of setup (e.g. GPU model, cudnn version, Tensorflow version)
@@ -97,6 +98,15 @@ test a branch from a pull request without changing your existing workspace.
 repo with the specified git_branch at the specified git_hash to the local folder
 with specified folder name.
 
+5) Use `--profiler_enabled_time=start_time:end_time` to collect profiler data
+during period `[start_time, end_time)` after the benchmark method execution
+starts. Skip `end_time` in the flag value to collect data until the end of
+benchmark method execution. Run `tensorboard
+--logdir=perfzero/workspace/output/${execution_id}` or `python3 -m
+tensorboard.main --logdir=perfzero/workspace/output/${execution_id}` to open
+Tensorboard server. If PerfZero is executed on a remote machine,
+run `ssh -L 6006:127.0.0.1:6006 remote_ip` before opening `http://localhost:6006`
+in your browser to access the Tensorboard UI.
 
 ## Understand benchmark summary
 

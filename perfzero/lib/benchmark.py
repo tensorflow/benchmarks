@@ -136,10 +136,14 @@ class BenchmarkRunner(object):
             benchmark_result_file_path_prefix,
             benchmark_class_name,
             benchmark_method_name)
+
+        scheduler = utils.schedule_profiler_events(
+            self.config.profiler_enabled_time_str, output_dir)
         # Run benchmark method
         logging.info('Start benchmark: %s', benchmark_method)
         getattr(class_instance, benchmark_method_name)()
         logging.info('End benchmark: %s', benchmark_method)
+        utils.cancel_profiler_events(scheduler, output_dir)
         # Read and build benchmark results
         raw_benchmark_result = utils.read_benchmark_result(benchmark_result_file_path)  # pylint: disable=line-too-long
         # Explicitly overwrite the name to be the full path to benchmark method
@@ -182,6 +186,11 @@ class BenchmarkRunner(object):
       self.benchmark_execution_time[benchmark_method] = {}
       self.benchmark_execution_time[benchmark_method]['benchmark_time'] = upload_timestamp - start_timestamp  # pylint: disable=line-too-long
       self.benchmark_execution_time[benchmark_method]['upload_time'] = time.time() - upload_timestamp  # pylint: disable=line-too-long
+
+      if self.config.profiler_enabled_time_str:
+        relative_output_dir = output_dir[output_dir.find('benchmark'):]
+        print('\nExecute the command below to start tensorboard server using the collected profiler data:\n'
+              'tensorboard --logdir={}\n'.format(relative_output_dir))
 
     print('Benchmark execution time in seconds by operation:\n {}'.format(
         json.dumps(self.benchmark_execution_time, indent=2)))
