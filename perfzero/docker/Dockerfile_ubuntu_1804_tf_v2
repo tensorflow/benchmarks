@@ -65,6 +65,7 @@ RUN pip3 install --upgrade pip==9.0.1
 RUN pip3 install --upgrade setuptools google-api-python-client pyyaml google-cloud google-cloud-bigquery
 RUN pip3 install wheel absl-py
 RUN pip3 install --upgrade --force-reinstall tf-nightly-gpu-2.0-preview
+RUN pip3 install tensorflow-datasets
 
 RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/requirements.txt > /tmp/requirements.txt
 RUN pip3 install -r /tmp/requirements.txt
