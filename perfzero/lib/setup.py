@@ -21,6 +21,7 @@ import logging
 import os
 import time
 
+import perfzero.device_utils as device_utils
 import perfzero.perfzero_config as perfzero_config
 import perfzero.utils as utils
 
@@ -46,6 +47,12 @@ if __name__ == '__main__':
   utils.active_gcloud_service(FLAGS.gcloud_key_file_url, workspace_dir, download_only=True)  # pylint: disable=line-too-long
   setup_execution_time['download_token'] = time.time() - start_time
 
+  # Set up the raid array.
+  start_time = time.time()
+  device_utils.create_drive_from_devices(FLAGS.root_data_dir, FLAGS.gce_nvme_raid)  # pylint: disable=line-too-long
+  setup_execution_time['create_drive'] = time.time() - start_time
+
+  # Create docker image
   start_time = time.time()
   dockerfile_path = os.path.join(project_dir, FLAGS.dockerfile_path)
   docker_tag = 'temp/tf-gpu'

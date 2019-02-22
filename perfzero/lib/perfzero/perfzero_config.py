@@ -39,6 +39,18 @@ def add_setup_parser_arguments(parser):
       type=str,
       help='''The gcloud key file url. When specified, it will be downloaded to the directory specified by the flag --workspace.
       ''')
+  parser.add_argument(
+      '--root_data_dir',
+      default='/data',
+      type=str,
+      help='The directory which should contain the dataset required by the becnhmark method.'
+      )
+  parser.add_argument(
+      '--gce_nvme_raid',
+      default=None,
+      type=str,
+      help='If set to non-empty string, create raid 0 array with devices at the directory specified by the flag --root_data_dir'
+      )
 
 
 def add_benchmark_parser_arguments(parser):
@@ -47,12 +59,6 @@ def add_benchmark_parser_arguments(parser):
       '--force_update',
       action='store_true',
       help='If set, do git pull for dependent git repositories'
-      )
-  parser.add_argument(
-      '--gce_nvme_raid',
-      default=None,
-      type=str,
-      help='If set to non-empty string, create raid 0 array with devices at the directory specified by the flag --root_data_dir'
       )
   parser.add_argument(
       '--gcs_downloads',
@@ -185,7 +191,6 @@ class PerfZeroConfig(object):
     self.mode = mode
     self.flags = flags
     if mode == 'flags':
-      self.gce_nvme_raid = flags.gce_nvme_raid
       self.gcs_downloads_str = flags.gcs_downloads
       self.data_downloads_str = flags.data_downloads
       self.git_repos_str = flags.git_repos
