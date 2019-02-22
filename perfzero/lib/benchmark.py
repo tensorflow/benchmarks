@@ -26,7 +26,6 @@ import sys
 import time
 import traceback
 
-import perfzero.device_utils as device_utils
 import perfzero.perfzero_config as perfzero_config
 import perfzero.report_utils as report_utils
 import perfzero.utils as utils
@@ -45,11 +44,6 @@ class BenchmarkRunner(object):
 
   def _setup(self):
     """Download data and checkout git repository."""
-    # Set up the raid array.
-    start_time = time.time()
-    device_utils.create_drive_from_devices(self.config.root_data_dir,
-                                           self.config.gce_nvme_raid)
-    self.benchmark_execution_time['create_drive'] = time.time() - start_time
 
     # Acticate gcloud service
     start_time = time.time()
