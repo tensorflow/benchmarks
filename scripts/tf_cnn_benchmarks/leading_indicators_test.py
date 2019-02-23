@@ -30,9 +30,9 @@ import sys
 
 from absl import flags
 from absl.testing import absltest  # pylint: disable=unused-import
+import tensorflow as tf  # pylint: disable=g-bad-import-order
 import benchmark_cnn
 from platforms import util as platforms_util
-import tensorflow as tf
 
 flags.DEFINE_integer('num_batches', None,
                      'number of batches to run, excluding warmup')
@@ -41,12 +41,15 @@ flags.DEFINE_integer('num_batches', None,
 class BenchmarkBase(tf.test.Benchmark):
   """Base class for all benchmarks in this file."""
 
-  def __init__(self, output_dir=None, root_data_dir=None):
+  def __init__(self, output_dir=None, root_data_dir=None, **kwargs):
     """Base class for all benchmarks in this file.
 
     Args:
       output_dir: directory where to output e.g. log files
       root_data_dir: directory under which to look for dataset
+      **kwargs: arbitrary named arguments. This is needed to make the
+                constructor forward compatible in case PerfZero provides more
+                named arguments before updating the constructor.
     """
 
     # Load default values if the benchmark is not run with absl.app.run()
@@ -55,13 +58,12 @@ class BenchmarkBase(tf.test.Benchmark):
 
     self.fake_data_dir = os.path.join(platforms_util.get_test_data_dir(),
                                       'fake_tf_record_data')
-
+    self.output_dir = output_dir
     if root_data_dir is None:
       self.data_dir = ('/readahead/200M/placer/prod/home/distbelief/'
                        'imagenet-tensorflow/imagenet-2012-tfrecord')
     else:
       self.data_dir = os.path.join(root_data_dir, 'imagenet')
-    self.output_dir = output_dir
 
   def _run_benchmark(self, params):
     """Run a CNN benchmark and report its results.
