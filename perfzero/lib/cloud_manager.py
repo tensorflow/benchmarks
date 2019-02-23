@@ -75,52 +75,59 @@ def get_instance_name(username):
   return INSTANCE_NAME_PREFIX + username
 
 
-def get_machine_type(accelerator_count):
-  """Get machine type string based on the accelerator count.
+def get_machine_type(machine_type, accelerator_count):
+  """Get machine type for the instance.
+
+  - Use the user-specified machine_type if it is not None
+  - Otherwise, use the standard type with cpu_count = 8 x accelerator_count
+    if user-specified accelerator_count > 0
+  - Otherwise, use the standard type with 8 cpu
 
   Args:
+    machine_type: machine_type specified by the user
     accelerator_count: accelerator count
 
   Returns:
-    a string recognized by the gcloud utility as the machine type
+    the machine type used for the instance
   """
-  if accelerator_count == 0:
-    return 'n1-standard-2'
-  elif accelerator_count == 1:
-    return 'n1-standard-4'
-  elif accelerator_count == 2:
-    return 'n1-standard-8'
-  elif accelerator_count <= 4:
-    return 'n1-standard-16'
-  elif accelerator_count <= 8:
-    return 'n1-standard-32'
-  elif accelerator_count <= 16:
-    return 'n1-standard-64'
+  if machine_type:
+    return machine_type
+  cpu_count = max(accelerator_count, 1) * 8
+  return 'n1-standard-{}'.format(cpu_count)
 
 
-def create(username, project, zone, accelerator_count):
+def create(username, project, zone, machine_type, accelerator_count,
+           accelerator_type, image, nvme_count):
   """Create gcloud computing instance.
 
   Args:
     username: the username of the current user
     project: project name
     zone: zone of the GCP computing instance
-    accelerator_count: accelerator count
+    machine_type: the machine type used for the instance
+    accelerator_count: the number of pieces of the accelerator to attach to
+                       the instance
+    accelerator_type: the specific type of accelerator to attach to the instance
+    image: the name of the image that the disk will be initialized with
+    nvme_count: the number of NVME local SSD devices to attach to the instance
   """
   instance_name = get_instance_name(username)
-  machine_type = get_machine_type(accelerator_count)
+  machine_type = get_machine_type(machine_type, accelerator_count)
   logging.debug('Creating gcloud computing instance %s', instance_name)
 
   cmd = '''gcloud compute instances create {} \
---image tf-ubuntu-1604-20180927-410 \
---project {} \
---zone {} \
---machine-type {} \
---maintenance-policy TERMINATE \
-'''.format(instance_name, project, zone, machine_type)
+--image={} \
+--project={} \
+--zone={} \
+--machine-type={} \
+--maintenance-policy=TERMINATE \
+'''.format(instance_name, image, project, zone, machine_type)
 
   if accelerator_count > 0:
-    cmd += '--accelerator count={},type=nvidia-tesla-v100'.format(accelerator_count)  # pylint: disable=line-too-long
+    cmd += '--accelerator=count={},type={} '.format(accelerator_count, accelerator_type)  # pylint: disable=line-too-long
+
+  for _ in range(nvme_count):
+    cmd += '--local-ssd=interface=NVME '
 
   run_command(cmd, is_from_user=True)
   logging.info('Successfully created gcloud computing instance %s with %s accelerator.\n',  # pylint: disable=line-too-long
@@ -158,7 +165,7 @@ def status(username, project, zone):
 
 def list_all(project):
   logging.debug('Finding all gcloud computing instance of project %s created for PerfZero test', project)  # pylint: disable=line-too-long
-  cmd = 'gcloud compute instances list --filter="name ~ {}" --project {}'.format(INSTANCE_NAME_PREFIX, project)  # pylint: disable=line-too-long
+  cmd = 'gcloud compute instances list --filter="name ~ {}" --project={}'.format(INSTANCE_NAME_PREFIX, project)  # pylint: disable=line-too-long
   stdout = run_command(cmd, is_from_user=True)
   num_instances = len(stdout.splitlines()) - 1
   logging.info('\nFound %s gcloud computing instance of project %s created for PerfZero test', num_instances, project)  # pylint: disable=line-too-long
@@ -168,7 +175,7 @@ def start(username, project, zone):
   instance_name = get_instance_name(username)
   logging.debug('Starting gcloud computing instance %s of project %s in zone %s', instance_name, project, zone)  # pylint: disable=line-too-long
 
-  cmd = 'gcloud compute instances start {} --project {} --zone {}'.format(
+  cmd = 'gcloud compute instances start {} --project={} --zone={}'.format(
       instance_name, project, zone)
   run_command(cmd, is_from_user=True)
   logging.debug('\nSuccessfully started gcloud computing instance %s of project %s in zone %s', instance_name, project, zone)  # pylint: disable=line-too-long
@@ -178,7 +185,7 @@ def stop(username, project, zone):
   instance_name = get_instance_name(username)
   logging.debug('Stopping gcloud computing instance %s of project %s in zone %s', instance_name, project, zone)  # pylint: disable=line-too-long
 
-  cmd = 'gcloud compute instances stop {} --project {} --zone {}'.format(instance_name, project, zone)  # pylint: disable=line-too-long
+  cmd = 'gcloud compute instances stop {} --project={} --zone={}'.format(instance_name, project, zone)  # pylint: disable=line-too-long
   run_command(cmd, is_from_user=True)
   logging.debug('\nSuccessfully stopped gcloud computing instance %s of project %s in zone %s', instance_name, project, zone)  # pylint: disable=line-too-long
 
@@ -187,7 +194,7 @@ def delete(username, project, zone):
   instance_name = get_instance_name(username)
   logging.debug('Deleting gcloud computing instance %s of project %s in zone %s', instance_name, project, zone)  # pylint: disable=line-too-long
 
-  cmd = 'echo Y | gcloud compute instances delete {} --project {} --zone {}'.format(instance_name, project, zone)  # pylint: disable=line-too-long
+  cmd = 'echo Y | gcloud compute instances delete {} --project={} --zone={}'.format(instance_name, project, zone)  # pylint: disable=line-too-long
   run_command(cmd, is_from_user=True)
   logging.debug('\nSuccessfully deleted gcloud computing instance %s of project %s in zone %s', instance_name, project, zone)  # pylint: disable=line-too-long
 
@@ -230,7 +237,7 @@ def parse_arguments(argv, command):  # pylint: disable=redefined-outer-name
         '--zone',
         default='us-west1-b',
         type=str,
-        help='Zone of the instances to manage'
+        help='Zone of the instance to create.'
         )
 
   if command == 'create':
@@ -238,7 +245,38 @@ def parse_arguments(argv, command):  # pylint: disable=redefined-outer-name
         '--accelerator_count',
         default=0,
         type=int,
-        help='The number of pieces of the accelerator to attach to the instances'
+        help='The number of pieces of the accelerator to attach to the instance'
+        )
+    parser.add_argument(
+        '--accelerator_type',
+        default='nvidia-tesla-v100',
+        type=str,
+        help='''The specific type (e.g. nvidia-tesla-v100 for nVidia Tesla V100) of
+        accelerator to attach to the instance. Use 'gcloud compute accelerator-types list --project=${project_name}' to
+        learn about all available accelerator types.
+        ''')
+    parser.add_argument(
+        '--machine_type',
+        default=None,
+        type=str,
+        help='''The machine type used for the instance. To get a list of available machine
+        types, run 'gcloud compute machine-types list --project=${project_name}'
+        ''')
+    parser.add_argument(
+        '--image',
+        default='tf-ubuntu-1604-20180927-410',
+        type=str,
+        help='''Specifies the name of the image that the disk will be initialized with.
+        A new disk will be created based on the given image. To view a list of
+        public images and projects, run 'gcloud compute images list --project=${project_name}'. It is best
+        practice to use image when a specific version of an image is needed.
+        ''')
+    parser.add_argument(
+        '--nvme_count',
+        default=0,
+        type=int,
+        help='''Specifies the number of NVME local SSD devices to attach to the instance.
+        '''
         )
 
   flags, unparsed = parser.parse_known_args(argv)  # pylint: disable=redefined-outer-name
@@ -250,8 +288,6 @@ def parse_arguments(argv, command):  # pylint: disable=redefined-outer-name
   logging.basicConfig(format='%(message)s', level=level)
 
   return flags
-
-
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(
       usage='''cloud_manager.py <command> [<args>]
@@ -279,7 +315,9 @@ The supported commands are:
   flags = parse_arguments(sys.argv[2:], command)
 
   if command == 'create':
-    create(flags.username, flags.project, flags.zone, flags.accelerator_count)
+    create(flags.username, flags.project, flags.zone, flags.machine_type,
+           flags.accelerator_count, flags.accelerator_type, flags.image,
+           flags.nvme_count)
   elif command == 'start':
     start(flags.username, flags.project, flags.zone)
   elif command == 'stop':
