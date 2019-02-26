@@ -64,7 +64,7 @@ RUN pip3 install --upgrade pip==9.0.1
 # setuptools upgraded to fix install requirements from model garden.
 RUN pip3 install --upgrade setuptools google-api-python-client pyyaml google-cloud google-cloud-bigquery
 RUN pip3 install wheel absl-py
-RUN pip3 install --upgrade --force-reinstall https://storage.googleapis.com/tensorflow-nightly/prod/tensorflow/release/ubuntu/gpu_py36_full_v2/nightly_release/155/20190225-112501/github/tensorflow/pip_pkg/tf_nightly_gpu_2.0_preview-2.0.0.dev20190225-cp36-cp36m-manylinux1_x86_64.whl
+RUN pip3 install --upgrade --force-reinstall tf-nightly-gpu-2.0-preview
 RUN pip3 install tfds-nightly
 
 RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/requirements.txt > /tmp/requirements.txt
