@@ -25,7 +25,7 @@ def add_setup_parser_arguments(parser):
       '--dockerfile_path',
       default='docker/Dockerfile',
       type=str,
-      help='''Build the docker image using docker file located at path_to_perfzero/{dockerfile_path}
+      help='''Build the docker image using docker file located at the specified path.
       ''')
   parser.add_argument(
       '--workspace',

@@ -54,7 +54,10 @@ if __name__ == '__main__':
 
   # Create docker image
   start_time = time.time()
-  dockerfile_path = os.path.join(project_dir, FLAGS.dockerfile_path)
+  dockerfile_path = FLAGS.dockerfile_path
+  if not os.path.exists(dockerfile_path):
+    # Fall back to the deprecated approach if the user-specified dockerfile_path does not exist
+    dockerfile_path = os.path.join(project_dir, FLAGS.dockerfile_path)
   docker_tag = 'temp/tf-gpu'
   cmd = 'docker build --pull -t {} - < {}'.format(docker_tag, dockerfile_path)
   utils.run_commands([cmd])
