@@ -68,7 +68,7 @@ export ROOT_DATA_DIR=/data
 nvidia-docker run -it --rm -v $(pwd):/workspace -v $ROOT_DATA_DIR:$ROOT_DATA_DIR temp/tf-gpu \
 python3 /workspace/benchmarks/perfzero/lib/benchmark.py \
 --gcloud_key_file_url="" \
---git_repos=https://github.com/tensorflow/models.git \
+--git_repos="https://github.com/tensorflow/models.git" \
 --python_path=models \
 --data_downloads="https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz" \
 --benchmark_methods=official.resnet.estimator_cifar_benchmark.EstimatorCifar10BenchmarkTests.unit_test \
@@ -94,8 +94,8 @@ test a branch from a pull request without changing your existing workspace.
 3) Use `--git_repos="git_url;git_branch;git_hash"` to checkout a git repo with
 the specified git_branch at the specified git_hash to the local folder with the
 specified folder name.  Specify the flag once for each repository you want to
-checkout.  Note that we added `"` in the `--git_repos` value string so that `;`
-will not be interpreted by the bash as the end of the command.
+checkout.  Note that the value of the flag `--git_repos` is wrapped by the 
+quotation mark `"` so that `;` will not be interpreted by the bash as the end of the command.
 
 5) Use `--profiler_enabled_time=start_time:end_time` to collect profiler data
 during period `[start_time, end_time)` after the benchmark method execution
