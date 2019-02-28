@@ -1,4 +1,5 @@
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#r!/usr/bin/env bash
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -539,6 +540,7 @@ flags.DEFINE_string('all_reduce_spec', None,
                     'NOTE: not all syntactically correct constructs are '
                     'supported.\n\n'
                     'Examples:\n '
+                    '"2d_torus" == use 2D Torus reduction for all tensors\n'
                     '"xring" == use one global ring reduction for all '
                     'tensors\n'
                     '"pscpu" == use CPU at worker 0 to reduce all tensors\n'
@@ -546,6 +548,8 @@ flags.DEFINE_string('all_reduce_spec', None,
                     'Limited to 1 worker.\n'
                     '"nccl/xring" == locally (to one worker) reduce values '
                     'using NCCL then ring reduce across workers.\n'
+                    '"nccl/2d_torus" == locally (to one worker) reduce values '
+                    ' using NCCL then 2d torus reduce across workers\n'
                     '"pscpu:32k:xring" == use pscpu algorithm for tensors of '
                     'size up to 32kB, then xring for larger tensors.')
 
