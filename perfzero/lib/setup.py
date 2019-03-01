@@ -56,10 +56,16 @@ if __name__ == '__main__':
   start_time = time.time()
   dockerfile_path = FLAGS.dockerfile_path
   if not os.path.exists(dockerfile_path):
-    # Fall back to the deprecated approach if the user-specified dockerfile_path does not exist
+    # Fall back to the deprecated approach if the user-specified
+    # dockerfile_path does not exist
     dockerfile_path = os.path.join(project_dir, FLAGS.dockerfile_path)
-  docker_tag = 'temp/tf-gpu'
-  cmd = 'docker build --pull -t {} - < {}'.format(docker_tag, dockerfile_path)
+  docker_tag = 'perfzero/tensorflow'
+  if FLAGS.tensorflow_pip_spec:
+    cmd = 'docker build --no-cache --pull -t {} --build-arg tensorflow_pip_spec={} - < {}'.format(  # pylint: disable=line-too-long
+        docker_tag, FLAGS.tensorflow_pip_spec, dockerfile_path)
+  else:
+    cmd = 'docker build --no-cache --pull -t {} - < {}'.format(docker_tag, dockerfile_path)
+
   utils.run_commands([cmd])
   logging.info('Built docker image with tag %s', docker_tag)
   setup_execution_time['build_docker'] = time.time() - start_time
