@@ -23,15 +23,17 @@ def add_setup_parser_arguments(parser):
   """Add arguments to the parser used by the setup.py."""
   parser.add_argument(
       '--dockerfile_path',
-      default='docker/Dockerfile',
+      default='docker/Dockerfile_ubuntu_1804_tf_v1',
       type=str,
-      help='''Build the docker image using docker file located at the specified path.
+      help='''Build the docker image using docker file located at the ${pwd}/${dockerfile_path} if
+      it exists, where ${pwd} is user's current work directory. Otherwise, build
+      the docker image using the docker file located at path_to_perfzero/${dockerfile_path}.
       ''')
   parser.add_argument(
       '--workspace',
       default='workspace',
       type=str,
-      help='''The gcloud key file will be downloaded under directory path_to_perfzero/{workspace}
+      help='''The gcloud key file will be downloaded under directory path_to_perfzero/${workspace}
       ''')
   parser.add_argument(
       '--gcloud_key_file_url',
@@ -51,6 +53,14 @@ def add_setup_parser_arguments(parser):
       type=str,
       help='If set to non-empty string, create raid 0 array with devices at the directory specified by the flag --root_data_dir'
       )
+  parser.add_argument(
+      '--tensorflow_pip_spec',
+      default=None,
+      type=str,
+      help='''The tensorflow pip package specfication. The format can be either ${package_name}, or ${package_name}==${package_version}.
+      Example values include tf-nightly-gpu, and tensorflow==1.12.0. If it is specified, the corresponding tensorflow pip package/version
+      will be installed. Otherwise, the default tensorflow pip package specified in the docker file will be installed.
+      ''')
 
 
 def add_benchmark_parser_arguments(parser):
@@ -210,7 +220,7 @@ class PerfZeroConfig(object):
       self.profiler_enabled_time_str = flags.profiler_enabled_time
 
       if not flags.benchmark_methods:
-        logging.warning('No benchmark method is specified by --benchmark_methods')
+        logging.warning('No benchmark method is specified by --benchmark_methods')  # pylint: disable=line-too-long
 
       if flags.bigquery_project_name and not flags.bigquery_dataset_table_name:
         raise ValueError('--bigquery_project_name is specified but --bigquery_dataset_table_name is not')  # pylint: disable=line-too-long

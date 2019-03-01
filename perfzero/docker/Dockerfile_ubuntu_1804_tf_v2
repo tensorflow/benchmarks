@@ -3,6 +3,7 @@
 #  - Installs requirements.txt for tensorflow/models
 
 FROM nvidia/cuda:10.0-base-ubuntu18.04 as base
+ARG tensorflow_pip_spec="tf-nightly-gpu-2.0-preview"
 
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -64,7 +65,7 @@ RUN pip3 install --upgrade pip==9.0.1
 # setuptools upgraded to fix install requirements from model garden.
 RUN pip3 install --upgrade setuptools google-api-python-client pyyaml google-cloud google-cloud-bigquery
 RUN pip3 install wheel absl-py
-RUN pip3 install --upgrade --force-reinstall tf-nightly-gpu-2.0-preview
+RUN pip3 install --upgrade --force-reinstall ${tensorflow_pip_spec}
 RUN pip3 install tfds-nightly
 
 RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/requirements.txt > /tmp/requirements.txt
