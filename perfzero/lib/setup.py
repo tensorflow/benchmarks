@@ -64,7 +64,7 @@ if __name__ == '__main__':
     cmd = 'docker build --no-cache --pull -t {} --build-arg tensorflow_pip_spec={} - < {}'.format(  # pylint: disable=line-too-long
         docker_tag, FLAGS.tensorflow_pip_spec, dockerfile_path)
   else:
-    cmd = 'docker build --no-cache --pull -t {} - < {}'.format(docker_tag, dockerfile_path)
+    cmd = 'docker build --no-cache --pull -t {} - < {}'.format(docker_tag, dockerfile_path)  # pylint: disable=line-too-long
 
   utils.run_commands([cmd])
   logging.info('Built docker image with tag %s', docker_tag)

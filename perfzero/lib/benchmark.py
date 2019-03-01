@@ -27,7 +27,9 @@ import time
 import traceback
 
 import perfzero.perfzero_config as perfzero_config
+from perfzero.process_info_tracker import ProcessInfoTracker
 import perfzero.report_utils as report_utils
+from perfzero.tensorflow_profiler import TensorflowProfiler
 import perfzero.utils as utils
 
 
@@ -109,6 +111,10 @@ class BenchmarkRunner(object):
       benchmark_class, benchmark_method_name = benchmark_method.rsplit('.', 1)
       benchmark_class_name = benchmark_class.rsplit('.', 1)[1]
 
+      tensorflow_profiler = TensorflowProfiler(self.config.profiler_enabled_time_str, output_dir)  # pylint: disable=line-too-long
+      process_info_tracker = ProcessInfoTracker(output_dir)
+      process_info = None
+
       # Setup per-method file logger
       filehandler = logging.FileHandler(
           filename=os.path.join(output_dir, 'perfzero.log'), mode='w')
@@ -128,14 +134,20 @@ class BenchmarkRunner(object):
             benchmark_class_name,
             benchmark_method_name)
 
-        scheduler = utils.schedule_profiler_events(
-            self.config.profiler_enabled_time_str, output_dir)
+        # Start background threads for profiler and system info tracker
+        tensorflow_profiler.start()
+        process_info_tracker.start()
+
         # Run benchmark method
         execution_timestamp = time.time()
         logging.info('Starting benchmark execution: %s', benchmark_method)
         getattr(class_instance, benchmark_method_name)()
         logging.info('Stopped benchmark: %s', benchmark_method)
-        utils.cancel_profiler_events(scheduler, output_dir)
+
+        # Stop background threads for profiler and system info tracker
+        process_info = process_info_tracker.stop()
+        tensorflow_profiler.stop()
+
         # Read and build benchmark results
         raw_benchmark_result = utils.read_benchmark_result(benchmark_result_file_path)  # pylint: disable=line-too-long
         # Explicitly overwrite the name to be the full path to benchmark method
@@ -166,6 +178,7 @@ class BenchmarkRunner(object):
           self.config.get_env_vars(),
           self.config.get_flags(),
           site_package_info,
+          process_info,
           method_has_exception)
       report_utils.upload_execution_summary(
           self.config.bigquery_project_name,
@@ -183,7 +196,9 @@ class BenchmarkRunner(object):
       if self.config.profiler_enabled_time_str:
         relative_output_dir = output_dir[output_dir.find('benchmark'):]
         print('\nExecute the command below to start tensorboard server using the collected profiler data:\n'  # pylint: disable=line-too-long
-              'tensorboard --logdir={}\n'.format(relative_output_dir))
+              'tensorboard --logdir={}\n\n'
+              'Open localhost:6006 in your browser to access the Tensorbord GUI. Use ssh with port forwarding'
+              'if tensorboard is running on a remote machine.\n'.format(relative_output_dir))  # pylint: disable=line-too-long
 
     print('Benchmark execution time in seconds by operation:\n {}'.format(
         json.dumps(self.benchmark_execution_time, indent=2)))

@@ -64,12 +64,3 @@ class TestUtils(unittest.TestCase):
     cpu_socket_count = utils.get_cpu_socket_count()
     self.assertEqual(2, cpu_socket_count)
 
-  @patch('perfzero.utils.get_cpu_socket_count')
-  @patch('perfzero.utils.run_command')
-  def test_get_cpu_core_count(self, run_command_mock,
-                              get_cpu_socket_count_mock):
-    """Tests get number of cores."""
-    run_command_mock.return_value = [0, 'cpu cores  : 6\n']
-    get_cpu_socket_count_mock.return_value = 2
-    cpu_core_count = utils.get_cpu_core_count()
-    self.assertEqual(12, cpu_core_count)

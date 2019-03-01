@@ -18,6 +18,7 @@ from __future__ import print_function
 import json
 import logging
 import perfzero.utils as utils
+import psutil
 
 from six import u as unicode  # pylint: disable=W0622
 
@@ -134,7 +135,7 @@ def build_execution_summary(execution_timestamp, execution_id,
                             ml_framework_build_label, execution_label,
                             platform_name, system_name, output_gcs_url,
                             benchmark_result, env_vars, flags,
-                            site_package_info, has_exception):
+                            site_package_info, process_info, has_exception):
   """Builds summary of the execution."""
   # Avoids module not found during setup phase when tf is not installed yet.
   # pylint: disable=C6204
@@ -175,7 +176,8 @@ def build_execution_summary(execution_timestamp, execution_id,
   system_info['accelerator_model'] = gpu_info['gpu_model']
   system_info['accelerator_count'] = gpu_info['gpu_count']
   system_info['cpu_model'] = utils.get_cpu_name()
-  system_info['cpu_core_count'] = utils.get_cpu_core_count()
+  system_info['physical_cpu_count'] = psutil.cpu_count(logical=False)
+  system_info['logical_cpu_count'] = psutil.cpu_count(logical=True)
   system_info['cpu_socket_count'] = utils.get_cpu_socket_count()
 
   execution_summary = {}
@@ -186,5 +188,7 @@ def build_execution_summary(execution_timestamp, execution_id,
   execution_summary['setup_info'] = {}
   execution_summary['ml_framework_info'] = ml_framework_info
   execution_summary['system_info'] = system_info
+  if process_info:
+    execution_summary['process_info'] = process_info
 
   return execution_summary
