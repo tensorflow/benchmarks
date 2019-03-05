@@ -20,6 +20,21 @@ import logging
 import perfzero.utils as utils
 
 
+def create_drive_from_devices(data_dir, gce_nvme_raid):
+  """Creates a drive at data directory."""
+  if not gce_nvme_raid:
+    return
+
+  devices = _get_nvme_devices()
+  cmd = 'mountpoint -q {}'.format(data_dir)
+  retcode, _ = utils.run_command(cmd)
+  if retcode:
+    if len(devices) > 1:
+      _create_drive_raid(data_dir, devices)
+    else:
+      _create_single_drive(data_dir, devices[0])
+
+
 def _get_nvme_devices():
   """Returns list paths to nvme devices."""
   devices = []
@@ -36,21 +51,6 @@ def _get_nvme_devices():
         parts = line.split()
         devices.append('/dev/' + parts[0].strip())
   return devices
-
-
-def create_drive_from_devices(data_dir, gce_nvme_raid):
-  """Creates a drive at data directory."""
-  if not gce_nvme_raid:
-    return
-
-  devices = _get_nvme_devices()
-  cmd = 'mountpoint -q {}'.format(data_dir)
-  retcode, _ = utils.run_command(cmd)
-  if retcode:
-    if len(devices) > 1:
-      _create_drive_raid(data_dir, devices)
-    else:
-      _create_single_drive(data_dir, devices[0])
 
 
 def _create_single_drive(data_dir, device):
@@ -84,17 +84,3 @@ def _create_drive_raid(data_dir, devices):
   logging.info('Created and mounted RAID array at %s', data_dir)
 
 
-def create_ram_disk(data_dir, disk_size):
-  """Create a RAM disk."""
-
-  cmd = 'mountpoint -q {}'.format(data_dir)
-  retcode, _ = utils.run_command(cmd)
-  if retcode:
-    cmds = []
-    cmds.append('mkdir -p {}'.format(data_dir))
-    cmds.append('mount -t tmpfs -o size={}m tmpfs {}'.format(
-        disk_size, data_dir))
-    utils.run_commands(cmds)
-    logging.info('Created RAM disk at %s', data_dir)
-  else:
-    logging.debug('RAM disk or something else is mounted at %s', data_dir)
