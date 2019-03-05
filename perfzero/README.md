@@ -6,10 +6,14 @@ Table of Contents
    * [Instructions for PerfZero user](#instructions-for-perfzero-user)
       * [Build docker image](#build-docker-image)
       * [Run benchmark](#run-benchmark)
-      * [Understand benchmark summary](#understand-benchmark-summary)
+      * [Understand the benchmark execution output](#understand-the-benchmark-execution-output)
+         * [Json formatted benchamrk summary](#json-formatted-benchamrk-summary)
+         * [Visualize Tensorflow graph etc. using Tensorboard](#visualize-tensorflow-graph-etc-using-tensorboard)
+         * [Visualize system metric values over time](#visualize-system-metric-values-over-time)
    * [Instructions for developer who writes benchmark classes](#instructions-for-developer-who-writes-benchmark-classes)
    * [Instructions for PerfZero developer](#instructions-for-perfzero-developer)
    * [Intructions for managing Google Cloud Platform computing instance](#intructions-for-managing-google-cloud-platform-computing-instance)
+
 
 # Introduction
 
@@ -53,14 +57,17 @@ libraries (e.g. Tensorflow) needed for benchmark.
 python3 benchmarks/perfzero/lib/setup.py
 ```
 
-Optional flag values:
+Here are a few selected optional flags. Run `python3 setup.py -h` to see
+detailed documentation for all supported flags.
 
 1) Use `--dockerfile_path=docker/Dockerfile_ubuntu_1804_tf_v2` to build docker image for Tensorflow v2
+2) Use `--tensorflow_pip_spec` to specify the tensorflow pip package name (and optionally version) to be
+installed in the docker image, e.g. `--tensorflow_pip_spec=tensorflow==1.12.0`.
 
 
 ## Run benchmark
 
-The command below executes the benchmark method specified by `--benchmark_methods`:
+The command below executes the benchmark method specified by `--benchmark_methods`.
 
 ```
 export ROOT_DATA_DIR=/data
@@ -82,8 +89,8 @@ by the flag `--root_data_dir`. Otherwise, user needs to manually download and
 move the dataset files into the directory specified by `--root_data_dirs`. The
 default `root_data_dir` is `/data`
 
-Here are a few useful optional flags. Run `python3 benchmark.py --help` to see
-detailed documentation for each flag.
+Here are a few selected optional flags. Run `python3 benchmark.py -h` to see
+detailed documentation for all supported flags.
 
 1) Use `--workspace=unique_workspace_name` if you need to run multiple benchmark
 using different workspace setup. One example usecase is that you may want to
@@ -101,20 +108,17 @@ want to checkout.
 5) Use `--profiler_enabled_time=start_time:end_time` to collect profiler data
 during period `[start_time, end_time)` after the benchmark method execution
 starts. Skip `end_time` in the flag value to collect data until the end of
-benchmark method execution. Run `tensorboard
---logdir=perfzero/workspace/output/${execution_id}` or `python3 -m
-tensorboard.main --logdir=perfzero/workspace/output/${execution_id}` to open
-Tensorboard server. If PerfZero is executed on a remote machine,
-run `ssh -L 6006:127.0.0.1:6006 remote_ip` before opening `http://localhost:6006`
-in your browser to access the Tensorboard UI.
+benchmark method execution. See [here](#visualize-tensorflow-graph-etc-using-tensorboard)
+for instructions on how to use the generated profiler data.
 
-## Understand benchmark summary
+
+## Understand the benchmark execution output
+
+### Json formatted benchamrk summary
 
 PerfZero outputs a json-formatted summary that provides the information needed
 to understand the benchmark result. The summary is printed in the stdout and
-logged in file under the directory
-`path_to_perfzero/${workspace}/output/${execution_id}`. It is also uploaded to
-bigquery in Google Cloud when `--bigquery_dataset_table_name` is specified.
+in the file `path_to_perfzero/${workspace}/output/${execution_id}/perfzero.log`.
 
 Here is an example output from PerZero. Explanation is provided inline for each
 key when the name of the key is not sufficiently self-explanary.
@@ -149,15 +153,22 @@ key when the name of the key is not sufficiently self-explanary.
     "execution_label": "execution_label"      # Specified by the flag --execution_label
   },
 
-  "system_info": {                            # Summary of the system that is used to execute the benchmark
+  "system_info": {                            # Summary of the resources in the system that is used to execute the benchmark
     "system_name": "system_name",             # Specified by the flag --system_name
-    "accelerator_count": 2,
-    "cpu_core_count": 8,
+    "accelerator_count": 2,                   # Number of GPUs in the system
+    "physical_cpu_count": 8,                  # Number of physical cpu cores in the system. Hyper thread CPUs are excluded.
+    "logical_cpu_count": 16,                  # Number of logical cpu cores in the system. Hyper thread CPUs are included.
+    "cpu_socket_count": 1,                    # Number of cpu socket in the system.
     "platform_name": "platform_name",         # Specified by the flag --platform_name
-    "cpu_socket_count": 1,
     "accelerator_model": "Tesla V100-SXM2-16GB",
     "accelerator_driver_version": "410.48",
     "cpu_model": "Intel(R) Xeon(R) CPU @ 2.20GHz"
+  },
+
+  "process_info": {                           # Summary of the resources used by the process to execute the benchmark
+    "max_rss": 4269047808,                    # maximum physical memory in bytes used by the process
+    "max_vms": 39894450176,                   # maximum virtual memory in bytes used by the process
+    "max_cpu_percent": 771.1                  # CPU utilization as a percentage. See psutil.Process.cpu_percent() for more information
   },
 
   "benchmark_result": {                       # Summary of the benchmark execution results. This is pretty much the same data structure defined in test_log.proto.
@@ -183,6 +194,27 @@ key when the name of the key is not sufficiently self-explanary.
   }
 }
 ```
+
+### Visualize Tensorflow graph etc. using Tensorboard
+
+When the flag `--profiler_enabled_time=start_time:end_time` is specified, the
+profiler data will be collected and stored in
+`path_to_perfzero/${workspace}/output/${execution_id}/profiler_data`.
+
+Run `tensorboard --logdir=perfzero/workspace/output/${execution_id}` or `python3
+-m tensorboard.main --logdir=perfzero/workspace/output/${execution_id}` to open
+Tensorboard server. If PerfZero is executed on a remote machine, run `ssh -L
+6006:127.0.0.1:6006 remote_ip` before opening `http://localhost:6006` in your
+browser to access the Tensorboard UI.
+
+
+### Visualize system metric values over time
+
+PerfZero also records a few useful system metrics (e.g. rss, vms) over time in
+the file `path_to_perfzero/${workspace}/output/${execution_id}/process_info.log`.
+Run `python perfzero/scripts/plot_process_info.py process_info.log` to generate a
+pdf showing the value of these metrics over time.
+
 
 # Instructions for developer who writes benchmark classes
 
@@ -278,10 +310,9 @@ We provide a script in PerfZero to make it easy to manage computing instance in
 Google Cloud Platform. This assumes that you have access to an existing project
 in GCP.
 
-Run `python perfzero/lib/cloud_manager.py --help` for list of commands supported
-by the script. Run e.g. `cloud_manager.py <command> --help` to see helper message
-for each command.
-
+Run `python perfzero/lib/cloud_manager.py -h` for list of commands supported
+by the script. Run `cloud_manager.py <command> -h` to see detailed documentation
+for all supported flags for the specified `command`.
 
 In most cases, user only needs to run the following commands:
 
