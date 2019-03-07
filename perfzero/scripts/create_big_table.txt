@@ -34,5 +34,10 @@
     "name": "system_info",
     "type": "STRING",
     "mode": "NULLABLE"
+  },
+  {
+    "name": "process_info",
+    "type": "STRING",
+    "mode": "NULLABLE"
   }
 ]
