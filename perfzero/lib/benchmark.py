@@ -144,10 +144,6 @@ class BenchmarkRunner(object):
         getattr(class_instance, benchmark_method_name)()
         logging.info('Stopped benchmark: %s', benchmark_method)
 
-        # Stop background threads for profiler and system info tracker
-        process_info = process_info_tracker.stop()
-        tensorflow_profiler.stop()
-
         # Read and build benchmark results
         raw_benchmark_result = utils.read_benchmark_result(benchmark_result_file_path)  # pylint: disable=line-too-long
         # Explicitly overwrite the name to be the full path to benchmark method
@@ -161,6 +157,10 @@ class BenchmarkRunner(object):
         raw_benchmark_result['name'] = benchmark_method
         raw_benchmark_result['wall_time'] = -1
         raw_benchmark_result['extras'] = {}
+      finally:
+        # Stop background threads for profiler and system info tracker
+        process_info = process_info_tracker.stop()
+        tensorflow_profiler.stop()
 
       upload_timestamp = time.time()
       benchmark_result = report_utils.build_benchmark_result(
