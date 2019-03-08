@@ -1,5 +1,5 @@
 # TensorFlow benchmarks
-This repository contains various TensorFlow benchmarks. Currently, it consists of one project:
+This repository contains various TensorFlow benchmarks. Currently, it consists of two projects:
 
 
 1. [PerfZero](https://github.com/lindong28/benchmarks/tree/master/perfzero): A benchmark framework for Tensorflow.
