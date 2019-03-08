@@ -23,7 +23,7 @@ References:
   arXiv:1512.02325
 
 Ported from MLPerf reference implementation:
-  https://github.com/mlperf/reference/tree/ssd/single_stage_detector/ssd
+  https://github.com/mlperf/training/tree/master/single_stage_detector/ssd
 
 """
 
