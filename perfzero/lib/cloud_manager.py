@@ -243,7 +243,7 @@ def parse_arguments(argv, command):  # pylint: disable=redefined-outer-name
   if command == 'create':
     parser.add_argument(
         '--accelerator_count',
-        default=0,
+        default=1,
         type=int,
         help='The number of pieces of the accelerator to attach to the instance'
         )
