@@ -54,7 +54,7 @@ The command below builds the docker image named `perfzero/tensorflow` which cont
 libraries (e.g. Tensorflow) needed for benchmark.
 
 ```
-python3 benchmarks/perfzero/lib/setup.py
+sudo python3 benchmarks/perfzero/lib/setup.py
 ```
 
 Here are a few selected optional flags. Run `python3 setup.py -h` to see
