@@ -12,7 +12,7 @@ Table of Contents
          * [Visualize system metric values over time](#visualize-system-metric-values-over-time)
    * [Instructions for developer who writes benchmark classes](#instructions-for-developer-who-writes-benchmark-classes)
    * [Instructions for PerfZero developer](#instructions-for-perfzero-developer)
-   * [Intructions for managing Google Cloud Platform computing instance](#intructions-for-managing-google-cloud-platform-computing-instance)
+   * [Instructions for managing Google Cloud Platform computing instance](#instructions-for-managing-google-cloud-platform-computing-instance)
 
 
 # Introduction
@@ -299,7 +299,7 @@ command and copy/paste it to the README.md.
 ```
 
 
-# Intructions for managing Google Cloud Platform computing instance
+# Instructions for managing Google Cloud Platform computing instance
 
 PerfZero aims to make it easy to run and debug Tensorflow which is usually run
 with GPU. However, most users do not have dedicated machine with the expensive
