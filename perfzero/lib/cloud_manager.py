@@ -135,7 +135,7 @@ def create(username, project, zone, machine_type, accelerator_count,
                instance_name, accelerator_count)
 
   # Wait until we can ssh to the newly created computing instance
-  cmd = 'gcloud compute ssh {} --project={} --zone={} --strict-host-key-checking=no --command="ls"'.format(instance_name, project, zone)  # pylint: disable=line-too-long
+  cmd = 'gcloud compute ssh {} --project={} --zone={} --strict-host-key-checking=no --command="exit"'.format(instance_name, project, zone)  # pylint: disable=line-too-long
   ssh_remaining_retries = 12
   ssh_error = None
   while ssh_remaining_retries > 0:
@@ -153,20 +153,20 @@ def create(username, project, zone, machine_type, accelerator_count,
         logging.error('Cannot ssh to the computing instance after '
                       '60 seconds due to error:\n%s', str(ssh_error))
 
-  cmd = 'gcloud compute ssh {} --project={} --zone={} --command="git clone {}"'.format(
-      instance_name, project, zone, 'https://github.com/tensorflow/benchmarks.git')  # pylint: disable=line-too-long
-  if not ssh_error:
+  if ssh_error:
+    logging.info('Run the commands below manually after ssh into the computing '
+                 'instance:\n'
+                 'git clone https://github.com/tensorflow/benchmarks.git\n'
+                 'sudo usermod -a -G docker $USER\n')
+  else:
+    cmd = 'gcloud compute ssh {} --project={} --zone={} --command="git clone {}"'.format(  # pylint: disable=line-too-long
+        instance_name, project, zone, 'https://github.com/tensorflow/benchmarks.git')  # pylint: disable=line-too-long
     run_command(cmd, is_from_user=True)
     logging.info('Successfully checked-out PerfZero code on the computing instance\n')  # pylint: disable=line-too-long
-  else:
-    logging.info('Run the command below to checkout PerfZero code on the computing instance:\n%s\n', cmd)  # pylint: disable=line-too-long
 
-  cmd = 'gcloud compute ssh {} --project={} --zone={} --command="sudo usermod -a -G docker $USER"'.format(instance_name, project, zone)  # pylint: disable=line-too-long
-  if not ssh_error:
+    cmd = 'gcloud compute ssh {} --project={} --zone={} --command="sudo usermod -a -G docker $USER"'.format(instance_name, project, zone)  # pylint: disable=line-too-long
     run_command(cmd, is_from_user=True)
     logging.info('Successfully added user to the docker group\n')
-  else:
-    logging.info('Run the command below to add user to the docker group:\n%s\n', cmd)  # pylint: disable=line-too-long
 
   cmd = 'gcloud compute ssh {} --project={} --zone={} -- -L 6006:127.0.0.1:6006'.format(instance_name, project, zone)  # pylint: disable=line-too-long
   logging.info('Run the command below to ssh to the instance together with port forwarding for tensorboard:\n%s\n', cmd)  # pylint: disable=line-too-long
