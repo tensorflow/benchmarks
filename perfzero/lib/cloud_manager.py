@@ -298,7 +298,7 @@ The supported commands are:
   stop:    Stop the computing instance in gcloud that is unique to the specified username, which is your ldap by default
   delete:  Delete the computing instance in gcloud that is unique to the specified username, which is your ldap by default
   status:  Query the status and information of the computing instance in gcloud that is unique to the specified username, which is your ldap by default
-  list:    Query the status of all computing instances that are created by this script.'''
+  list_all:    Query the status of all computing instances that are created by this script.'''
   )
   parser.add_argument(
       'command',
