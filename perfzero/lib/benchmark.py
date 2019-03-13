@@ -91,6 +91,7 @@ class BenchmarkRunner(object):
           if re.match(pattern, benchmark_method_name):
             benchmark_methods.append(benchmark_class + '.' +
                                      benchmark_method_name)
+        del class_instance
     return benchmark_methods
 
   def run_benchmark(self):
@@ -121,6 +122,7 @@ class BenchmarkRunner(object):
       filehandler.setFormatter(
           logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
       logging.getLogger().addHandler(filehandler)
+      class_instance = None
 
       try:
         class_instance = self._instantiate_benchmark_class(
@@ -161,6 +163,8 @@ class BenchmarkRunner(object):
         # Stop background threads for profiler and system info tracker
         process_info = process_info_tracker.stop()
         tensorflow_profiler.stop()
+        if class_instance is not None:
+          del class_instance
 
       upload_timestamp = time.time()
       benchmark_result = report_utils.build_benchmark_result(
