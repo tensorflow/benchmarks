@@ -143,13 +143,15 @@ def create(username, project, zone, machine_type, accelerator_count,
     try:
       run_command(cmd, is_from_user=False)
       ssh_error = None
-    except Exception as error:  # pylint: disable=W0703
+    except Exception as error:  # pylint: disable=broad-except
       ssh_error = error
       if ssh_remaining_retries:
-        logging.info('Cannot ssh to the computing instance. Try again after 5 seconds')  # pylint: disable=line-too-long
+        logging.info('Cannot ssh to the computing instance. '
+                     'Try again after 5 seconds')
         time.sleep(5)
       else:
-        logging.error('Cannot ssh to the computing instance after 60 seconds due to error:\n%s', str(ssh_error))  # pylint: disable=line-too-long
+        logging.error('Cannot ssh to the computing instance after '
+                      '60 seconds due to error:\n%s', str(ssh_error))
 
   cmd = 'gcloud compute ssh {} --project={} --zone={} --command="git clone {}"'.format(
       instance_name, project, zone, 'https://github.com/tensorflow/benchmarks.git')  # pylint: disable=line-too-long

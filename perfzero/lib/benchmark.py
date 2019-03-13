@@ -91,7 +91,6 @@ class BenchmarkRunner(object):
           if re.match(pattern, benchmark_method_name):
             benchmark_methods.append(benchmark_class + '.' +
                                      benchmark_method_name)
-        del class_instance
     return benchmark_methods
 
   def run_benchmark(self):
@@ -122,7 +121,6 @@ class BenchmarkRunner(object):
       filehandler.setFormatter(
           logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
       logging.getLogger().addHandler(filehandler)
-      class_instance = None
 
       try:
         class_instance = self._instantiate_benchmark_class(
@@ -150,7 +148,7 @@ class BenchmarkRunner(object):
         raw_benchmark_result = utils.read_benchmark_result(benchmark_result_file_path)  # pylint: disable=line-too-long
         # Explicitly overwrite the name to be the full path to benchmark method
         raw_benchmark_result['name'] = benchmark_method
-      except Exception:  # pylint: disable=W0703
+      except Exception:  # pylint: disable=broad-except
         logging.error('Benchmark execution for %s failed due to error:\n %s',
                       benchmark_method, traceback.format_exc())
         method_has_exception = True
@@ -163,8 +161,6 @@ class BenchmarkRunner(object):
         # Stop background threads for profiler and system info tracker
         process_info = process_info_tracker.stop()
         tensorflow_profiler.stop()
-        if class_instance is not None:
-          del class_instance
 
       upload_timestamp = time.time()
       benchmark_result = report_utils.build_benchmark_result(
