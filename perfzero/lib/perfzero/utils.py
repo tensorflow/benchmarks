@@ -15,6 +15,7 @@
 """PerfZero utility methods."""
 from __future__ import print_function
 
+import importlib
 import logging
 import os
 import subprocess
@@ -337,3 +338,14 @@ def print_thread_stacktrace():
   for thread_id, frame in sys._current_frames().items():  # pylint: disable=protected-access
     print('Thread {}'.format(thread_names.get(thread_id, thread_id)))
     traceback.print_stack(frame)
+
+
+def instantiate_benchmark_class(benchmark_class, output_dir, root_data_dir):
+  """Return initialized benchmark class."""
+  module_import_path, class_name = benchmark_class.rsplit('.', 1)
+  module = importlib.import_module(module_import_path)
+  class_ = getattr(module, class_name)
+  instance = class_(output_dir=output_dir, root_data_dir=root_data_dir)
+
+  return instance
+
