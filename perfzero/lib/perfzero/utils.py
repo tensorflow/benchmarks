@@ -103,7 +103,8 @@ def setup_python_path(site_packages_dir, python_path_str):
   logging.debug('PYTHONPATH: %s', sys.path)
 
 
-def active_gcloud_service(gcloud_key_file_url, workspace_dir, download_only=False):  # pylint: disable=line-too-long
+def active_gcloud_service(gcloud_key_file_url, workspace_dir,
+                          download_only=False):
   """Download key file and setup gcloud service credential using the key file.
 
   Args:
@@ -115,13 +116,15 @@ def active_gcloud_service(gcloud_key_file_url, workspace_dir, download_only=Fals
   if not gcloud_key_file_url:
     return
 
-  local_path = os.path.join(workspace_dir, os.path.basename(gcloud_key_file_url))  # pylint: disable=line-too-long
+  local_path = os.path.join(workspace_dir,
+                            os.path.basename(gcloud_key_file_url))
   if not os.path.exists(local_path):
     download_data([{'url': gcloud_key_file_url, 'local_path': local_path}])
 
   if not download_only:
     os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = local_path
-    run_commands(['gcloud auth activate-service-account --key-file {}'.format(local_path)])  # pylint: disable=line-too-long
+    run_commands(['gcloud auth activate-service-account --key-file {}'.format(
+        local_path)])
     logging.info('Activated gcloud service account credential')
 
 
@@ -196,10 +199,10 @@ def parse_data_downloads_str(root_data_dir, data_downloads_str):
     info = {}
     if ';' in entry:
       info['url'] = entry.split(';')[0]
-      info['local_path'] = os.path.join(root_data_dir, entry.split(';')[1])  # pylint: disable=line-too-long
+      info['local_path'] = os.path.join(root_data_dir, entry.split(';')[1])
     else:
       info['url'] = entry
-      info['local_path'] = os.path.join(root_data_dir, os.path.basename(entry))  # pylint: disable=line-too-long
+      info['local_path'] = os.path.join(root_data_dir, os.path.basename(entry))
     # Canonicalize url to remove trailing '/' and '*'
     if info['url'].endswith('*'):
       info['url'] = info['url'][:-1]

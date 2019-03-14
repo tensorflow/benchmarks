@@ -125,17 +125,19 @@ def create(username, project, zone, machine_type, accelerator_count,
 '''.format(instance_name, image, project, zone, machine_type)
 
   if accelerator_count > 0:
-    cmd += '--accelerator=count={},type={} '.format(accelerator_count, accelerator_type)  # pylint: disable=line-too-long
+    cmd += '--accelerator=count={},type={} '.format(
+        accelerator_count, accelerator_type)
 
   for _ in range(nvme_count):
     cmd += '--local-ssd=interface=NVME '
 
   run_command(cmd, is_from_user=True)
-  logging.info('Successfully created gcloud computing instance %s with %s accelerator.\n',  # pylint: disable=line-too-long
-               instance_name, accelerator_count)
+  logging.info('Successfully created gcloud computing instance %s '
+               'with %s accelerator.\n', instance_name, accelerator_count)
 
   # Wait until we can ssh to the newly created computing instance
-  cmd = 'gcloud compute ssh {} --project={} --zone={} --strict-host-key-checking=no --command="exit"'.format(instance_name, project, zone)  # pylint: disable=line-too-long
+  cmd = 'gcloud compute ssh {} --project={} --zone={} --strict-host-key-checking=no --command="exit"'.format(  # pylint: disable=line-too-long
+      instance_name, project, zone)
   ssh_remaining_retries = 12
   ssh_error = None
   while ssh_remaining_retries > 0:
@@ -160,16 +162,21 @@ def create(username, project, zone, machine_type, accelerator_count,
                  'sudo usermod -a -G docker $USER\n')
   else:
     cmd = 'gcloud compute ssh {} --project={} --zone={} --command="git clone {}"'.format(  # pylint: disable=line-too-long
-        instance_name, project, zone, 'https://github.com/tensorflow/benchmarks.git')  # pylint: disable=line-too-long
+        instance_name, project, zone,
+        'https://github.com/tensorflow/benchmarks.git')
     run_command(cmd, is_from_user=True)
-    logging.info('Successfully checked-out PerfZero code on the computing instance\n')  # pylint: disable=line-too-long
+    logging.info('Successfully checked-out PerfZero code on the '
+                 'computing instance\n')
 
-    cmd = 'gcloud compute ssh {} --project={} --zone={} --command="sudo usermod -a -G docker $USER"'.format(instance_name, project, zone)  # pylint: disable=line-too-long
+    cmd = 'gcloud compute ssh {} --project={} --zone={} --command="sudo usermod -a -G docker $USER"'.format(  # pylint: disable=line-too-long
+        instance_name, project, zone)
     run_command(cmd, is_from_user=True)
     logging.info('Successfully added user to the docker group\n')
 
-  cmd = 'gcloud compute ssh {} --project={} --zone={} -- -L 6006:127.0.0.1:6006'.format(instance_name, project, zone)  # pylint: disable=line-too-long
-  logging.info('Run the command below to ssh to the instance together with port forwarding for tensorboard:\n%s\n', cmd)  # pylint: disable=line-too-long
+  cmd = 'gcloud compute ssh {} --project={} --zone={} -- -L 6006:127.0.0.1:6006'.format(  # pylint: disable=line-too-long
+      instance_name, project, zone)
+  logging.info('Run the command below to ssh to the instance together with '
+               'port forwarding for tensorboard:\n%s\n', cmd)
 
 
 def status(username, project, zone):
@@ -181,53 +188,69 @@ def status(username, project, zone):
     zone: zone of the GCP computing instance
   """
   instance_name = get_instance_name(username)
-  logging.debug('Querying status of gcloud computing instance %s of project %s in zone %s', instance_name, project, zone)  # pylint: disable=line-too-long
+  logging.debug('Querying status of gcloud computing instance %s of '
+                'project %s in zone %s', instance_name, project, zone)
 
-  cmd = 'gcloud compute instances list --filter="name={} AND zone:{}" --project {}'.format(instance_name, zone, project)  # pylint: disable=line-too-long
+  cmd = 'gcloud compute instances list --filter="name={} AND zone:{}" --project {}'.format(  # pylint: disable=line-too-long
+      instance_name, zone, project)
   stdout = run_command(cmd, is_from_user=True)
 
   num_instances = len(stdout.splitlines()) - 1
-  logging.info('\nFound %s gcloud computing instance with name %s.\n', num_instances, instance_name)  # pylint: disable=line-too-long
+  logging.info('\nFound %s gcloud computing instance with name %s.\n',
+               num_instances, instance_name)
 
   if num_instances == 1:
-    cmd = 'gcloud compute ssh {} --project={} --zone={} -- -L 6006:127.0.0.1:6006'.format(instance_name, project, zone)  # pylint: disable=line-too-long
-    logging.info('Run the command below to ssh to the instance together with port forwarding for tensorboard:\n%s\n', cmd)  # pylint: disable=line-too-long
+    cmd = 'gcloud compute ssh {} --project={} --zone={} -- -L 6006:127.0.0.1:6006'.format(  # pylint: disable=line-too-long
+        instance_name, project, zone)
+    logging.info('Run the command below to ssh to the instance together with '
+                 'port forwarding for tensorboard:\n%s\n', cmd)
 
 
 def list_all(project):
-  logging.debug('Finding all gcloud computing instance of project %s created for PerfZero test', project)  # pylint: disable=line-too-long
-  cmd = 'gcloud compute instances list --filter="name ~ {}" --project={}'.format(INSTANCE_NAME_PREFIX, project)  # pylint: disable=line-too-long
+  logging.debug('Finding all gcloud computing instance of project %s created '
+                'for PerfZero test', project)
+  cmd = 'gcloud compute instances list --filter="name ~ {}" --project={}'.format(  # pylint: disable=line-too-long
+      INSTANCE_NAME_PREFIX, project)
   stdout = run_command(cmd, is_from_user=True)
   num_instances = len(stdout.splitlines()) - 1
-  logging.info('\nFound %s gcloud computing instance of project %s created for PerfZero test', num_instances, project)  # pylint: disable=line-too-long
+  logging.info('\nFound %s gcloud computing instance of project %s created '
+               'for PerfZero test', num_instances, project)
 
 
 def start(username, project, zone):
   instance_name = get_instance_name(username)
-  logging.debug('Starting gcloud computing instance %s of project %s in zone %s', instance_name, project, zone)  # pylint: disable=line-too-long
+  logging.debug('Starting gcloud computing instance %s of project %s '
+                'in zone %s', instance_name, project, zone)
 
   cmd = 'gcloud compute instances start {} --project={} --zone={}'.format(
       instance_name, project, zone)
   run_command(cmd, is_from_user=True)
-  logging.debug('\nSuccessfully started gcloud computing instance %s of project %s in zone %s', instance_name, project, zone)  # pylint: disable=line-too-long
+  logging.debug('\nSuccessfully started gcloud computing instance %s of '
+                'project %s in zone %s', instance_name, project, zone)
 
 
 def stop(username, project, zone):
   instance_name = get_instance_name(username)
-  logging.debug('Stopping gcloud computing instance %s of project %s in zone %s', instance_name, project, zone)  # pylint: disable=line-too-long
+  logging.debug('Stopping gcloud computing instance %s of project %s in '
+                'zone %s', instance_name, project, zone)
 
-  cmd = 'gcloud compute instances stop {} --project={} --zone={}'.format(instance_name, project, zone)  # pylint: disable=line-too-long
+  cmd = 'gcloud compute instances stop {} --project={} --zone={}'.format(
+      instance_name, project, zone)
   run_command(cmd, is_from_user=True)
-  logging.debug('\nSuccessfully stopped gcloud computing instance %s of project %s in zone %s', instance_name, project, zone)  # pylint: disable=line-too-long
+  logging.debug('\nSuccessfully stopped gcloud computing instance %s of '
+                'project %s in zone %s', instance_name, project, zone)
 
 
 def delete(username, project, zone):
   instance_name = get_instance_name(username)
-  logging.debug('Deleting gcloud computing instance %s of project %s in zone %s', instance_name, project, zone)  # pylint: disable=line-too-long
+  logging.debug('Deleting gcloud computing instance %s of project %s in '
+                'zone %s', instance_name, project, zone)
 
-  cmd = 'echo Y | gcloud compute instances delete {} --project={} --zone={}'.format(instance_name, project, zone)  # pylint: disable=line-too-long
+  cmd = 'echo Y | gcloud compute instances delete {} --project={} --zone={}'.format(  # pylint: disable=line-too-long
+      instance_name, project, zone)
   run_command(cmd, is_from_user=True)
-  logging.debug('\nSuccessfully deleted gcloud computing instance %s of project %s in zone %s', instance_name, project, zone)  # pylint: disable=line-too-long
+  logging.debug('\nSuccessfully deleted gcloud computing instance %s of '
+                'project %s in zone %s', instance_name, project, zone)
 
 
 def parse_arguments(argv, command):  # pylint: disable=redefined-outer-name
@@ -242,8 +265,9 @@ def parse_arguments(argv, command):  # pylint: disable=redefined-outer-name
   """
 
   # pylint: disable=redefined-outer-name
-  parser = argparse.ArgumentParser(usage='cloud_manager.py {} [<args>]'.format(command),  # pylint: disable=line-too-long
-                                   formatter_class=argparse.ArgumentDefaultsHelpFormatter)  # pylint: disable=line-too-long
+  parser = argparse.ArgumentParser(
+      usage='cloud_manager.py {} [<args>]'.format(command),
+      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument(
       '--debug',
       action='store_true',

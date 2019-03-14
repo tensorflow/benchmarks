@@ -29,7 +29,7 @@ import traceback
 import perfzero.perfzero_config as perfzero_config
 from perfzero.process_info_tracker import ProcessInfoTracker
 import perfzero.report_utils as report_utils
-from perfzero.tensorflow_profiler import TensorflowProfiler
+from perfzero.tensorflow_profiler import TensorFlowProfiler
 import perfzero.utils as utils
 
 
@@ -50,14 +50,18 @@ class BenchmarkRunner(object):
     # Acticate gcloud service
     start_time = time.time()
     utils.setup_python_path(self.site_packages_dir, self.config.python_path_str)
-    utils.active_gcloud_service(self.config.gcloud_key_file_url, self.workspace_dir)  # pylint: disable=line-too-long
+    utils.active_gcloud_service(self.config.gcloud_key_file_url,
+                                self.workspace_dir)
     utils.make_dir_if_not_exist(self.root_output_dir)
-    self.benchmark_execution_time['activate_gcloud_service'] = time.time() - start_time  # pylint: disable=line-too-long
+    self.benchmark_execution_time['activate_gcloud_service'] = (
+        time.time() - start_time)
 
     # Download data
     start_time = time.time()
-    utils.download_data(utils.parse_data_downloads_str(self.config.root_data_dir, self.config.gcs_downloads_str))  # pylint: disable=line-too-long
-    utils.download_data(utils.parse_data_downloads_str(self.config.root_data_dir, self.config.data_downloads_str))  # pylint: disable=line-too-long
+    utils.download_data(utils.parse_data_downloads_str(
+        self.config.root_data_dir, self.config.gcs_downloads_str))
+    utils.download_data(utils.parse_data_downloads_str(
+        self.config.root_data_dir, self.config.data_downloads_str))
     self.benchmark_execution_time['download_data'] = time.time() - start_time
 
     # Checkout git repositories
@@ -65,7 +69,8 @@ class BenchmarkRunner(object):
     site_package_info = utils.checkout_git_repos(
         self.config.get_git_repos(self.site_packages_dir),
         self.config.force_update)
-    self.benchmark_execution_time['checkout_repository'] = time.time() - start_time  # pylint: disable=line-too-long
+    self.benchmark_execution_time['checkout_repository'] = (
+        time.time() - start_time)
 
     self.stream_handler = logging.StreamHandler(sys.stdout)
     self.stream_handler.setFormatter(
@@ -111,7 +116,8 @@ class BenchmarkRunner(object):
       benchmark_class, benchmark_method_name = benchmark_method.rsplit('.', 1)
       benchmark_class_name = benchmark_class.rsplit('.', 1)[1]
 
-      tensorflow_profiler = TensorflowProfiler(self.config.profiler_enabled_time_str, output_dir)  # pylint: disable=line-too-long
+      tensorflow_profiler = TensorFlowProfiler(
+          self.config.profiler_enabled_time_str, output_dir)
       process_info_tracker = ProcessInfoTracker(output_dir)
       process_info = None
 
@@ -145,7 +151,8 @@ class BenchmarkRunner(object):
         logging.info('Stopped benchmark: %s', benchmark_method)
 
         # Read and build benchmark results
-        raw_benchmark_result = utils.read_benchmark_result(benchmark_result_file_path)  # pylint: disable=line-too-long
+        raw_benchmark_result = utils.read_benchmark_result(
+            benchmark_result_file_path)
         # Explicitly overwrite the name to be the full path to benchmark method
         raw_benchmark_result['name'] = benchmark_method
       except Exception:  # pylint: disable=broad-except
@@ -188,17 +195,19 @@ class BenchmarkRunner(object):
                    benchmark_method, json.dumps(execution_summary, indent=2))
       utils.maybe_upload_to_gcs(output_dir, self.config.output_gcs_url)
       logging.getLogger().removeHandler(filehandler)
-      self.benchmark_execution_time[benchmark_method] = {}
-      self.benchmark_execution_time[benchmark_method]['class_initialization'] = execution_timestamp - start_timestamp  # pylint: disable=line-too-long
-      self.benchmark_execution_time[benchmark_method]['method_execution'] = upload_timestamp - execution_timestamp  # pylint: disable=line-too-long
-      self.benchmark_execution_time[benchmark_method]['log_upload'] = time.time() - upload_timestamp  # pylint: disable=line-too-long
+      self.benchmark_execution_time[benchmark_method] = {
+          'class_initialization': execution_timestamp - start_timestamp,
+          'method_execution': upload_timestamp - execution_timestamp,
+          'log_upload': time.time() - upload_timestamp
+      }
 
       if self.config.profiler_enabled_time_str:
         relative_output_dir = output_dir[output_dir.find('benchmark'):]
-        print('\nExecute the command below to start tensorboard server using the collected profiler data:\n'  # pylint: disable=line-too-long
-              'tensorboard --logdir={}\n\n'
-              'Open localhost:6006 in your browser to access the Tensorbord GUI. Use ssh with port forwarding'
-              'if tensorboard is running on a remote machine.\n'.format(relative_output_dir))  # pylint: disable=line-too-long
+        print('\nExecute the command below to start tensorboard server using '
+              'the collected profiler data:\ntensorboard --logdir={}\n\n'
+              'Open localhost:6006 in your browser to access the Tensorbord '
+              'GUI. Use ssh with port forwarding if tensorboard is running on '
+              'a remote machine.\n'.format(relative_output_dir))
 
     print('Benchmark execution time in seconds by operation:\n {}'.format(
         json.dumps(self.benchmark_execution_time, indent=2)))
@@ -209,7 +218,8 @@ class BenchmarkRunner(object):
     if has_exception:
       sys.exit(1)
 
-  def _instantiate_benchmark_class(self, benchmark_class, output_dir, root_data_dir):  # pylint: disable=line-too-long
+  def _instantiate_benchmark_class(self, benchmark_class,
+                                   output_dir, root_data_dir):
     """Return initialized benchmark class."""
     module_import_path, class_name = benchmark_class.rsplit('.', 1)
     module = importlib.import_module(module_import_path)
@@ -226,7 +236,8 @@ if __name__ == '__main__':
   FLAGS, unparsed = parser.parse_known_args()
 
   level = logging.DEBUG if FLAGS.debug else logging.INFO
-  logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', level=level)  # pylint: disable=line-too-long
+  logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
+                      level=level)
 
   if unparsed:
     logging.warning('Arguments %s are not recognized', unparsed)
