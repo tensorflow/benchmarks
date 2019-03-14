@@ -32,9 +32,9 @@ def _start_profiler():
 
   try:
     profiler.start()
-    logging.info('Started Tensorflow profiler')
+    logging.info('Started TensorFlow profiler')
   except Exception:  # pylint: disable=broad-except
-    logging.error('Tensorflow profiler failed to start due to error:\n %s',
+    logging.error('TensorFlow profiler failed to start due to error:\n %s',
                   traceback.format_exc())
 
 
@@ -49,18 +49,19 @@ def _stop_and_save_profiler(output_dir):
 
   try:
     profiler_data_dir = os.path.join(output_dir, 'profiler_data')
-    logging.info('Stopping Tensorflow profiler and saving data to dir %s', profiler_data_dir)  # pylint: disable=line-too-long
+    logging.info('Stopping TensorFlow profiler and saving data to dir %s',
+                 profiler_data_dir)
     utils.make_dir_if_not_exist(profiler_data_dir)
     result = profiler.stop()
     with open(os.path.join(profiler_data_dir, 'local.trace'), 'wb') as f:
       f.write(result)
-    logging.info('Stopped Tensorflow profiler.')
+    logging.info('Stopped TensorFlow profiler.')
   except Exception:  # pylint: disable=broad-except
-    logging.error('Tensorflow profiler failed to stop due to error:\n %s',
+    logging.error('TensorFlow profiler failed to stop due to error:\n %s',
                   traceback.format_exc())
 
 
-class TensorflowProfiler(object):
+class TensorFlowProfiler(object):
   """Collect profiler data for Tensorboard with a separate thread."""
 
   def __init__(self, profiler_enabled_time_str, output_dir):
@@ -95,11 +96,14 @@ class TensorflowProfiler(object):
       end_time_str = time_str.split(':')[1].strip() if ':' in time_str else None
       end_time = int(end_time_str) if end_time_str else 365 * 24 * 60 * 60
       if begin_time <= last_end_time:
-        raise ValueError('begin_time {} is no larger than the last end_time {}'.format(begin_time, last_end_time))  # pylint: disable=line-too-long
+        raise ValueError('begin_time {} is no larger than the last '
+                         'end_time {}'.format(begin_time, last_end_time))
       if end_time <= begin_time:
-        raise ValueError('end_time {} is no larger than begin_time {}'.format(end_time, begin_time))  # pylint: disable=line-too-long
+        raise ValueError('end_time {} is no larger than begin_time {}'.format(
+            end_time, begin_time))
       self.scheduler.enter(begin_time, 1, _start_profiler)  # pylint: disable=no-value-for-parameter
-      self.scheduler.enter(end_time, 1, _stop_and_save_profiler, argument=(self.output_dir,))  # pylint: disable=line-too-long
+      self.scheduler.enter(end_time, 1, _stop_and_save_profiler,
+                           argument=(self.output_dir,))
       last_end_time = end_time
 
     threading.Thread(target=self.scheduler.run).start()

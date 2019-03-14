@@ -220,13 +220,16 @@ class PerfZeroConfig(object):
       self.profiler_enabled_time_str = flags.profiler_enabled_time
 
       if not flags.benchmark_methods:
-        logging.warning('No benchmark method is specified by --benchmark_methods')  # pylint: disable=line-too-long
+        logging.warning('No benchmark method is specified by '
+                        '--benchmark_methods')
 
       if flags.bigquery_project_name and not flags.bigquery_dataset_table_name:
-        raise ValueError('--bigquery_project_name is specified but --bigquery_dataset_table_name is not')  # pylint: disable=line-too-long
+        raise ValueError('--bigquery_project_name is specified but '
+                         '--bigquery_dataset_table_name is not')
 
       if not flags.bigquery_project_name and flags.bigquery_dataset_table_name:
-        raise ValueError('--bigquery_dataset_table_name is specified but --bigquery_project_name is not')  # pylint: disable=line-too-long
+        raise ValueError('--bigquery_dataset_table_name is specified but '
+                         '--bigquery_project_name is not')
 
   def get_env_vars(self):
     env_vars = {}

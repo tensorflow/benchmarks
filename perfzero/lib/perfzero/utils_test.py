@@ -43,7 +43,8 @@ class TestUtils(unittest.TestCase):
     git_repo_info_2 = {'url': 'url_2'}
     get_git_repo_info_mock.side_effect = \
         lambda local_path: git_repo_info_1 if local_path == 'local_path_1' else git_repo_info_2  # pylint: disable=line-too-long
-    site_package_info = utils.checkout_git_repos([git_repo_1, git_repo_2], False)  # pylint: disable=line-too-long
+    site_package_info = utils.checkout_git_repos([git_repo_1, git_repo_2],
+                                                 False)
 
     self.assertEqual(2, len(site_package_info))
     self.assertEqual(git_repo_info_1, site_package_info['dir_name_1'])
@@ -67,7 +68,9 @@ class TestUtils(unittest.TestCase):
     ]
 
     git_repo_info = utils.get_git_repo_info('local_path_1')
-    self.assertEqual({'url': 'git_url', 'branch': 'branch_name', 'hash': 'git_hash'}, git_repo_info)  # pylint: disable=line-too-long
+    self.assertEqual(
+        {'url': 'git_url', 'branch': 'branch_name', 'hash': 'git_hash'},
+        git_repo_info)
     run_command_mock.assert_has_calls(any_order=False, calls=[
         call('git -C local_path_1 config --get remote.origin.url'),
         call('git -C local_path_1 rev-parse --abbrev-ref HEAD'),
@@ -84,27 +87,37 @@ class TestUtils(unittest.TestCase):
     get_mock.content = 'content'
     requests_get_mock.return_value = get_mock
 
-    download_info_1 = {'url': 'gs://remote_path_1/name_1', 'local_path': 'local_path_1/modified_name_1'}  # pylint: disable=line-too-long
-    download_info_2 = {'url': 'http://remote_path_2/name_2', 'local_path': 'local_path_2/modified_name_2'}  # pylint: disable=line-too-long
+    download_info_1 = {'url': 'gs://remote_path_1/name_1',
+                       'local_path': 'local_path_1/modified_name_1'}
+    download_info_2 = {'url': 'http://remote_path_2/name_2',
+                       'local_path': 'local_path_2/modified_name_2'}
     utils.download_data([download_info_1, download_info_2])
 
     make_dir_mock.assert_has_calls(any_order=False, calls=[
         call('local_path_1'),
         call('local_path_2')
     ])
-    requests_get_mock.assert_called_once_with('http://remote_path_2/name_2', allow_redirects=True)  # pylint: disable=line-too-long
+    requests_get_mock.assert_called_once_with('http://remote_path_2/name_2',
+                                              allow_redirects=True)
     run_commands_mock.assert_has_calls(any_order=False, calls=[
-        call([['gsutil', '-m', 'cp', '-r', '-n', 'gs://remote_path_1/name_1', 'local_path_1']], shell=False),  # pylint: disable=line-too-long
+        call([['gsutil', '-m', 'cp', '-r', '-n',
+               'gs://remote_path_1/name_1', 'local_path_1']],
+             shell=False),
         call(['mv local_path_1/name_1 local_path_1/modified_name_1']),
         call(['mv local_path_2/name_2 local_path_2/modified_name_2'])
     ])
 
   def test_parse_data_downloads_str(self):
     data_downloads_str = 'url_1;relative_path_1,url_2;relative_path_2'
-    download_infos = utils.parse_data_downloads_str('/root_data_dir', data_downloads_str)  # pylint: disable=line-too-long
+    download_infos = utils.parse_data_downloads_str('/root_data_dir',
+                                                    data_downloads_str)
     self.assertEqual(2, len(download_infos))
-    self.assertEqual(download_infos[0], {'url': 'url_1', 'local_path': '/root_data_dir/relative_path_1'})  # pylint: disable=line-too-long
-    self.assertEqual(download_infos[1], {'url': 'url_2', 'local_path': '/root_data_dir/relative_path_2'})  # pylint: disable=line-too-long
+    self.assertEqual(download_infos[0],
+                     {'url': 'url_1',
+                      'local_path': '/root_data_dir/relative_path_1'})
+    self.assertEqual(download_infos[1],
+                     {'url': 'url_2',
+                      'local_path': '/root_data_dir/relative_path_2'})
 
   @patch('perfzero.utils.run_command')
   def test_get_cpu_name(self, run_command_mock):

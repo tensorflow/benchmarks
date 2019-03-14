@@ -8,7 +8,7 @@ Table of Contents
       * [Run benchmark](#run-benchmark)
       * [Understand the benchmark execution output](#understand-the-benchmark-execution-output)
          * [Json formatted benchamrk summary](#json-formatted-benchamrk-summary)
-         * [Visualize Tensorflow graph etc. using Tensorboard](#visualize-tensorflow-graph-etc-using-tensorboard)
+         * [Visualize TensorFlow graph etc. using Tensorboard](#visualize-tensorflow-graph-etc-using-tensorboard)
          * [Visualize system metric values over time](#visualize-system-metric-values-over-time)
    * [Instructions for developer who writes benchmark classes](#instructions-for-developer-who-writes-benchmark-classes)
    * [Instructions for PerfZero developer](#instructions-for-perfzero-developer)
@@ -17,25 +17,25 @@ Table of Contents
 
 # Introduction
 
-PerfZero is a benchmark framework for Tensorflow. It intends to address the
+PerfZero is a benchmark framework for TensorFlow. It intends to address the
 following use-cases:
 
-1) For user who wants to execute Tensorflow test to debug performance
+1) For user who wants to execute TensorFlow test to debug performance
 regression.
 
 PerfZero makes it easy to execute the pre-defined test by consolidating the
-docker image build, GPU driver installation, Tensorflow installation, benchmark
+docker image build, GPU driver installation, TensorFlow installation, benchmark
 library checkout, data download, system statistics collection, benchmark metrics
 collection, profiler data collection and so on into 2 to 3 commands. This allows
 developer to focus on investigating the issue rather than setting up the test
 environment.
 
-2) For user who wants to track the performance change of Tensorflow for a
-variety of setup (e.g. GPU model, cudnn version, Tensorflow version)
+2) For user who wants to track the performance change of TensorFlow for a
+variety of setup (e.g. GPU model, cudnn version, TensorFlow version)
 
 The developer can setup periodic job to execute these benchmark methods using
 PerfZero. PerfZero will collect the information needed to identify the
-benchmark (e.g. GPU model, Tensorflow version, dependent library git hash), get
+benchmark (e.g. GPU model, TensorFlow version, dependent library git hash), get
 benchmark execution result (e.g. wall time, accuracy, succeeded or not),
 summarize the result in a easy-to-read json string and upload the result to
 bigquery table. Using the data in the bigquery table, user can then visualize
@@ -51,7 +51,7 @@ Here are instructions for users who want to run benchmark method using PerfZero.
 ## Build docker image
 
 The command below builds the docker image named `perfzero/tensorflow` which contains the
-libraries (e.g. Tensorflow) needed for benchmark.
+libraries (e.g. TensorFlow) needed for benchmark.
 
 ```
 python3 benchmarks/perfzero/lib/setup.py
@@ -60,7 +60,7 @@ python3 benchmarks/perfzero/lib/setup.py
 Here are a few selected optional flags. Run `python3 setup.py -h` to see
 detailed documentation for all supported flags.
 
-1) Use `--dockerfile_path=docker/Dockerfile_ubuntu_1804_tf_v2` to build docker image for Tensorflow v2
+1) Use `--dockerfile_path=docker/Dockerfile_ubuntu_1804_tf_v2` to build docker image for TensorFlow v2
 2) Use `--tensorflow_pip_spec` to specify the tensorflow pip package name (and optionally version) to be
 installed in the docker image, e.g. `--tensorflow_pip_spec=tensorflow==1.12.0`.
 
@@ -126,10 +126,10 @@ key when the name of the key is not sufficiently self-explanary.
 ```
  {
   "ml_framework_info": {                         # Summary of the machine learning framework
-    "version": "1.13.0-dev20190206",             # Short version. It is tf.__version__ for Tensorflow
+    "version": "1.13.0-dev20190206",             # Short version. It is tf.__version__ for TensorFlow
     "name": "tensorflow",                        # Machine learning framework name such as PyTorch
     "build_label": "ml_framework_build_label",   # Specified by the flag --ml_framework_build_label
-    "build_version": "v1.12.0-7504-g9b32b5742b"  # Long version. It is tf.__git_version__ for Tensorflow
+    "build_version": "v1.12.0-7504-g9b32b5742b"  # Long version. It is tf.__git_version__ for TensorFlow
   },
   "execution_timestamp": 1550040322.8991697,     # Timestamp when the benchmark is executed
   "execution_id": "2019-02-13-06-45-22-899128",  # A string that uniquely identify this benchmark execution
@@ -172,7 +172,7 @@ key when the name of the key is not sufficiently self-explanary.
   },
 
   "benchmark_result": {                       # Summary of the benchmark execution results. This is pretty much the same data structure defined in test_log.proto.
-                                              # Most values are read from test_log.proto which is written by tf.test.Benchmark.report_benchmark() defined in Tensorflow library.
+                                              # Most values are read from test_log.proto which is written by tf.test.Benchmark.report_benchmark() defined in TensorFlow library.
 
     "metrics": [                              # This is derived from `extras` [test_log.proto](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/test_log.proto)
                                               # which is written by report_benchmark().
@@ -195,7 +195,7 @@ key when the name of the key is not sufficiently self-explanary.
 }
 ```
 
-### Visualize Tensorflow graph etc. using Tensorboard
+### Visualize TensorFlow graph etc. using Tensorboard
 
 When the flag `--profiler_enabled_time=start_time:end_time` is specified, the
 profiler data will be collected and stored in
@@ -221,7 +221,7 @@ pdf showing the value of these metrics over time.
 Here are the instructions that developers of benchmark method needs to follow in
 order to run benchmark method in PerfZero.
 
-1) The benchmark class should extend the Tensorflow python class
+1) The benchmark class should extend the TensorFlow python class
 [tensorflow.test.Benchmark](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/platform/benchmark.py). The benchmark class constructor should have a
 constructor with signature `__init__(self, output_dir, data_dir, **kwargs)`.
 Below is the usage for each arguments:
@@ -301,10 +301,10 @@ command and copy/paste it to the README.md.
 
 # Instructions for managing Google Cloud Platform computing instance
 
-PerfZero aims to make it easy to run and debug Tensorflow which is usually run
+PerfZero aims to make it easy to run and debug TensorFlow which is usually run
 with GPU. However, most users do not have dedicated machine with the expensive
 hardware. One cost-effective solution is for users to create machine with the
-desired hardward on demand in a public cloud when they need to debug Tensorflow.
+desired hardward on demand in a public cloud when they need to debug TensorFlow.
 
 We provide a script in PerfZero to make it easy to manage computing instance in
 Google Cloud Platform. This assumes that you have access to an existing project
