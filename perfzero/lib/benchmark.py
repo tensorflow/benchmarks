@@ -114,9 +114,7 @@ class BenchmarkRunner(object):
       process.start()
       process.join()
       method_has_exception, method_execution_time, succeeded, output_dir = queue.get()  # pylint: disable=line-too-long
-
-      if method_has_exception:
-        has_exception = True
+      has_exception |= method_has_exception
       self.benchmark_execution_time[benchmark_method] = method_execution_time
       benchmark_success_results[benchmark_method] = succeeded
       benchmark_output_dirs[benchmark_method] = output_dir
