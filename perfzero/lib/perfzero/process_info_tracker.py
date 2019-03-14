@@ -79,7 +79,7 @@ class ProcessInfoTracker(object):
       if not self.exit_event.is_set():
         # Schedule the next event to be run after 1 second
         self.scheduler.enter(1, 1, self._update_process_info)  # pylint: disable=no-value-for-parameter
-    except Exception as e:  # pylint: disable=W0703
+    except Exception as e:  # pylint: disable=broad-except
       logging.error('Process info tracker failed due to error:\n %s',
                     traceback.format_exc())
       self.last_exception = e

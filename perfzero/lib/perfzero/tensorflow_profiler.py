@@ -33,7 +33,7 @@ def _start_profiler():
   try:
     profiler.start()
     logging.info('Started Tensorflow profiler')
-  except Exception:  # pylint: disable=W0703
+  except Exception:  # pylint: disable=broad-except
     logging.error('Tensorflow profiler failed to start due to error:\n %s',
                   traceback.format_exc())
 
@@ -55,7 +55,7 @@ def _stop_and_save_profiler(output_dir):
     with open(os.path.join(profiler_data_dir, 'local.trace'), 'wb') as f:
       f.write(result)
     logging.info('Stopped Tensorflow profiler.')
-  except Exception:  # pylint: disable=W0703
+  except Exception:  # pylint: disable=broad-except
     logging.error('Tensorflow profiler failed to stop due to error:\n %s',
                   traceback.format_exc())
 

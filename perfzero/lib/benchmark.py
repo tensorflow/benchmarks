@@ -148,7 +148,7 @@ class BenchmarkRunner(object):
         raw_benchmark_result = utils.read_benchmark_result(benchmark_result_file_path)  # pylint: disable=line-too-long
         # Explicitly overwrite the name to be the full path to benchmark method
         raw_benchmark_result['name'] = benchmark_method
-      except Exception:  # pylint: disable=W0703
+      except Exception:  # pylint: disable=broad-except
         logging.error('Benchmark execution for %s failed due to error:\n %s',
                       benchmark_method, traceback.format_exc())
         method_has_exception = True
