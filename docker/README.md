@@ -3,7 +3,7 @@
 The following command builds a custom image for running tensorflow-benchmarks and Horovod.
 
 ```bash
-$ docker build -f Dockerfile_hvd_tf_benchmarks -t hvd-bench:latest .
+$ docker build -f Dockerfile.hvd_tf_benchmarks -t hvd-bench:latest .
 ```
 
 ## Train with synthetic data
