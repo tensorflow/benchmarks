@@ -34,8 +34,9 @@ class BenchmarkRunner(object):
 
   def __init__(self, config):
     self.config = config
-    project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-    self.workspace_dir = os.path.join(project_dir, config.workspace)
+    self.project_dir = os.path.abspath(
+        os.path.dirname(os.path.dirname(__file__)))
+    self.workspace_dir = os.path.join(self.project_dir, config.workspace)
     self.site_packages_dir = os.path.join(self.workspace_dir, 'site-packages')
     self.root_output_dir = os.path.join(self.workspace_dir, 'output')
     self.benchmark_execution_time = {}
@@ -92,10 +93,14 @@ class BenchmarkRunner(object):
           if re.match(pattern, benchmark_method_name):
             benchmark_methods.append(benchmark_class + '.' +
                                      benchmark_method_name)
+
+    logging.info('The following benchmark methods will be executed: %s',
+                 benchmark_methods)
     return benchmark_methods
 
   def run_benchmark(self):
     """Run benchmark."""
+    harness_info = utils.get_git_repo_info(self.project_dir)
     site_package_info = self._setup()
     has_exception = False
     benchmark_success_results = {}
@@ -108,6 +113,7 @@ class BenchmarkRunner(object):
       queue = multiprocessing.Queue()
       process = multiprocessing.Process(target=benchmark_method_runner.run,
                                         args=(benchmark_method,
+                                              harness_info,
                                               site_package_info,
                                               self.root_output_dir,
                                               self.config, queue))

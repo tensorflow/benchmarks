@@ -28,9 +28,10 @@ from perfzero.tensorflow_profiler import TensorFlowProfiler
 import perfzero.utils as utils
 
 
-def run(benchmark_method, site_package_info, root_output_dir, config, queue):
+def run(benchmark_method, harness_info, site_package_info,
+        root_output_dir, config, queue):
   try:
-    _run_internal(benchmark_method, site_package_info,
+    _run_internal(benchmark_method, harness_info, site_package_info,
                   root_output_dir, config, queue)
   except Exception:  # pylint: disable=broad-except
     logging.error('Benchmark execution for %s failed due to error:\n %s',
@@ -38,13 +39,14 @@ def run(benchmark_method, site_package_info, root_output_dir, config, queue):
     queue.put((True, None, False, None))
 
 
-def _run_internal(benchmark_method, site_package_info,
+def _run_internal(benchmark_method, harness_info, site_package_info,
                   root_output_dir, config, queue):
   """Run benchmark method and put result to the queue.
 
   Args:
     benchmark_method: Canonical path to the benchmark method
-    site_package_info:
+    harness_info: Description of the benchmark harness used in the benchmark
+    site_package_info: Description of the site-package used in the benchmark
     root_output_dir: Directory under which to put the benchmark output
     config: An instance of perfzero_config
     queue: An interprocess queue to transfer benchmark result to the caller
@@ -124,6 +126,7 @@ def _run_internal(benchmark_method, site_package_info,
       benchmark_result,
       config.get_env_vars(),
       config.get_flags(),
+      harness_info,
       site_package_info,
       process_info,
       method_has_exception)

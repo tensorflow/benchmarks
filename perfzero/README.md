@@ -150,6 +150,11 @@ key when the name of the key is not sufficiently self-explanary.
       }
     },
     "harness_name": "perfzero",
+    "harness_info": {
+      "url": "https://github.com/tensorflow/benchmarks.git",
+      "branch": "master",
+      "hash": "75d2991b88630dde10ef65aad8082a6d5cd8b5fc"
+    },
     "execution_label": "execution_label"      # Specified by the flag --execution_label
   },
 
