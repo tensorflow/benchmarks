@@ -134,7 +134,7 @@ def build_benchmark_result(raw_benchmark_result, has_exception):
 def build_execution_summary(execution_timestamp, execution_id,
                             ml_framework_build_label, execution_label,
                             platform_name, system_name, output_gcs_url,
-                            benchmark_result, env_vars, flags,
+                            benchmark_result, env_vars, flags, harness_info,
                             site_package_info, process_info, has_exception):
   """Builds summary of the execution."""
   # Avoids module not found during setup phase when tf is not installed yet.
@@ -143,6 +143,7 @@ def build_execution_summary(execution_timestamp, execution_id,
 
   benchmark_info = {}
   benchmark_info['harness_name'] = 'perfzero'
+  benchmark_info['harness_info'] = harness_info
   benchmark_info['has_exception'] = has_exception
   if execution_label:
     benchmark_info['execution_label'] = execution_label
