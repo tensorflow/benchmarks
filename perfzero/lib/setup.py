@@ -36,6 +36,7 @@ if __name__ == '__main__':
                       level=logging.DEBUG)
   if unparsed:
     logging.warning('Arguments %s are not recognized', unparsed)
+    sys.exit(1)
 
   setup_execution_time = {}
   project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))

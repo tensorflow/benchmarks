@@ -25,12 +25,12 @@ import traceback
 import requests
 
 
-def checkout_git_repos(git_repos, force_update):
+def checkout_git_repos(git_repos, use_cached_site_packages):
   """Clone, update, or sync a repo.
 
   Args:
     git_repos: array of dict containing attributes of the git repo to checkout
-    force_update: Always do git pull if True
+    use_cached_site_packages: If true, skip git pull if the git_repo already exists
 
   Returns:
     A dict containing attributes of the git repositories
@@ -44,7 +44,7 @@ def checkout_git_repos(git_repos, force_update):
     if 'branch' in repo:
       run_commands(['git -C {} checkout {}'.format(
           repo['local_path'], repo['branch'])])
-    if force_update or 'git_hash' in repo:
+    if not use_cached_site_packages or 'git_hash' in repo:
       run_commands(['git -C {} pull'.format(repo['local_path'])])
     if 'git_hash' in repo:
       run_commands(['git -C {} reset --hard {}'.format(
