@@ -66,9 +66,9 @@ def add_setup_parser_arguments(parser):
 def add_benchmark_parser_arguments(parser):
   """Add arguments to the parser used by the benchmark.py."""
   parser.add_argument(
-      '--force_update',
+      '--use_cached_site_packages',
       action='store_true',
-      help='If set, do git pull for dependent git repositories'
+      help='If set, skip git pull for dependent git repositories if it already exists in path_to_perfzero/${workspace}/site-packages'
       )
   parser.add_argument(
       '--gcs_downloads',
@@ -214,7 +214,7 @@ class PerfZeroConfig(object):
       self.bigquery_dataset_table_name = flags.bigquery_dataset_table_name
       self.python_path_str = flags.python_path
       self.workspace = flags.workspace
-      self.force_update = flags.force_update
+      self.use_cached_site_packages = flags.use_cached_site_packages
       self.root_data_dir = flags.root_data_dir
       self.gcloud_key_file_url = flags.gcloud_key_file_url
       self.profiler_enabled_time_str = flags.profiler_enabled_time

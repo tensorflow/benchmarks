@@ -65,7 +65,7 @@ class BenchmarkRunner(object):
     start_time = time.time()
     site_package_info = utils.checkout_git_repos(
         self.config.get_git_repos(self.site_packages_dir),
-        self.config.force_update)
+        self.config.use_cached_site_packages)
     self.benchmark_execution_time['checkout_repository'] = (
         time.time() - start_time)
 
@@ -146,7 +146,8 @@ if __name__ == '__main__':
                       level=level)
 
   if unparsed:
-    logging.warning('Arguments %s are not recognized', unparsed)
+    logging.error('Arguments %s are not recognized', unparsed)
+    sys.exit(1)
 
   config_ = perfzero_config.PerfZeroConfig(mode='flags', flags=FLAGS)
   benchmark_runner = BenchmarkRunner(config_)
