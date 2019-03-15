@@ -35,7 +35,7 @@ if __name__ == '__main__':
   logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
                       level=logging.DEBUG)
   if unparsed:
-    logging.warning('Arguments %s are not recognized', unparsed)
+    logging.error('Arguments %s are not recognized', unparsed)
     sys.exit(1)
 
   setup_execution_time = {}

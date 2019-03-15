@@ -146,7 +146,7 @@ if __name__ == '__main__':
                       level=level)
 
   if unparsed:
-    logging.warning('Arguments %s are not recognized', unparsed)
+    logging.error('Arguments %s are not recognized', unparsed)
     sys.exit(1)
 
   config_ = perfzero_config.PerfZeroConfig(mode='flags', flags=FLAGS)
