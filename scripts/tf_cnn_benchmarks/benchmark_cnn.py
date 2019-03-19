@@ -704,7 +704,7 @@ def create_config_proto(params):
     config.intra_op_parallelism_threads = params.num_intra_threads
   config.inter_op_parallelism_threads = params.num_inter_threads
   config.experimental.collective_group_leader = '/job:worker/replica:0/task:0'
-  config.gpu_options.experimental.collective_ring_order = params.gpu_indices
+  #config.gpu_options.experimental.collective_ring_order = params.gpu_indices
   config.gpu_options.force_gpu_compatible = params.force_gpu_compatible
   if params.allow_growth is not None:
     config.gpu_options.allow_growth = params.allow_growth
