@@ -67,6 +67,7 @@ RUN pip3 install --upgrade setuptools google-api-python-client pyyaml google-clo
 RUN pip3 install wheel absl-py
 RUN pip3 install --upgrade --force-reinstall ${tensorflow_pip_spec}
 RUN pip3 install tfds-nightly
+RUN pip3 install -U scikit-learn
 
 RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/requirements.txt > /tmp/requirements.txt
 RUN pip3 install -r /tmp/requirements.txt
