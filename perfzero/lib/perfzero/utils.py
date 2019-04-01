@@ -163,6 +163,9 @@ def download_data(download_infos):
     elif info['url'].startswith('gs://'):
       cmd = ['gsutil', '-m', 'cp', '-r', '-n', info['url'], local_path_parent]
       run_commands([cmd], shell=False)
+    elif info['url'].startswith('file://'):
+      cmd = ['cp', info['url'][7:], local_path_parent]
+      run_commands([cmd], shell=False)
     else:
       raise ValueError('Url {} with prefix {} is not supported.'.format(
           info['url'], info['url'].split(':')[0]))

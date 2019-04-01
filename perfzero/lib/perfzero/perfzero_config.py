@@ -37,9 +37,11 @@ def add_setup_parser_arguments(parser):
       ''')
   parser.add_argument(
       '--gcloud_key_file_url',
-      default='gs://tf-performance/auth_tokens/benchmark_upload_gce.json',
+      default='',
       type=str,
-      help='''The gcloud key file url. When specified, it will be downloaded to the directory specified by the flag --workspace.
+      help='''DEPRECATED: Use --gcloud_key_file_url of setup.py instead.
+      The gcloud key file url. When specified, it will be downloaded to the
+      directory specified by the flag --workspace. Each url can start with file://, gcs://, http:// or https://.
       ''')
   parser.add_argument(
       '--root_data_dir',
@@ -171,13 +173,16 @@ def add_benchmark_parser_arguments(parser):
       Data will be copied from ${url} to ${root_data_dir}/${relative_path}. ${relative_path} can be skipped if it is the same as the
       base name of the url, which shortens the format to url_1,url_2,... ${root_data_dir} is specified by the flag --root_data_dir.
       File will be de-compressed in ${root_data_dir} if its name ends with 'gz'. Only url prefixed with gcs, http or https are supported.
+      Each url can start with file://, gcs://, http:// or https://.
       ''')
   parser.add_argument(
       '--gcloud_key_file_url',
       default='gs://tf-performance/auth_tokens/benchmark_upload_gce.json',
       type=str,
-      help='The gcloud key file url. When specified, it will be activated and used as the gcloud authentication credential.'
-      )
+      help='''The gcloud key file url. When specified, it will be downloaded to the
+      directory specified by the flag --workspace. Each url can start with file://, gcs://, http:// or https://.
+      The key file will then be activated and used as gcloud authentication credential.
+      ''')
   parser.add_argument(
       '--debug',
       action='store_true',
