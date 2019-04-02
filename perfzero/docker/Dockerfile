@@ -42,3 +42,5 @@ RUN pip3 install --upgrade --force-reinstall ${tensorflow_pip_spec}
 
 RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/requirements.txt > /tmp/requirements.txt
 RUN pip3 install -r /tmp/requirements.txt
+
+RUN pip3 freeze
