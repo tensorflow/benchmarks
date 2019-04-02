@@ -71,3 +71,5 @@ RUN pip3 install -U scikit-learn
 
 RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/requirements.txt > /tmp/requirements.txt
 RUN pip3 install -r /tmp/requirements.txt
+
+RUN pip3 freeze
