@@ -45,7 +45,7 @@ def checkout_git_repos(git_repos, use_cached_site_packages):
       run_commands(['git -C {} checkout {}'.format(
           repo['local_path'], repo['branch'])])
     if not use_cached_site_packages or 'git_hash' in repo:
-      run_commands(['git -C {} pull'.format(repo['local_path'])])
+      run_commands(['git -C {} pull --rebase'.format(repo['local_path'])])
     if 'git_hash' in repo:
       run_commands(['git -C {} reset --hard {}'.format(
           repo['local_path'], repo['git_hash'])])
