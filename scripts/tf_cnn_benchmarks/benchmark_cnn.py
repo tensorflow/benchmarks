@@ -3407,8 +3407,8 @@ def _print_os_env_ignored_warning(mkl_flag, flag_default_val, os_env_var):
       (os_env_var, os.environ[os_env_var], flag_default_val, mkl_flag))
 
 
-def _set_environ_vars(params):
-  """Sets up the environment variables that BenchmarkCNN should use."""
+def set_default_param_values_and_env_vars(params):
+  """Sets up the default param values and environment variables ."""
   if params.batchnorm_persistent:
     os.environ['TF_USE_CUDNN_BATCHNORM_SPATIAL_PERSISTENT'] = '1'
   else:
@@ -3493,7 +3493,7 @@ def setup(params):
   """
   # Set up environment variables before doing any other global initialization to
   # make sure it uses the appropriate environment variables.
-  params = _set_environ_vars(params)
+  params = set_default_param_values_and_env_vars(params)
 
   # horovod needs to be initialized before create_config_proto() call since
   # it will be used in config generation if enabled.
