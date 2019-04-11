@@ -125,6 +125,14 @@ def build_benchmark_result(raw_benchmark_result, has_exception):
         entry['description'] = attributes['description']
     metrics.append(entry)
 
+  for metric in raw_benchmark_result.get('metrics', []):
+    value = metric['value']
+    if 'min_value' in metric and metric['min_value'] > value:
+      succeeded = False
+    if 'max_value' in metric and metric['max_value'] < value:
+      succeeded = False
+    metrics.append(metric)
+
   benchmark_result['succeeded'] = succeeded
   benchmark_result['metrics'] = metrics
 
