@@ -19,6 +19,7 @@ import argparse
 import json
 import logging
 import os
+import sys
 import time
 
 import perfzero.device_utils as device_utils
