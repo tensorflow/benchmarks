@@ -95,7 +95,7 @@ class SSD300Model(model_lib.CNNModel):
     self.eval_coco_ap = 0
 
     # Process, queues, and thread for asynchronous evaluation. When enabled,
-    # create a separte process (async_eval_process) that continously pull
+    # create a separate process (async_eval_process) that continously pull
     # intermediate results from the predictions queue (a multiprocessing queue),
     # process them, and push final results into results queue (another
     # multiprocessing queue). The main thread is responsible to push message
