@@ -246,21 +246,21 @@ with the following parameters:
 
 ```
 tf.test.Benchmark.report_benchmark(
-  iters=num_iteration,         # The number of iterations of the benchmark.
+  iters=num_iteration,          # The number of iterations of the benchmark.
 
-  wall_time=wall_time_sec,     # Total wall time in sec for all iterations.
-
-  extras={                     # key/value pairs for arbitrary metrics where key is the name of the metric and value can be either string or double.
-
-      'accuracy': 99.5,        # If the value is double, it is used as the value of the metric.
-
-      'accuracy_top_5': {      # If the value is string, it should be a json-formatted string with the following fields.
-        'value': 80,           # This is used as the value of the metric
-        'succeeded': True      # Optional. Whether the metric passes developer-defined requirement. This is used by PerfZero to report whether benchmark has succeeded.
-        'min_value': 80        # Optional. Lower bound for the metric value to succeed. Used to tell user why the benchmark has failed.
-        'min_value': 100       # Optional. Upper bound for the metric value to succeed. Used to tell user why the benchmark has failed.
-      }
-  }
+  wall_time=wall_time_sec,      # Total wall time in sec for all iterations.
+  metrics = [                   # List of metric entries
+    {
+      'name': 'accuracy_top_5', # Metric name
+      'value': 80,              # Metric value
+      'min_value': 90,          # Optional. Minimum acceptable metric value for the benchmark to succeed.
+      'max_value': 99           # Optional. Maximum acceptable metric value for the benchmark to succeed.
+    },
+    {
+      'name': 'accuracy_top_1',
+      'value': 99.5
+    }
+  ]
 )
 ```
 
