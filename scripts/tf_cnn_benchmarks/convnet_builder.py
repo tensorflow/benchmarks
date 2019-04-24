@@ -196,10 +196,11 @@ class ConvNetBuilder(object):
                      [pad_w_beg, pad_w_end], [0, 0]]
           if self.data_format == 'NCHW':
             padding = [padding[0], padding[3], padding[1], padding[2]]
-          conv = self._conv2d_impl(input_layer, num_channels_in,
+          padded_input_layer = tf.pad(input_layer, padding)
+          conv = self._conv2d_impl(padded_input_layer, num_channels_in,
                                    num_out_channels,
                                    kernel_size=[k_height, k_width],
-                                   strides=[d_height, d_width], padding=padding,
+                                   strides=[d_height, d_width], padding='VALID',
                                    kernel_initializer=kernel_initializer)
       if use_batch_norm is None:
         use_batch_norm = self.use_batch_norm
