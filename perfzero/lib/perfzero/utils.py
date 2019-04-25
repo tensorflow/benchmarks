@@ -332,7 +332,9 @@ def read_benchmark_result(benchmark_result_file_path):
     benchmark_entries.ParseFromString(f.read())
 
     return json_format.MessageToDict(
-        benchmark_entries, preserving_proto_field_name=True)['entry'][0]
+        benchmark_entries,
+        preserving_proto_field_name=True,
+        including_default_value_fields=True)['entry'][0]
 
 
 def print_thread_stacktrace():
