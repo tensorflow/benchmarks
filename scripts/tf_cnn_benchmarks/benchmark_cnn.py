@@ -761,11 +761,14 @@ def create_config_proto(params):
     config.gpu_options.experimental.timestamped_allocator = (
         params.timestamped_allocator)
   if params.gpu_kt_max_interval > 0:
-    config.gpu_options.experimental.kernel_tracker_max_interval = params.gpu_kt_max_interval
+    config.gpu_options.experimental.kernel_tracker_max_interval = (
+        params.gpu_kt_max_interval)
   if params.gpu_kt_max_bytes > 0:
-    config.gpu_options.experimental.kernel_tracker_max_bytes = params.gpu_kt_max_bytes
+    config.gpu_options.experimental.kernel_tracker_max_bytes = (
+        params.gpu_kt_max_bytes)
   if params.gpu_kt_max_pending > 0:
-    config.gpu_options.experimental.kernel_tracker_max_pending = params.gpu_kt_max_pending
+    config.gpu_options.experimental.kernel_tracker_max_pending = (
+        params.gpu_kt_max_pending)
   if params.xla:
     config.graph_options.optimizer_options.global_jit_level = (
         tf.OptimizerOptions.ON_1)
