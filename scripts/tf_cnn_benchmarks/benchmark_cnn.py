@@ -367,9 +367,18 @@ flags.DEFINE_boolean('timestamped_allocator', False,
                      'If True marks free BFCAllocator::Chunks with time '
                      'at which they are freed which can allow more efficient '
                      'memory allocation in cases like RDMA networking.')
-flags.DEFINE_integer('gpu_pending_cap', 0, 'If > 0 then then number of pending '
-                     '(queued but not yet known to have terminated) kernels '
-                     'per GPU device will be capped to this number.')
+flags.DEFINE_integer('gpu_kt_max_interval', 0,
+                     'If > 0, the maximum number of GPU Ops that may be queued '
+                     'in a row without also queuing a tracking event.')
+flags.DEFINE_integer('gpu_kt_max_bytes', 0,
+                     'If > 0, the maximum number of bytes '
+                     'of GPU memory that may be allocated by sequential '
+                     'GPU Ops without queuing a tracking event.')
+flags.DEFINE_integer('gpu_kt_max_pending', 0,
+                     'If > 0 no more than this many GPU tracking events may be '
+                     'outstanding at any time.  When this limit is reached '
+                     'launch of additional kernels will stall until an '
+                     'outstanding event completes.')
 flags.DEFINE_boolean('use_tf_layers', True,
                      'If True, use tf.layers for neural network layers. This '
                      'should not affect performance or accuracy in any way.')
@@ -751,8 +760,12 @@ def create_config_proto(params):
   if params.timestamped_allocator:
     config.gpu_options.experimental.timestamped_allocator = (
         params.timestamped_allocator)
-  if params.gpu_pending_cap > 0:
-    config.gpu_options.experimental.pending_cap = params.gpu_pending_cap
+  if params.gpu_kt_max_interval > 0:
+    config.gpu_options.experimental.kernel_tracker_max_interval = params.gpu_kt_max_interval
+  if params.gpu_kt_max_bytes > 0:
+    config.gpu_options.experimental.kernel_tracker_max_bytes = params.gpu_kt_max_bytes
+  if params.gpu_kt_max_pending > 0:
+    config.gpu_options.experimental.kernel_tracker_max_pending = params.gpu_kt_max_pending
   if params.xla:
     config.graph_options.optimizer_options.global_jit_level = (
         tf.OptimizerOptions.ON_1)
