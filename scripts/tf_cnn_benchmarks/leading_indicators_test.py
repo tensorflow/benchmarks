@@ -269,11 +269,6 @@ class Resnet50Benchmarks(BenchmarkBase):
     params = self._shared_params()._replace(num_gpus=1)
     self._run_benchmark(params)
 
-  def benchmark_synth_1gpu_gpuparams_batch64(self):
-    """Tests 1 gpu with synthetic data."""
-    params = self._shared_params()._replace(num_gpus=1, batch_size=64)
-    self._run_benchmark(params)
-
   def benchmark_fake_1gpu_gpuparams(self):
     """Tests 1 gpu with fake data."""
     params = self._shared_params()._replace(
@@ -299,42 +294,6 @@ class Resnet50Benchmarks(BenchmarkBase):
         data_dir=self.fake_data_dir,
         data_name='imagenet',
         variable_update='parameter_server')
-    self._run_benchmark(params)
-
-  def benchmark_synth_4gpu_cpuparams(self):
-    """Tests 4 gpus with synthetic data with parameters on the cpu."""
-    params = self._shared_params()._replace(
-        num_gpus=4,
-        variable_update='parameter_server',
-        local_parameter_device='cpu')
-    self._run_benchmark(params)
-
-  def benchmark_synth_8gpu_cpuparams(self):
-    """Tests 8 gpus with synthetic data with parameters on the cpu."""
-    params = self._shared_params()._replace(
-        num_gpus=8,
-        variable_update='parameter_server',
-        local_parameter_device='cpu')
-    self._run_benchmark(params)
-
-  def benchmark_fake_4gpu_cpuparams(self):
-    """Tests 4 gpus with fake data with parameters on the cpu."""
-    params = self._shared_params()._replace(
-        num_gpus=4,
-        data_dir=self.fake_data_dir,
-        data_name='imagenet',
-        variable_update='parameter_server',
-        local_parameter_device='cpu')
-    self._run_benchmark(params)
-
-  def benchmark_fake_8gpu_cpuparams(self):
-    """Tests 8 gpus with fake data with parameters on the cpu."""
-    params = self._shared_params()._replace(
-        num_gpus=8,
-        data_dir=self.fake_data_dir,
-        data_name='imagenet',
-        variable_update='parameter_server',
-        local_parameter_device='cpu')
     self._run_benchmark(params)
 
   def benchmark_synth_4gpu_gpureplicated(self):
@@ -381,18 +340,6 @@ class Resnet50Benchmarks(BenchmarkBase):
     """Tests 1 gpu with synthetic data with parameters on the gpu."""
     params = self._shared_params_fp16()._replace(
         num_gpus=1, batch_size=128, variable_update='parameter_server')
-    self._run_benchmark(params)
-
-  def benchmark_fp16_synth_1gpu_gpuparams_batch64(self):
-    """Tests 1 gpu with synthetic data with parameters on the gpu."""
-    params = self._shared_params_fp16()._replace(
-        num_gpus=1, batch_size=64, variable_update='parameter_server')
-    self._run_benchmark(params)
-
-  def benchmark_fp16_synth_4gpu_gpuparams(self):
-    """Tests 4 gpus with synthetic data with parameters on the gpus."""
-    params = self._shared_params_fp16()._replace(
-        num_gpus=4, variable_update='parameter_server')
     self._run_benchmark(params)
 
   def benchmark_fp16_synth_4gpu_gpureplicated(self):
@@ -565,14 +512,6 @@ class Resnet50v15Benchmarks(BenchmarkBase):
         num_gpus=1, data_dir=self.fake_data_dir, data_name='imagenet')
     self._run_benchmark(params)
 
-  def benchmark_fp16_synth_4gpu_cpuparams(self):
-    """Tests 4 gpus with synthetic data with parameters on the cpu."""
-    params = self._shared_params_fp16()._replace(
-        num_gpus=4,
-        variable_update='parameter_server',
-        local_parameter_device='cpu')
-    self._run_benchmark(params)
-
   def benchmark_fp16_synth_8gpu_gpureplicated(self):
     """Tests 8 gpu with synthetic data with parameters replicated."""
     params = self._shared_params_fp16()._replace(
@@ -676,16 +615,6 @@ class Vgg16Benchmarks(BenchmarkBase):
     """Tests 1 gpu with synthetic data with parameters on gpu."""
     params = self._shared_params()._replace(
         num_gpus=1, use_fp16=True, variable_update='parameter_server')
-    self._run_benchmark(params)
-
-  def benchmark_synth_4gpu_gpureplicated(self):
-    """Tests 4 gpu with synthetic data with parameters replicated."""
-    params = self._shared_params()._replace(
-        num_gpus=4,
-        all_reduce_spec='nccl',
-        variable_update='replicated',
-        compact_gradient_transfer=False,
-        gradient_repacking=2)
     self._run_benchmark(params)
 
   def benchmark_synth_8gpu_gpureplicated(self):
