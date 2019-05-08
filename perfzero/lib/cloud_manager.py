@@ -272,8 +272,6 @@ def delete(instance_name, project, zone, num_instances):
   instance_names = _instance_names(instance_name, num_instances)
   logging.debug('Deleting gcloud computing instance {} of project {} in '
                 'zone {}'.format(instance_name, project, zone))
-  logging.debug('Deleting gcloud computing instance %s of project %s in '
-                'zone %s', instance_name, project, zone)
   cmd = 'echo Y | ' + _instances_cmd('delete', instance_names, project, zone)
   run_command(cmd, is_from_user=True)
   logging.info('Successfully deleted gcloud computing instances {} of '
