@@ -224,7 +224,9 @@ pdf showing the value of these metrics over time.
 # Instructions for developer who writes benchmark classes
 
 Here are the instructions that developers of benchmark method needs to follow in
-order to run benchmark method in PerfZero.
+order to run benchmark method in PerfZero. See
+[estimator_benchmark.py](https://github.com/tensorflow/models/blob/master/official/resnet/estimator_benchmark.py)
+for example test code that supports PerfZero.
 
 1) The benchmark class should extend the TensorFlow python class
 [tensorflow.test.Benchmark](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/platform/benchmark.py). The benchmark class constructor should have a
@@ -233,7 +235,6 @@ Below is the usage for each arguments:
 
 - Benchmark method should put all generated files (e.g. logs) in `output_dir` so that PerfZero can
 upload these files to Google Cloud Storage when `--output_gcs_url` is specified.
-See [EstimatorCifar10BenchmarkTests](https://github.com/tensorflow/models/blob/master/official/resnet/estimator_cifar_benchmark.py) for example.
 
 - Benchmark method should read data from `root_data_dir`. For example, the benchmark method can read data from e.g. `${root_data_dir}/cifar-10-binary`
 
