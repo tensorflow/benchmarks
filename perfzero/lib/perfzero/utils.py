@@ -245,8 +245,8 @@ def run_command(cmd, shell=True):
   logging.debug('Executing command: {}'.format(cmd))
   p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                        stderr=subprocess.STDOUT, shell=shell)
-  exit_code = p.wait()
-  stdout = p.stdout.decode('utf-8')
+  stdout, _ = p.communicate().decode('utf-8')
+  exit_code = p.returncode
   return exit_code, stdout
 
 
