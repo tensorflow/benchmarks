@@ -245,9 +245,9 @@ def run_command(cmd, shell=True):
   logging.debug('Executing command: {}'.format(cmd))
   p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                        stderr=subprocess.STDOUT, shell=shell)
-  stdout, _ = p.communicate().decode('utf-8')
+  stdout, _ = p.communicate()
   exit_code = p.returncode
-  return exit_code, stdout
+  return exit_code, stdout.decode('utf-8')
 
 
 def run_commands(cmds, shell=True):

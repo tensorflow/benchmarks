@@ -52,7 +52,8 @@ def run_command(cmd, is_from_user=False):
   _log('Executing command: {}'.format(cmd))
   p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                        stderr=subprocess.STDOUT, shell=True)
-  stdout, _ = p.communicate().decode('utf-8')
+  stdout, _ = p.communicate()
+  stdout = stdout.decode('utf-8')
   exit_code = p.returncode
   _log(stdout)
   if exit_code and is_from_user:
