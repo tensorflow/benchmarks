@@ -209,7 +209,9 @@ class PerfZeroConfig(object):
       self.gcs_downloads_str = flags.gcs_downloads
       self.data_downloads_str = flags.data_downloads
       self.git_repos_str = flags.git_repos
-      self.benchmark_method_patterns = flags.benchmark_methods
+      self.benchmark_method_patterns = []
+      for value in flags.benchmark_methods:
+        self.benchmark_method_patterns.extend(value.split(','))
       self.ml_framework_build_label = flags.ml_framework_build_label
       self.execution_label = flags.execution_label
       self.platform_name = flags.platform_name
