@@ -43,27 +43,18 @@ def run_command(cmd, is_from_user=False):
   Raises:
     Exception: raised when the command execution has non-zero exit code
   """
-  if is_from_user:
-    logging.info('Executing command: %s\n', cmd)
-  else:
-    logging.debug('Executing command: %s\n', cmd)
+  def _log(text):
+    if is_from_user:
+      logging.info(text)
+    else:
+      logging.debug(text)
 
-  stdout = ''
+  _log('Executing command: {}'.format(cmd))
   p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                        stderr=subprocess.STDOUT, shell=True)
-  exit_code = None
-  while exit_code is None:
-    exit_code = p.poll()
-    line = p.stdout.readline().decode('utf-8').strip()
-    if not line:
-      continue
-
-    if is_from_user:
-      logging.info(line)
-    else:
-      logging.debug(line)
-    stdout = stdout + line + '\n'
-
+  exit_code = p.wait()
+  stdout = p.stdout.decode('utf-8')
+  _log(stdout)
   if exit_code and is_from_user:
     sys.exit(exit_code)
   elif exit_code:

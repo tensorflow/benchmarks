@@ -242,16 +242,11 @@ def run_command(cmd, shell=True):
   Returns:
     Tuple of the command return value and the standard out in as a string.
   """
-  logging.debug('Executing command: %s', cmd)
+  logging.debug('Executing command: {}'.format(cmd))
   p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                        stderr=subprocess.STDOUT, shell=shell)
-  stdout = ''
-  exit_code = None
-  while exit_code is None:
-    exit_code = p.poll()
-    line_str = p.stdout.readline().decode('utf-8')
-    logging.debug(line_str)
-    stdout += line_str
+  exit_code = p.wait()
+  stdout = p.stdout.decode('utf-8')
   return exit_code, stdout
 
 
