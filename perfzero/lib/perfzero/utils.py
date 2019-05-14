@@ -245,9 +245,17 @@ def run_command(cmd, shell=True):
   logging.debug('Executing command: {}'.format(cmd))
   p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                        stderr=subprocess.STDOUT, shell=shell)
-  stdout, _ = p.communicate()
-  exit_code = p.returncode
-  return exit_code, stdout.decode('utf-8')
+
+  exit_code = None
+  line = ''
+  stdout = ''
+  while exit_code is None or line:
+    exit_code = p.poll()
+    line = p.stdout.readline().decode('utf-8')
+    stdout += line
+    logging.debug(line)
+
+  return exit_code, stdout
 
 
 def run_commands(cmds, shell=True):
