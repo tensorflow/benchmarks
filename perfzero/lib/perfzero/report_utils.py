@@ -19,6 +19,7 @@ import json
 import logging
 import perfzero.utils as utils
 import psutil
+import socket
 
 from six import u as unicode  # pylint: disable=W0622
 
@@ -188,6 +189,7 @@ def build_execution_summary(execution_timestamp, execution_id,
   system_info['physical_cpu_count'] = psutil.cpu_count(logical=False)
   system_info['logical_cpu_count'] = psutil.cpu_count(logical=True)
   system_info['cpu_socket_count'] = utils.get_cpu_socket_count()
+  system_info['hostname'] = socket.gethostname()
 
   execution_summary = {}
   execution_summary['execution_id'] = execution_id
