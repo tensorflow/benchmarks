@@ -77,8 +77,7 @@ python3 /workspace/benchmarks/perfzero/lib/benchmark.py \
 --gcloud_key_file_url="" \
 --git_repos="https://github.com/tensorflow/models.git" \
 --python_path=models \
---data_downloads="https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz" \
---benchmark_methods=official.resnet.estimator_cifar_benchmark.EstimatorCifar10BenchmarkTests.unit_test \
+--benchmark_methods=official.resnet.estimator_benchmark.Resnet50EstimatorBenchmarkSynth.benchmark_graph_1_gpu \
 --root_data_dir=$ROOT_DATA_DIR
 ```
 
@@ -87,7 +86,8 @@ required by the benchmark method. If the flag `--data_downloads` is specified,
 PerfZero will download files from the specified url to the directory specified
 by the flag `--root_data_dir`. Otherwise, user needs to manually download and
 move the dataset files into the directory specified by `--root_data_dirs`. The
-default `root_data_dir` is `/data`
+default `root_data_dir` is `/data`. Some benchmark methods, like the one run in
+the sample command above, do not require any dataset files.
 
 Here are a few selected optional flags. Run `python3 benchmark.py -h` to see
 detailed documentation for all supported flags.
