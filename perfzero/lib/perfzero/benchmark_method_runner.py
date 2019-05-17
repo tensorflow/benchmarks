@@ -54,7 +54,8 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
   start_timestamp = time.time()
   execution_timestamp = start_timestamp
   method_has_exception = False
-  execution_id = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S-%f')
+  execution_id = (config.execution_id if config.execution_id else
+                  datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S-%f'))
   output_dir = os.path.join(root_output_dir, execution_id)
   utils.make_dir_if_not_exist(output_dir)
   benchmark_class, benchmark_method_name = benchmark_method.rsplit('.', 1)
