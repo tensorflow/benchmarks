@@ -107,7 +107,7 @@ def build_benchmark_result(raw_benchmark_result, has_exception):
   benchmark_result['wall_time'] = raw_benchmark_result['wall_time']
 
   succeeded = not has_exception
-  metrics = []
+  extras = []
   for name in raw_benchmark_result.get('extras', {}):
     entry = {}
     entry['name'] = name
@@ -115,16 +115,10 @@ def build_benchmark_result(raw_benchmark_result, has_exception):
     if 'double_value' in raw_benchmark_result['extras'][name]:
       entry['value'] = raw_benchmark_result['extras'][name]['double_value']
     else:
-      attributes = json.loads(
-          raw_benchmark_result['extras'][name]['string_value'])
-      entry['value'] = attributes['value']
-      if 'succeeded' in attributes:
-        entry['succeeded'] = attributes['succeeded']
-        succeeded = succeeded and attributes['succeeded']
-      if 'description' in attributes:
-        entry['description'] = attributes['description']
-    metrics.append(entry)
+      entry['value'] = raw_benchmark_result['extras'][name]['string_value']
+    extras.append(entry)
 
+  metrics = []
   for metric in raw_benchmark_result.get('metrics', []):
     value = metric['value']
     if 'min_value' in metric and metric['min_value'] > value:
@@ -134,6 +128,7 @@ def build_benchmark_result(raw_benchmark_result, has_exception):
     metrics.append(metric)
 
   benchmark_result['succeeded'] = succeeded
+  benchmark_result['extras'] = extras
   benchmark_result['metrics'] = metrics
 
   return benchmark_result
