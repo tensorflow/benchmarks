@@ -197,6 +197,11 @@ def add_benchmark_parser_arguments(parser):
       sec or until the benchmark method execution finishes, whichever occurs first. If ${end_time} is not explicitly
       specified, it is assumed to be MAX_LONG.
       ''')
+  parser.add_argument(
+      '--execution_id',
+      default=None,
+      type=str,
+      help='A string that uniquely identifies the benchmark execution.')
 
 
 class PerfZeroConfig(object):
@@ -225,6 +230,7 @@ class PerfZeroConfig(object):
       self.root_data_dir = flags.root_data_dir
       self.gcloud_key_file_url = flags.gcloud_key_file_url
       self.profiler_enabled_time_str = flags.profiler_enabled_time
+      self.execution_id = flags.execution_id
 
       if not flags.benchmark_methods:
         logging.warning('No benchmark method is specified by '
