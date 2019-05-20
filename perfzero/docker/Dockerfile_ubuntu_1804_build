@@ -1,6 +1,7 @@
 # Ubuntu 18.04 Python3 with CUDA 10 and the following:
 #  - Installs tf-nightly-gpu-2.0-preview
 #  - Installs requirements.txt for tensorflow/models
+#  - Install blaze for building TF from source
 
 FROM nvidia/cuda:10.0-base-ubuntu18.04 as base
 ARG tensorflow_pip_spec="tf-nightly-gpu-2.0-preview"
