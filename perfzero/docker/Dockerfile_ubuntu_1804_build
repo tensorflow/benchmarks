@@ -86,3 +86,8 @@ RUN mkdir /bazel && \
     chmod +x /bazel/installer.sh && \
     /bazel/installer.sh && \
     rm -f /bazel/installer.sh
+
+# Some build packages need to find `python` even if its just a link to python3.
+RUN ln -s $(which python) /usr/local/bin/python
+
+RUN git clone https://github.com/tensorflow/tensorflow.git /tensorflow_src
