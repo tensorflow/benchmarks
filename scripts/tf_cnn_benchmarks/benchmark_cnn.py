@@ -240,10 +240,10 @@ flags.DEFINE_enum(
     'Network topology specifies the topology used to connect multiple devices. '
     'Network topology is used to decide the hierarchy to use for the '
     'hierarchical_copy.')
-flags.DEFINE_integer('gradient_repacking', 0, 'Use gradient repacking. It'
-                     'currently only works with replicated mode. At the end of'
-                     'of each step, it repacks the gradients for more efficient'
-                     'cross-device transportation. A non-zero value specifies'
+flags.DEFINE_integer('gradient_repacking', 0, 'Use gradient repacking. It '
+                     'currently only works with replicated mode. At the end of '
+                     'each step, it repacks the gradients for more efficient '
+                     'cross-device transportation. A non-zero value specifies '
                      'the number of split packs that will be formed.',
                      lower_bound=0)
 flags.DEFINE_boolean('compact_gradient_transfer', True, 'Compact gradient'
