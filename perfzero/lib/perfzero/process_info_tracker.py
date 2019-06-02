@@ -45,7 +45,7 @@ class ProcessInfoTracker(object):
   def start(self):
     self.start_time = time.time()
     # 4th positional arg added to support Python2 for the short-term.
-    self.scheduler.enter(1, 1, self._update_process_info, None)  # pylint: disable=no-value-for-parameter
+    self.scheduler.enter(1, 1, self._update_process_info, ())  # pylint: disable=no-value-for-parameter
     threading.Thread(target=self.scheduler.run).start()
     logging.info('Started process information tracker.')
 
@@ -83,7 +83,7 @@ class ProcessInfoTracker(object):
       self.process_info_log.write(json.dumps(entry) + '\n')
       if not self.exit_event.is_set():
         # Schedule the next event to be run after 1 second
-        self.scheduler.enter(1, 1, self._update_process_info)  # pylint: disable=no-value-for-parameter
+        self.scheduler.enter(1, 1, self._update_process_info, ())  # pylint: disable=no-value-for-parameter
     except Exception as e:  # pylint: disable=broad-except
       logging.error('Process info tracker failed due to error:\n %s',
                     traceback.format_exc())
