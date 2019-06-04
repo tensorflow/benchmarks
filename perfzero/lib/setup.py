@@ -75,7 +75,7 @@ if __name__ == '__main__':
     dockerfile_path = os.path.join(project_dir, FLAGS.dockerfile_path)
   docker_tag = 'perfzero/tensorflow'
   if FLAGS.tensorflow_pip_spec:
-    cmd = 'docker build --no-cache --pull -t {} --build-arg tensorflow_pip_spec={} - < {}'.format(  # pylint: disable=line-too-long
+    cmd = 'docker build --no-cache --pull -t {} --build-arg tensorflow_pip_spec={} -f {} .'.format(  # pylint: disable=line-too-long
         docker_tag, FLAGS.tensorflow_pip_spec, dockerfile_path)
   else:
     cmd = 'docker build --no-cache --pull -t {} - < {}'.format(docker_tag, dockerfile_path)  # pylint: disable=line-too-long
