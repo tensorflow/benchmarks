@@ -59,8 +59,8 @@ if __name__ == '__main__':
   # Create docker image
   start_time = time.time()
 
-  # Download TensorFlow pip package from Google Cloud and modify package path
-  # accordingly, if applicable
+  # Download TensorFlow pip package from Google Cloud Storage and modify package
+  # path accordingly, if applicable
   if FLAGS.tensorflow_pip_spec.startswith('gs://'):
     local_path = os.path.join(workspace_dir,
                               os.path.basename(FLAGS.tensorflow_pip_spec))
