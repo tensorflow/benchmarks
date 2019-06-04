@@ -3,7 +3,7 @@
 #  - Installs requirements.txt for tensorflow/models
 
 FROM nvidia/cuda:10.0-base-ubuntu18.04 as base
-ARG tensorflow_pip_spec="/tmp/tensorflow-1.13.1-cp36-cp36m-linux_x86_64.whl"
+ARG tensorflow_pip_spec="resources/tensorflow-1.13.1-cp36-cp36m-linux_x86_64.whl"
 
 COPY ${tensorflow_pip_spec} /tensorflow-1.13.1-cp36-cp36m-linux_x86_64.whl
 
