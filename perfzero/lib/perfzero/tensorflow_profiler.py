@@ -101,7 +101,8 @@ class TensorFlowProfiler(object):
       if end_time <= begin_time:
         raise ValueError('end_time {} is no larger than begin_time {}'.format(
             end_time, begin_time))
-      self.scheduler.enter(begin_time, 1, _start_profiler)  # pylint: disable=no-value-for-parameter
+      # 4th positional arg added to support Python2 for the short-term.
+      self.scheduler.enter(begin_time, 1, _start_profiler, ())  # pylint: disable=no-value-for-parameter
       self.scheduler.enter(end_time, 1, _stop_and_save_profiler,
                            argument=(self.output_dir,))
       last_end_time = end_time
