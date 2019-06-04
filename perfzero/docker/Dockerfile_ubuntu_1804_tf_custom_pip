@@ -2,10 +2,16 @@
 #  - Installs custom TensorFlow pip package
 #  - Installs requirements.txt for tensorflow/models
 
-FROM nvidia/cuda:10.0-base-ubuntu18.04 as base
-ARG tensorflow_pip_spec="resources/tensorflow-1.13.1-cp36-cp36m-linux_x86_64.whl"
+# NOTE: Branched from Dockerfile_ubuntu_1804_tf_v1 with changes relevant to
+# tensorflow_pip_spec. When updating please keep the difference minimal.
 
-COPY ${tensorflow_pip_spec} /tensorflow-1.13.1-cp36-cp36m-linux_x86_64.whl
+FROM nvidia/cuda:10.0-base-ubuntu18.04 as base
+
+# Location of custom TF pip package, must be relative to docker context.
+# Note that the version tag in the name of wheel file is meaningless.
+ARG tensorflow_pip_spec="resources/tensorflow-0.0.1-cp36-cp36m-linux_x86_64.whl"
+
+COPY ${tensorflow_pip_spec} /tensorflow-0.0.1-cp36-cp36m-linux_x86_64.whl
 
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -67,7 +73,7 @@ RUN pip3 install --upgrade pip==9.0.1
 # setuptools upgraded to fix install requirements from model garden.
 RUN pip3 install --upgrade setuptools google-api-python-client pyyaml google-cloud google-cloud-bigquery
 RUN pip3 install wheel absl-py
-RUN pip3 install --upgrade --force-reinstall /tensorflow-1.13.1-cp36-cp36m-linux_x86_64.whl
+RUN pip3 install --upgrade --force-reinstall /tensorflow-0.0.1-cp36-cp36m-linux_x86_64.whl
 RUN pip3 install tfds-nightly
 RUN pip3 install -U scikit-learn
 

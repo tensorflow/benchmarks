@@ -68,6 +68,8 @@ if __name__ == '__main__':
     local_pip_path = os.path.join(docker_context, local_pip_filename)
     utils.download_data([{'url': FLAGS.tensorflow_pip_spec,
                           'local_path': local_pip_path}])
+    # Update path to pip wheel file for the Dockerfile. Note that this path has
+    # to be relative to the docker context (absolute path will not work).
     FLAGS.tensorflow_pip_spec = local_pip_filename
 
   dockerfile_path = FLAGS.dockerfile_path
