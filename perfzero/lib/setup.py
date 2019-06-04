@@ -62,7 +62,7 @@ if __name__ == '__main__':
   # Download TensorFlow pip package from Google Cloud Storage and modify package
   # path accordingly, if applicable
   if FLAGS.tensorflow_pip_spec.startswith('gs://'):
-    local_path = os.path.join(workspace_dir,
+    local_path = os.path.join('resources',
                               os.path.basename(FLAGS.tensorflow_pip_spec))
     utils.download_data([{'url': FLAGS.tensorflow_pip_spec,
                           'local_path': local_path}])
