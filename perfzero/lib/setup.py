@@ -58,6 +58,20 @@ if __name__ == '__main__':
 
   # Create docker image
   start_time = time.time()
+  docker_context = os.path.join(workspace_dir, 'resources')
+
+  # Download TensorFlow pip package from Google Cloud Storage and modify package
+  # path accordingly, if applicable
+  if (FLAGS.tensorflow_pip_spec and
+      FLAGS.tensorflow_pip_spec.startswith('gs://')):
+    local_pip_filename = os.path.basename(FLAGS.tensorflow_pip_spec)
+    local_pip_path = os.path.join(docker_context, local_pip_filename)
+    utils.download_data([{'url': FLAGS.tensorflow_pip_spec,
+                          'local_path': local_pip_path}])
+    # Update path to pip wheel file for the Dockerfile. Note that this path has
+    # to be relative to the docker context (absolute path will not work).
+    FLAGS.tensorflow_pip_spec = local_pip_filename
+
   dockerfile_path = FLAGS.dockerfile_path
   if not os.path.exists(dockerfile_path):
     # Fall back to the deprecated approach if the user-specified
@@ -65,8 +79,8 @@ if __name__ == '__main__':
     dockerfile_path = os.path.join(project_dir, FLAGS.dockerfile_path)
   docker_tag = 'perfzero/tensorflow'
   if FLAGS.tensorflow_pip_spec:
-    cmd = 'docker build --no-cache --pull -t {} --build-arg tensorflow_pip_spec={} - < {}'.format(  # pylint: disable=line-too-long
-        docker_tag, FLAGS.tensorflow_pip_spec, dockerfile_path)
+    cmd = 'docker build --no-cache --pull -t {} --build-arg tensorflow_pip_spec={} -f {} {}'.format(  # pylint: disable=line-too-long
+        docker_tag, FLAGS.tensorflow_pip_spec, dockerfile_path, docker_context)
   else:
     cmd = 'docker build --no-cache --pull -t {} - < {}'.format(docker_tag, dockerfile_path)  # pylint: disable=line-too-long
 
