@@ -64,10 +64,6 @@ def run_command(cmd, is_from_user=False):
   return stdout
 
 
-def get_instance_name(username):
-  return INSTANCE_NAME_PREFIX + username
-
-
 def get_machine_type(machine_type, accelerator_count):
   """Get machine type for the instance.
 
@@ -89,53 +85,29 @@ def get_machine_type(machine_type, accelerator_count):
   return 'n1-standard-{}'.format(cpu_count)
 
 
-def create(username, project, zone, machine_type, accelerator_count,
-           accelerator_type, image, nvme_count):
-  """Create gcloud computing instance.
-
-  Args:
-    username: the username of the current user
-    project: project name
-    zone: zone of the GCP computing instance
-    machine_type: the machine type used for the instance
-    accelerator_count: the number of pieces of the accelerator to attach to
-                       the instance
-    accelerator_type: the specific type of accelerator to attach to the instance
-    image: the name of the image that the disk will be initialized with
-    nvme_count: the number of NVME local SSD devices to attach to the instance
-  """
-  instance_name = get_instance_name(username)
-  machine_type = get_machine_type(machine_type, accelerator_count)
-  logging.debug('Creating gcloud computing instance %s', instance_name)
-
-  cmd = '''gcloud compute instances create {} \
---image={} \
---project={} \
---zone={} \
---machine-type={} \
---maintenance-policy=TERMINATE \
-'''.format(instance_name, image, project, zone, machine_type)
-
-  if accelerator_count > 0:
-    cmd += '--accelerator=count={},type={} '.format(
-        accelerator_count, accelerator_type)
-
-  for _ in range(nvme_count):
-    cmd += '--local-ssd=interface=NVME '
-
-  run_command(cmd, is_from_user=True)
-  logging.info('Successfully created gcloud computing instance %s '
-               'with %s accelerator.\n', instance_name, accelerator_count)
-
-  # Wait until we can ssh to the newly created computing instance
-  cmd = 'gcloud compute ssh {} --project={} --zone={} --strict-host-key-checking=no --command="exit"'.format(  # pylint: disable=line-too-long
+def _ssh_prefix(instance_name, project, zone):
+  return 'gcloud compute ssh {} --project={} --zone={}'.format(
       instance_name, project, zone)
+
+
+def _ssh_cmd(instance_name, project, zone, remote_cmd,
+             strict_host_key_checking=True):
+  ssh_cmd = '{} --command="{}"'.format(
+      _ssh_prefix(instance_name, project, zone), remote_cmd)
+  if not strict_host_key_checking:
+    ssh_cmd += ' --strict-host-key-checking=no'
+  return ssh_cmd
+
+
+def _setup_after_create(instance_name, project, zone):
+  logging.info('Post-creation setup for instance {}'.format(instance_name))
   ssh_remaining_retries = 12
   ssh_error = None
   while ssh_remaining_retries > 0:
     ssh_remaining_retries -= 1
     try:
-      run_command(cmd, is_from_user=False)
+      run_command(_ssh_cmd(instance_name, project, zone, 'exit', False),
+                  is_from_user=False)
       ssh_error = None
     except Exception as error:  # pylint: disable=broad-except
       ssh_error = error
@@ -152,34 +124,93 @@ def create(username, project, zone, machine_type, accelerator_count,
                  'instance:\n'
                  'git clone https://github.com/tensorflow/benchmarks.git\n'
                  'sudo usermod -a -G docker $USER\n')
-  else:
-    cmd = 'gcloud compute ssh {} --project={} --zone={} --command="git clone {}"'.format(  # pylint: disable=line-too-long
-        instance_name, project, zone,
-        'https://github.com/tensorflow/benchmarks.git')
-    run_command(cmd, is_from_user=True)
-    logging.info('Successfully checked-out PerfZero code on the '
-                 'computing instance\n')
+    return
 
-    cmd = 'gcloud compute ssh {} --project={} --zone={} --command="sudo usermod -a -G docker $USER"'.format(  # pylint: disable=line-too-long
-        instance_name, project, zone)
-    run_command(cmd, is_from_user=True)
-    logging.info('Successfully added user to the docker group\n')
+  remote_cmd = 'git clone https://github.com/tensorflow/benchmarks.git'
+  run_command(_ssh_cmd(instance_name, project, zone, remote_cmd),
+              is_from_user=True)
+  logging.info('Successfully checked-out PerfZero code on the '
+               'computing instance\n')
 
-  cmd = 'gcloud compute ssh {} --project={} --zone={} -- -L 6006:127.0.0.1:6006'.format(  # pylint: disable=line-too-long
-      instance_name, project, zone)
+  remote_cmd = 'sudo usermod -a -G docker $USER'
+  run_command(_ssh_cmd(instance_name, project, zone, remote_cmd),
+              is_from_user=True)
+  logging.info('Successfully added user to the docker group\n')
+
+  port_forwarding_cmd = (_ssh_prefix(instance_name, project, zone) +
+                         ' -- -L 6006:127.0.0.1:6006')
   logging.info('Run the command below to ssh to the instance together with '
-               'port forwarding for tensorboard:\n%s\n', cmd)
+               'port forwarding for tensorboard:\n%s\n', port_forwarding_cmd)
 
 
-def status(username, project, zone):
+def _instance_names(instance_name, num_instances):
+  if num_instances == 1:
+    return [instance_name]
+  else:
+    return ['%s-%d' % (instance_name, i) for i in range(num_instances)]
+
+
+def _instances_cmd(command, instance_names, project, zone):
+  """Return a string 'gcloud compute instances' command.
+
+  Args:
+    command: command that goes with 'gcloud compute instances'.
+    instance_names: list of instance names.
+    project: project name
+    zone: GCP zone
+
+  Returns:
+    string command
+  """
+  return 'gcloud compute instances {} {} --project={} --zone={}'.format(
+      command, ' '.join(instance_names), project, zone)
+
+
+def create(instance_name, project, zone, machine_type, accelerator_count,
+           accelerator_type, image, nvme_count, num_instances):
+  """Create gcloud computing instance.
+
+  Args:
+    instance_name: instance_name
+    project: project name
+    zone: zone of the GCP computing instance
+    machine_type: the machine type used for the instance
+    accelerator_count: the number of pieces of the accelerator to attach to
+                       the instance
+    accelerator_type: the specific type of accelerator to attach to the instance
+    image: the name of the image that the disk will be initialized with
+    nvme_count: the number of NVME local SSD devices to attach to the instance
+  """
+  instance_names = _instance_names(instance_name, num_instances)
+  logging.debug('Creating gcloud computing instances {}'.format(instance_names))
+  machine_type = get_machine_type(machine_type, accelerator_count)
+  cmd = (_instances_cmd('create', instance_names, project, zone) +
+        ' --image={} --machine-type={} --maintenance-policy=TERMINATE '.format(
+            image, machine_type))
+  if accelerator_count > 0:
+    cmd += '--accelerator=count={},type={} '.format(
+        accelerator_count, accelerator_type)
+  for _ in range(nvme_count):
+    cmd += '--local-ssd=interface=NVME '
+
+  run_command(cmd, is_from_user=True)
+  logging.info('Successfully created gcloud computing instances {} '
+               'with {} accelerators.\n'.format(
+                   instance_names, accelerator_count))
+
+  # Wait until we can ssh to the newly created computing instances
+  for instance_name in instance_names:
+    _setup_after_create(instance_name, project, zone)
+
+
+def status(instance_name, project, zone):
   """Query the status of the computing instance.
 
   Args:
-    username: the username of the current user
+    instance_name: instance name
     project: project name
     zone: zone of the GCP computing instance
   """
-  instance_name = get_instance_name(username)
   logging.debug('Querying status of gcloud computing instance %s of '
                 'project %s in zone %s', instance_name, project, zone)
 
@@ -192,10 +223,10 @@ def status(username, project, zone):
                num_instances, instance_name)
 
   if num_instances == 1:
-    cmd = 'gcloud compute ssh {} --project={} --zone={} -- -L 6006:127.0.0.1:6006'.format(  # pylint: disable=line-too-long
-        instance_name, project, zone)
+    port_forwarding_cmd = (_ssh_prefix(instance_name, project, zone) + 
+                           ' -- -L 6006:127.0.0.1:6006')
     logging.info('Run the command below to ssh to the instance together with '
-                 'port forwarding for tensorboard:\n%s\n', cmd)
+                 'port forwarding for tensorboard:\n%s\n', port_forwarding_cmd)
 
 
 def list_all(project):
@@ -209,171 +240,146 @@ def list_all(project):
                'for PerfZero test', num_instances, project)
 
 
-def start(username, project, zone):
-  instance_name = get_instance_name(username)
-  logging.debug('Starting gcloud computing instance %s of project %s '
-                'in zone %s', instance_name, project, zone)
+def start(instance_name, project, zone, num_instances):
+  instance_names = _instance_names(instance_name, num_instances)
+  logging.debug('Starting gcloud computing instance {} of project {} '
+                'in zone {}'.format(instance_names, project, zone))
+  cmd = _instances_cmd('start', instance_names, project, zone)
+  run_command(cmd , is_from_user=True)
+  logging.info('Successfully started gcloud computing instances {} of '
+               'project {} in zone {}'.format(instance_names, project, zone))
 
-  cmd = 'gcloud compute instances start {} --project={} --zone={}'.format(
-      instance_name, project, zone)
+
+def stop(instance_name, project, zone, num_instances):
+  instance_names = _instance_names(instance_name, num_instances)
+  logging.debug('Stopping gcloud computing instance {} of project {} in '
+                'zone {}'.format(instance_name, project, zone))
+  cmd = _instances_cmd('stop', instance_names, project, zone)
   run_command(cmd, is_from_user=True)
-  logging.debug('\nSuccessfully started gcloud computing instance %s of '
-                'project %s in zone %s', instance_name, project, zone)
+  logging.info('Successfully stopped gcloud computing instances {} of '
+               'project {} in zone {}'.format(instance_names, project, zone))
 
 
-def stop(username, project, zone):
-  instance_name = get_instance_name(username)
-  logging.debug('Stopping gcloud computing instance %s of project %s in '
-                'zone %s', instance_name, project, zone)
-
-  cmd = 'gcloud compute instances stop {} --project={} --zone={}'.format(
-      instance_name, project, zone)
+def delete(instance_name, project, zone, num_instances):
+  instance_names = _instance_names(instance_name, num_instances)
+  logging.debug('Deleting gcloud computing instance {} of project {} in '
+                'zone {}'.format(instance_name, project, zone))
+  cmd = 'echo Y | ' + _instances_cmd('delete', instance_names, project, zone)
   run_command(cmd, is_from_user=True)
-  logging.debug('\nSuccessfully stopped gcloud computing instance %s of '
-                'project %s in zone %s', instance_name, project, zone)
+  logging.info('Successfully deleted gcloud computing instances {} of '
+               'project {} in zone {}'.format(instance_names, project, zone))
 
 
-def delete(username, project, zone):
-  instance_name = get_instance_name(username)
-  logging.debug('Deleting gcloud computing instance %s of project %s in '
-                'zone %s', instance_name, project, zone)
-
-  cmd = 'echo Y | gcloud compute instances delete {} --project={} --zone={}'.format(  # pylint: disable=line-too-long
-      instance_name, project, zone)
-  run_command(cmd, is_from_user=True)
-  logging.debug('\nSuccessfully deleted gcloud computing instance %s of '
-                'project %s in zone %s', instance_name, project, zone)
-
-
-def parse_arguments(argv, command):  # pylint: disable=redefined-outer-name
+def parse_arguments():  # pylint: disable=redefined-outer-name
   """Parse command line arguments and return parsed flags.
-
-  Args:
-    argv: command line arguments
-    command: the subcommand requested by the user
 
   Returns:
     parsed flags
   """
-
-  # pylint: disable=redefined-outer-name
   parser = argparse.ArgumentParser(
-      usage='cloud_manager.py {} [<args>]'.format(command),
-      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  parser.add_argument(
-      '--debug',
-      action='store_true',
-      help='If set, use debug level logging. Otherwise, use info level logging'
-      )
-  parser.add_argument(
-      '--project',
-      default='google.com:tensorflow-performance',
-      type=str,
-      help='Google Cloud Platform project name to use for this invocation'
-      )
-
-  if command in ['create', 'start', 'stop', 'delete', 'status']:
-    parser.add_argument(
-        '--username',
-        default=getpass.getuser(),
-        type=str,
-        help='''Username that uniquely identifies the name of computing instance created for PerfZero.
-        The default value is your ldap username.
-        ''')
-    parser.add_argument(
-        '--zone',
-        default='us-west1-b',
-        type=str,
-        help='Zone of the instance to create.'
-        )
-
-  if command == 'create':
-    parser.add_argument(
-        '--accelerator_count',
-        default=1,
-        type=int,
-        help='The number of pieces of the accelerator to attach to the instance'
-        )
-    parser.add_argument(
-        '--accelerator_type',
-        default='nvidia-tesla-v100',
-        type=str,
-        help='''The specific type (e.g. nvidia-tesla-v100 for nVidia Tesla V100) of
-        accelerator to attach to the instance. Use 'gcloud compute accelerator-types list --project=${project_name}' to
-        learn about all available accelerator types.
-        ''')
-    parser.add_argument(
-        '--machine_type',
-        default=None,
-        type=str,
-        help='''The machine type used for the instance. To get a list of available machine
-        types, run 'gcloud compute machine-types list --project=${project_name}'
-        ''')
-    parser.add_argument(
-        '--image',
-        default='tf-ubuntu-1604-20180927-410',
-        type=str,
-        help='''Specifies the name of the image that the disk will be initialized with.
-        A new disk will be created based on the given image. To view a list of
-        public images and projects, run 'gcloud compute images list --project=${project_name}'. It is best
-        practice to use image when a specific version of an image is needed.
-        ''')
-    parser.add_argument(
-        '--nvme_count',
-        default=0,
-        type=int,
-        help='''Specifies the number of NVME local SSD devices to attach to the instance.
-        '''
-        )
-
-  flags, unparsed = parser.parse_known_args(argv)  # pylint: disable=redefined-outer-name
-  if unparsed:
-    logging.error('Arguments %s are not recognized', unparsed)
-    sys.exit(1)
-
-  level = logging.DEBUG if flags.debug else logging.INFO
-  logging.basicConfig(format='%(message)s', level=level)
-
-  return flags
-if __name__ == '__main__':
-  parser = argparse.ArgumentParser(
-      usage='''cloud_manager.py <command> [<args>]
-
-The supported commands are:
+      epilog='''The supported commands are:
   create:  Create a computing instance in gcloud that is unique to the specified username, which is your ldap by default
   start:   Start the computing instance in gcloud that is unique to the specified username, which is your ldap by default
   stop:    Stop the computing instance in gcloud that is unique to the specified username, which is your ldap by default
   delete:  Delete the computing instance in gcloud that is unique to the specified username, which is your ldap by default
   status:  Query the status and information of the computing instance in gcloud that is unique to the specified username, which is your ldap by default
-  list_all:    Query the status of all computing instances that are created by this script.'''
-  )
+  list_all:    Query the status of all computing instances that are created by this script.''',
+  formatter_class=argparse.RawDescriptionHelpFormatter)
   parser.add_argument(
       'command',
-      type=str
-      )
+      type=str,
+      help='Accepted values: create, start, stop, delete, status, list_all.')
+  parser.add_argument(
+      '--debug',
+      action='store_true',
+      help='If set, use debug level logging. Otherwise, use info level logging')
+  parser.add_argument(
+      '--project',
+      default=None,
+      type=str,
+      help='Google Cloud Platform project name to use for this invocation',
+      required=True)
+  parser.add_argument(
+      '--instance_name',
+      default=INSTANCE_NAME_PREFIX + getpass.getuser(),
+      type=str,
+      help='''Name of instance for PerfZero.  If num_instances is more than 1,
+      then this is the prefix for each instance's name.  Default:
+      {}<username>.'''.format(INSTANCE_NAME_PREFIX))
+  parser.add_argument(
+      '--num_instances',
+      default=1,
+      type=int,
+      help='Number of instance for bulk creation/deletion.  Default 1.')
+  parser.add_argument(
+      '--zone',
+      default='us-west1-b',
+      type=str,
+      help='Zone of the instance to create.')
+  parser.add_argument(
+      '--accelerator_count',
+      default=1,
+      type=int,
+      help='The number of pieces of the accelerator to attach to the instance')
+  parser.add_argument(
+      '--accelerator_type',
+      default='nvidia-tesla-v100',
+      type=str,
+      help='''The specific type (e.g. nvidia-tesla-v100 for nVidia Tesla V100) of
+      accelerator to attach to the instance. Use 'gcloud compute accelerator-types list --project=${project_name}' to
+      learn about all available accelerator types.''')
+  parser.add_argument(
+      '--machine_type',
+      default='n1-highmem-64',
+      type=str,
+      help='''The machine type used for the instance. To get a list of available machine
+      types, run 'gcloud compute machine-types list --project=${project_name}'.''')
+  parser.add_argument(
+      '--image',
+      default=None,
+      type=str,
+      help='''Specifies the name of the image that the disk will be initialized with.
+      A new disk will be created based on the given image. To view a list of
+      public images and projects, run 'gcloud compute images list --project=${project_name}'. It is best
+      practice to use image when a specific version of an image is needed.''')
+  parser.add_argument(
+      '--nvme_count',
+      default=0,
+      type=int,
+      help='Specifies the number of NVME local SSD devices to attach to the instance.')
 
-  flags = parser.parse_args(sys.argv[1:2])
-  command = flags.command
-  if not hasattr(sys.modules[__name__], command):
-    print('Error: The command <{}> is not recognized\n'.format(command))
+  flags = parser.parse_args()
+
+  if not hasattr(sys.modules[__name__], flags.command):
+    print('Error: The command <{}> is not recognized\n'.format(flags.command))
     parser.print_help()
     sys.exit(1)
 
-  flags = parse_arguments(sys.argv[2:], command)
+  if flags.command == 'create':
+    if not flags.machine_type or not flags.image:
+      raise ValueError('Need to specify machine_type and image for creating '
+                       'instances')
 
+  level = logging.DEBUG if flags.debug else logging.INFO
+  logging.basicConfig(format='%(message)s', level=level)
+
+  return flags
+
+
+if __name__ == '__main__':
+  flags = parse_arguments()
+  command = flags.command
   if command == 'create':
-    create(flags.username, flags.project, flags.zone, flags.machine_type,
+    create(flags.instance_name, flags.project, flags.zone, flags.machine_type,
            flags.accelerator_count, flags.accelerator_type, flags.image,
-           flags.nvme_count)
+           flags.nvme_count, flags.num_instances)
   elif command == 'start':
-    start(flags.username, flags.project, flags.zone)
+    start(flags.instance_name, flags.project, flags.zone, flags.num_instances)
   elif command == 'stop':
-    stop(flags.username, flags.project, flags.zone)
+    stop(flags.instance_name, flags.project, flags.zone, flags.num_instances)
   elif command == 'delete':
-    delete(flags.username, flags.project, flags.zone)
+    delete(flags.instance_name, flags.project, flags.zone, flags.num_instances)
   elif command == 'status':
-    status(flags.username, flags.project, flags.zone)
+    status(flags.instance_name, flags.project, flags.zone)
   elif command == 'list_all':
     list_all(flags.project)
-
-
