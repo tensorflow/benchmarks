@@ -233,7 +233,7 @@ def create_dataset(data_dir, data_name):
   """Create a Dataset instance based on data_dir and data_name."""
   if not data_dir and not data_name:
     # When using synthetic data, use synthetic imagenet images by default.
-    data_name = 'imagenet'
+    data_name = 'cifar10'
 
   # Infere dataset name from data_dir if data_name is not provided.
   if data_name is None:
