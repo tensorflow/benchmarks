@@ -1,0 +1,43 @@
+[
+  {
+    "name": "execution_timestamp",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "execution_id",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+
+  {
+    "name": "ml_framework_info",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "benchmark_result",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "benchmark_info",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "setup_info",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "system_info",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "process_info",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  }
+]

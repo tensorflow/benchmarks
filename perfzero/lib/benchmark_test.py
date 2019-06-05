@@ -12,12 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for test_runner script."""
+"""Tests for benchmark.py."""
 from __future__ import print_function
 
-import os
 import sys
-import types
 import unittest
 
 import benchmark
@@ -26,27 +24,11 @@ import mock
 
 class TestBenchmarkRunner(unittest.TestCase):
 
-  @mock.patch('benchmark.BenchmarkRunner._setup')
-  def test_load_benchmark_class(self, mock_setup):
-    """Test loading module and test class."""
-
-    # foo.fake is not found unless foo and fake are mocked.
-    sys.modules['foo'] = mock.Mock()
-    sys.modules['foo.fake'] = mock.Mock()
-    config = mock.Mock()
-    config.benchmark_class_str = 'foo.fake.TestClass'
-    config.python_paths_str = None
-    benchmark_runner = benchmark.BenchmarkRunner(config)
-    class_instance = benchmark_runner._instantiate_benchmark_class('/dev/null')
-    mock_setup.assert_called()
-
-  @mock.patch('benchmark.BenchmarkRunner._setup')
-  def test_get_benchmark_methods_filter(self, mock_setup):
+  def test_get_benchmark_methods_filter(self):
     """Tests returning methods on a class based on a filter."""
     config = mock.Mock()
-    config.python_paths_str = None
-    config.benchmark_methods_str = 'filter:bench.*'
-    config.benchmark_class_str = 'new_foo.BenchmarkClass'
+    config.workspace = 'workspace'
+    config.benchmark_method_patterns = ['new_foo.BenchmarkClass.filter:bench.*']
     benchmark_runner = benchmark.BenchmarkRunner(config)
 
     mock_benchmark_class = mock.Mock()
@@ -59,16 +41,17 @@ class TestBenchmarkRunner(unittest.TestCase):
     methods = benchmark_runner._get_benchmark_methods()
 
     self.assertEqual(1, len(methods))
-    self.assertEqual('benchmark_method_1', methods[0])
+    self.assertEqual('new_foo.BenchmarkClass.benchmark_method_1', methods[0])
 
-  @mock.patch('benchmark.BenchmarkRunner._setup')
-  def test_get_benchmark_methods_exact_match(self, mock_setup):
+  def test_get_benchmark_methods_exact_match(self):
     """Tests returning methods on a class based on a filter."""
     config = mock.Mock()
-    config.python_paths_str = None
-    config.benchmark_methods_str = 'benchmark_method_1,benchmark_method_2'
-    config.benchmark_class_str = 'new_foo.BenchmarkClass'
+    config.workspace = 'workspace'
+    config.benchmark_method_patterns = [
+        'new_foo.BenchmarkClass.benchmark_method_1',
+        'new_foo.BenchmarkClass.benchmark_method_2']
     benchmark_runner = benchmark.BenchmarkRunner(config)
 
     methods = benchmark_runner._get_benchmark_methods()
-    self.assertEqual(['benchmark_method_1', 'benchmark_method_2'], methods)
+    self.assertEqual(['new_foo.BenchmarkClass.benchmark_method_1',
+                      'new_foo.BenchmarkClass.benchmark_method_2'], methods)

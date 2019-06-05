@@ -16,105 +16,63 @@
 from __future__ import print_function
 
 import argparse
+import json
 import logging
 import os
+import sys
+import time
 
 import perfzero.device_utils as device_utils
 import perfzero.perfzero_config as perfzero_config
 import perfzero.utils as utils
 
 
-class SetupRunner(object):
-  """Checkout repository, download data and build docker image."""
-
-  def __init__(self,
-               docker_tag=None,
-               gce_nvme_raid=None,
-               data_dir=None,
-               config=None):
-    project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-    self.workspace_dir = os.path.join(project_dir, 'workspace')
-    self.docker_file_path = os.path.join(project_dir,
-                                         config.dockerfile_path_str)
-    self.site_packages_dir = os.path.join(self.workspace_dir, 'site-packages')
-
-    self.docker_tag = docker_tag
-    self.gce_nvme_raid = gce_nvme_raid
-    self.data_dir = data_dir
-    self.config = config
-
-  def setup(self):
-    """Builds and runs docker image with specified test config."""
-
-    # Download gcloud auth token.
-    utils.download_from_gcs('gs://tf-performance/auth_tokens',
-                            self.workspace_dir)
-
-    # Set up the raid array.
-    if self.gce_nvme_raid == 'all':
-      devices = device_utils.get_nvme_devices()
-      device_utils.create_drive_from_devices(self.data_dir, devices)
-
-    # Check out git repos
-    git_repos = self._get_git_repos()
-    for git_repo in git_repos:
-      utils.checkout_git_repo(
-          git_repo.get('url'),
-          os.path.join(self.site_packages_dir, git_repo.get('local_path')),
-          branch=git_repo.get('branch'),
-          sha_hash=git_repo.get('sha_hash'))
-
-    # Download data
-    if self.config.gcs_downloads_str:
-      for gcs_download in self.config.gcs_downloads_str.split(','):
-        local_path = self.data_dir
-        if ';' in gcs_download:
-          local_path = os.path.join(local_path, gcs_download.split(';')[0])
-          gcs_download = gcs_download.split(';')[1]
-        utils.download_from_gcs(gcs_download, local_path)
-
-    # Build docker image.
-    docker_build_cmd = 'docker build --pull -f {} -t {} .'.format(
-        self.docker_file_path, self.docker_tag)
-    utils.run_commands([docker_build_cmd])
-
-    logging.info('Completed setup operation')
-
-  def _get_git_repos(self):
-    """Return list of repos to checkout."""
-    git_repos = []
-    for repo_entry in self.config.git_repos_str.split(','):
-      repo_parts = repo_entry.split(';')
-      git_repo = {}
-      if len(repo_parts) >= 2:
-        git_repo['local_path'] = repo_parts[0]
-        git_repo['url'] = repo_parts[1]
-      if len(repo_parts) >= 3:
-        git_repo['branch'] = repo_parts[2]
-      if len(repo_parts) >= 4:
-        git_repo['sha_hash'] = repo_parts[3]
-      git_repos.append(git_repo)
-    return git_repos
-
-
 if __name__ == '__main__':
-  parser = argparse.ArgumentParser()
-  parser.add_argument(
-      '--gce_nvme_raid',
-      type=str,
-      default=None,
-      help='If set create raid 0 array with devices at disk_dir')
-  parser.add_argument(
-      '--data_dir', type=str, default='/data', help='Directory to store data.')
-
+  parser = argparse.ArgumentParser(
+      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  perfzero_config.add_setup_parser_arguments(parser)
   FLAGS, unparsed = parser.parse_known_args()
-  logging.basicConfig(
-      format='%(asctime)s %(levelname)s: %(message)s', level=logging.DEBUG)
 
-  config_ = perfzero_config.PerfZeroConfig(mode='env')
-  setup_runner = SetupRunner(
-      docker_tag='temp/tf-gpu',
-      gce_nvme_raid=FLAGS.gce_nvme_raid,
-      data_dir=FLAGS.data_dir,
-      config=config_)
-  setup_runner.setup()
+  logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
+                      level=logging.DEBUG)
+  if unparsed:
+    logging.error('Arguments %s are not recognized', unparsed)
+    sys.exit(1)
+
+  setup_execution_time = {}
+  project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+  workspace_dir = os.path.join(project_dir, FLAGS.workspace)
+
+  # Download gcloud auth token. Remove this operation in the future when
+  # docker in Kokoro can accesss the GCP metadata server
+  start_time = time.time()
+  utils.active_gcloud_service(FLAGS.gcloud_key_file_url,
+                              workspace_dir, download_only=True)
+  setup_execution_time['download_token'] = time.time() - start_time
+
+  # Set up the raid array.
+  start_time = time.time()
+  device_utils.create_drive_from_devices(FLAGS.root_data_dir,
+                                         FLAGS.gce_nvme_raid)
+  setup_execution_time['create_drive'] = time.time() - start_time
+
+  # Create docker image
+  start_time = time.time()
+  dockerfile_path = FLAGS.dockerfile_path
+  if not os.path.exists(dockerfile_path):
+    # Fall back to the deprecated approach if the user-specified
+    # dockerfile_path does not exist
+    dockerfile_path = os.path.join(project_dir, FLAGS.dockerfile_path)
+  docker_tag = 'perfzero/tensorflow'
+  if FLAGS.tensorflow_pip_spec:
+    cmd = 'docker build --no-cache --pull -t {} --build-arg tensorflow_pip_spec={} - < {}'.format(  # pylint: disable=line-too-long
+        docker_tag, FLAGS.tensorflow_pip_spec, dockerfile_path)
+  else:
+    cmd = 'docker build --no-cache --pull -t {} - < {}'.format(docker_tag, dockerfile_path)  # pylint: disable=line-too-long
+
+  utils.run_commands([cmd])
+  logging.info('Built docker image with tag %s', docker_tag)
+  setup_execution_time['build_docker'] = time.time() - start_time
+
+  logging.info('Setup time in seconds by operation:\n %s',
+               json.dumps(setup_execution_time, indent=2))

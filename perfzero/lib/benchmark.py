@@ -15,155 +15,140 @@
 """Execute benchmark."""
 from __future__ import print_function
 
-import importlib
-import os
+import argparse
 import json
+import logging
+import multiprocessing
+import os
+import re
 import sys
 import time
-import uuid
-import re
-import argparse
-import logging
-import datetime
 
-import perfzero.utils as utils
+import perfzero.benchmark_method_runner as benchmark_method_runner
 import perfzero.perfzero_config as perfzero_config
-import perfzero.report_utils as report_utils
+import perfzero.utils as utils
 
 
 class BenchmarkRunner(object):
   """Execute benchmark and report results."""
 
-  def __init__(self, config=None):
-    project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-    workspace_dir = os.path.join(project_dir, 'workspace')
-    self.site_packages_dir = os.path.join(workspace_dir, 'site-packages')
-    self.auth_token_path = os.path.join(
-        workspace_dir, 'auth_tokens/benchmark_upload_gce.json')
-    self.output_root_dir = os.path.join(workspace_dir, 'output')
+  def __init__(self, config):
     self.config = config
-    self._setup()
+    self.project_dir = os.path.abspath(
+        os.path.dirname(os.path.dirname(__file__)))
+    self.workspace_dir = os.path.join(self.project_dir, config.workspace)
+    self.site_packages_dir = os.path.join(self.workspace_dir, 'site-packages')
+    self.root_output_dir = os.path.join(self.workspace_dir, 'output')
+    self.benchmark_execution_time = {}
 
   def _setup(self):
-    utils.setup_python_path(self.site_packages_dir, config.python_path_str)
-    utils.active_gcloud_service(self.auth_token_path)
-    utils.make_dir_if_not_exist(self.output_root_dir)
+    """Download data and checkout git repository."""
 
-    self.streamHandler = logging.StreamHandler(sys.stdout)
-    self.streamHandler.setFormatter(
+    # Acticate gcloud service
+    start_time = time.time()
+    utils.setup_python_path(self.site_packages_dir, self.config.python_path_str)
+    utils.active_gcloud_service(self.config.gcloud_key_file_url,
+                                self.workspace_dir)
+    utils.make_dir_if_not_exist(self.root_output_dir)
+    self.benchmark_execution_time['activate_gcloud_service'] = (
+        time.time() - start_time)
+
+    # Download data
+    start_time = time.time()
+    utils.download_data(utils.parse_data_downloads_str(
+        self.config.root_data_dir, self.config.gcs_downloads_str))
+    utils.download_data(utils.parse_data_downloads_str(
+        self.config.root_data_dir, self.config.data_downloads_str))
+    self.benchmark_execution_time['download_data'] = time.time() - start_time
+
+    # Checkout git repositories
+    start_time = time.time()
+    site_package_info = utils.checkout_git_repos(
+        self.config.get_git_repos(self.site_packages_dir),
+        self.config.use_cached_site_packages)
+    self.benchmark_execution_time['checkout_repository'] = (
+        time.time() - start_time)
+
+    self.stream_handler = logging.StreamHandler(sys.stdout)
+    self.stream_handler.setFormatter(
         logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
-    logging.getLogger().addHandler(self.streamHandler)
+    logging.getLogger().addHandler(self.stream_handler)
+    return site_package_info
 
   def _get_benchmark_methods(self):
+    """Returns list of benchmark methods to execute."""
     filter_prefix = 'filter:'
-    # Check if filter or list of exact methods to execute.
-    methods_str = self.config.benchmark_methods_str
+    benchmark_methods = []
+    for benchmark_method_pattern in self.config.benchmark_method_patterns:
+      if filter_prefix not in benchmark_method_pattern:
+        benchmark_methods.append(benchmark_method_pattern)
+      else:
+        index = benchmark_method_pattern.find(filter_prefix)
+        benchmark_class = benchmark_method_pattern[:index - 1]
+        pattern = benchmark_method_pattern[index + len(filter_prefix):]
+        class_instance = utils.instantiate_benchmark_class(benchmark_class,
+                                                           '/dev/null',
+                                                           '')
+        for benchmark_method_name in dir(class_instance):
+          if re.match(pattern, benchmark_method_name):
+            benchmark_methods.append(benchmark_class + '.' +
+                                     benchmark_method_name)
 
-    if not methods_str.startswith(filter_prefix):
-      return methods_str.split(',')
-
-    # Instantiate benchmark class to find methods that match the given pattern
-    methods_matching_pattern = []
-    pattern = methods_str[len(filter_prefix):]
-    class_instance = self._instantiate_benchmark_class('/dev/null')
-    for method in dir(class_instance):
-      if re.match(pattern, method):
-        methods_matching_pattern.append(method)
-
-    logging.info('Methods {} matched the pattern {}'.format(
-        methods_matching_pattern, pattern))
-    return methods_matching_pattern
+    logging.info('The following benchmark methods will be executed: %s',
+                 benchmark_methods)
+    return benchmark_methods
 
   def run_benchmark(self):
     """Run benchmark."""
+    harness_info = utils.get_git_repo_info(self.project_dir)
+    site_package_info = self._setup()
+    has_exception = False
+    benchmark_success_results = {}
+    benchmark_output_dirs = {}
+
     for benchmark_method in self._get_benchmark_methods():
-      try:
-        execution_id = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S-%f')
-        output_dir = os.path.join(self.output_root_dir, execution_id)
-        utils.make_dir_if_not_exist(output_dir)
+      # Run the benchmark method in a separate process so that its memory usage
+      # will not affect the execution of other benchmark method
+      # This is a walkaround before we fix all memory leak issues in TensorFlow
+      queue = multiprocessing.Queue()
+      process = multiprocessing.Process(target=benchmark_method_runner.run,
+                                        args=(benchmark_method,
+                                              harness_info,
+                                              site_package_info,
+                                              self.root_output_dir,
+                                              self.config, queue))
+      process.start()
+      process.join()
+      method_has_exception, method_execution_time, succeeded, output_dir = queue.get()  # pylint: disable=line-too-long
+      has_exception |= method_has_exception
+      self.benchmark_execution_time[benchmark_method] = method_execution_time
+      benchmark_success_results[benchmark_method] = succeeded
+      benchmark_output_dirs[benchmark_method] = output_dir
 
-        # Setup per-method file logger
-        filehandler = logging.FileHandler(
-            filename=os.path.join(output_dir, 'perfzero.log'), mode='w')
-        filehandler.setFormatter(
-            logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
-        logging.getLogger().addHandler(filehandler)
-
-        class_instance = self._instantiate_benchmark_class(output_dir)
-        benchmark_name = '{}.{}'.format(class_instance.__class__.__name__,
-                                        benchmark_method)
-
-        # tf.test.Benchmark.report_benchmark() will write benchmark results to
-        # the file whose path is benchmark_result_file_path_prefix +
-        # benchmark_name
-        benchmark_result_file_path_prefix = os.path.join(output_dir, 'proto_')
-        os.environ[
-            'TEST_REPORT_FILE_PREFIX'] = benchmark_result_file_path_prefix
-        benchmark_result_file_path = benchmark_result_file_path_prefix + benchmark_name
-
-        # Run benchmark method
-        logging.info('Start benchmark: %s', benchmark_name)
-        getattr(class_instance, benchmark_method)()
-        logging.info('End benchmark: %s', benchmark_name)
-        # Read and upload benchmark results
-        benchmark_result = utils.read_benchmark_result(
-            benchmark_result_file_path)
-        self._upload_execution_summary(benchmark_result, execution_id,
-                                       output_dir)
-
-      finally:
-        logging.getLogger().removeHandler(filehandler)
-
-  def _upload_execution_summary(self, benchmark_result, execution_id,
-                                output_dir):
-    """Report results and upload artifacts."""
-    # Upload benchmark ouput
-    output_gcs_dir_with_uid = ''
-    if not self.config.output_gcs_url_str:
-      logging.info(
-          'Skipped uploading output because output_gcs_url_str is not set.')
-    elif not os.listdir(output_dir):
-      logging.info(
-          'Skipped uploading output because there is no file in directory %s',
-          output_dir)
-    else:
-      output_gcs_dir_with_uid = '{}/{}/'.format(self.config.output_gcs_url_str,
-                                                execution_id)
-      utils.upload_to_gcs(output_dir, self.config.output_gcs_url_str)
-
-    execution_summary = report_utils.build_execution_summary(
-        execution_id, self.config.test_env_str, self.config.platform_name_str,
-        self.config.system_name_str, output_gcs_dir_with_uid, benchmark_result)
-
-    logging.info('Benchmark summary is %s',
-                 json.dumps(execution_summary, indent=2))
-
-    report_utils.upload_execution_summary(self.config.bigquery_project_name_str,
-                                          self.config.bigquery_table_name_str,
-                                          execution_summary)
-
-  def _instantiate_benchmark_class(self, output_dir):
-    """Return initialized benchmark class."""
-    module_import_path, class_name = self.config.benchmark_class_str.rsplit(
-        '.', 1)
-    module = importlib.import_module(module_import_path)
-    class_ = getattr(module, class_name)
-    instance = class_(output_dir=output_dir)
-
-    return instance
+    print('Benchmark execution time in seconds by operation:\n {}'.format(
+        json.dumps(self.benchmark_execution_time, indent=2)))
+    print('Benchmark success results:\n{}'.format(
+        json.dumps(benchmark_success_results, indent=2)))
+    print('Benchmark local output directories:\n{}'.format(
+        json.dumps(benchmark_output_dirs, indent=2)))
+    if has_exception:
+      sys.exit(1)
 
 
 if __name__ == '__main__':
-  parser = argparse.ArgumentParser()
-  parser.add_argument('--debug', action='store_true')
+  parser = argparse.ArgumentParser(
+      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  perfzero_config.add_benchmark_parser_arguments(parser)
   FLAGS, unparsed = parser.parse_known_args()
 
-  level = logging.INFO
-  if FLAGS.debug:
-    level = logging.DEBUG
-  logging.basicConfig(
-      format='%(asctime)s %(levelname)s: %(message)s', level=level)
+  level = logging.DEBUG if FLAGS.debug else logging.INFO
+  logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
+                      level=level)
 
-  config = perfzero_config.PerfZeroConfig(mode='env')
-  benchmark_runner = BenchmarkRunner(config)
+  if unparsed:
+    logging.error('Arguments %s are not recognized', unparsed)
+    sys.exit(1)
+
+  config_ = perfzero_config.PerfZeroConfig(mode='flags', flags=FLAGS)
+  benchmark_runner = BenchmarkRunner(config_)
   benchmark_runner.run_benchmark()

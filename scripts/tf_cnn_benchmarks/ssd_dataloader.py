@@ -401,5 +401,5 @@ class Encoder(object):
     encoded_classes, _, encoded_boxes, _, matches = self.assigner.assign(
         self.default_boxes, target_boxes, gt_labels)
     num_matched_boxes = tf.reduce_sum(
-        tf.cast(tf.not_equal(matches.match_results, -1), tf.float32))
+        tf.cast(tf.not_equal(matches, -1), tf.float32))
     return encoded_classes, encoded_boxes, num_matched_boxes

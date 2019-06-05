@@ -83,8 +83,10 @@ class NcfModel(model.Model):
         'mlp_reg_layers': (0, 0, 0, 0),
         'use_tpu': False
     }
+    user_input = tf.keras.layers.Input(tensor=users, name='user_input')
+    item_input = tf.keras.layers.Input(tensor=items, name='item_input')
     if self.data_type == tf.float32:
-      keras_model = neumf_model.construct_model(users, items, params)
+      keras_model = neumf_model.construct_model(user_input, item_input, params)
       logits = keras_model.output
     else:
       assert self.data_type == tf.float16
@@ -95,7 +97,8 @@ class NcfModel(model.Model):
         # because the NCF model uses keras layers, which ignore variable scopes.
         # So we use a variable_creator_scope instead.
         with tf.variable_creator_scope(_fp16_variable_creator):
-          keras_model = neumf_model.construct_model(users, items, params)
+          keras_model = neumf_model.construct_model(user_input, item_input,
+                                                    params)
         logits = tf.cast(keras_model.output, tf.float32)
       finally:
         tf.keras.backend.set_floatx(old_floatx)
