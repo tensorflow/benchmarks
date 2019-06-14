@@ -10,7 +10,7 @@ Table of Contents
       * [Run benchmark](#run-benchmark)
       * [Instructions for managing Google Cloud Platform computing instance](#instructions-for-managing-google-cloud-platform-computing-instance)
       * [Understand the benchmark execution output](#understand-the-benchmark-execution-output)
-         * [Json formatted benchamrk summary](#json-formatted-benchamrk-summary)
+         * [Json formatted benchmark summary](#json-formatted-benchmark-summary)
          * [Visualize TensorFlow graph etc. using Tensorboard](#visualize-tensorflow-graph-etc-using-tensorboard)
          * [Visualize system metric values over time](#visualize-system-metric-values-over-time)
    * [PerfZero development](#perfzero-development)
@@ -313,7 +313,7 @@ python perfzero/lib/cloud_manager.py delete --project=project_name
 
 ## Understand the benchmark execution output
 
-### Json formatted benchamrk summary
+### Json formatted benchmark summary
 
 PerfZero outputs a json-formatted summary that provides the information needed
 to understand the benchmark result. The summary is printed in the stdout and
