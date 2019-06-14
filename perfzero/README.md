@@ -3,9 +3,9 @@ Table of Contents
 
    * [Table of Contents](#table-of-contents)
    * [Introduction](#introduction)
-   * [Executing tests](#executing_tests)
-   * [Creating tests](#creating_tests)
-   * [Deep dive into individual tools](#deep_dive_into_individual_tools])
+   * [Executing tests](#executing-tests)
+   * [Creating tests](#creating-tests)
+   * [Deep dive into individual tools](#deep-dive-into-individual-tools])
       * [Build docker image](#build-docker-image)
       * [Run benchmark](#run-benchmark)
       * [Instructions for managing Google Cloud Platform computing instance](#instructions-for-managing-google-cloud-platform-computing-instance)
