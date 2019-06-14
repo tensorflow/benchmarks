@@ -3,17 +3,17 @@ Table of Contents
 
    * [Table of Contents](#table-of-contents)
    * [Introduction](#introduction)
-   * [Instructions for PerfZero user](#instructions-for-perfzero-user)
+   * [Executing tests](#executing-tests)
+   * [Creating tests](#creating-tests)
+   * [Deep dive into individual tools](#deep-dive-into-individual-tools)
       * [Build docker image](#build-docker-image)
       * [Run benchmark](#run-benchmark)
+      * [Instructions for managing Google Cloud Platform computing instance](#instructions-for-managing-google-cloud-platform-computing-instance)
       * [Understand the benchmark execution output](#understand-the-benchmark-execution-output)
          * [Json formatted benchamrk summary](#json-formatted-benchamrk-summary)
          * [Visualize TensorFlow graph etc. using Tensorboard](#visualize-tensorflow-graph-etc-using-tensorboard)
          * [Visualize system metric values over time](#visualize-system-metric-values-over-time)
-   * [Instructions for developer who writes benchmark classes](#instructions-for-developer-who-writes-benchmark-classes)
-   * [Instructions for PerfZero developer](#instructions-for-perfzero-developer)
-   * [Instructions for managing Google Cloud Platform computing instance](#instructions-for-managing-google-cloud-platform-computing-instance)
-
+   * [PerfZero development](#perfzero-development)
 
 # Introduction
 
@@ -43,10 +43,176 @@ the performance change in a dashboard, compare performance between different
 setup in a table, and trigger alert on when there is performance regression.
 
 
-# Instructions for PerfZero user
+# Executing tests
 
-Here are instructions for users who want to run benchmark method using PerfZero.
+There are multiple ways to use PerfZero to execute a test. Listed from highest
+to lowest abstraction.
 
+*   [PerfZero on private GCE instance](#perfzero-on-private-gce-instance)
+*   [PerfZero on local workstation or any server](#perfzero-on-local-workstation-or-any-server)
+*   [PerfZero without docker](#perfzero-without-docker)
+
+## PerfZero on private GCE instance.
+
+There are many variations on this approach, to get you started quickly the steps
+below detail setting up an 8xV100 setup with local nvme drives where training
+data would be stored. The only con to this setup is that it cannot be stopped
+and can only be deleted due to the local nvme drives.
+
+### Step one: Create GCE Instance
+
+Creates an 8xV100 instance with 4 nvme drives. Output of the command will
+provide the command to run to SSH to the machine. To set the project, zone, and
+other features read
+[cloud_manager tool details](https://github.com/tensorflow/benchmarks/tree/improved_execution_test/perfzero#instructions-for-managing-google-cloud-platform-computing-instance).
+
+```bash
+python perfzero/lib/cloud_manager.py create --accelerator_count 8 --nvme_count 4
+```
+
+### Step two: Build docker on GCE instance
+
+After logging into the instance run the following command to create a docker
+instance with the latest nightly TF 2.0 build. For more options read the
+[build docker image section](https://github.com/tensorflow/benchmarks/tree/improved_execution_test/perfzero#build-docker-image)
+
+```bash
+python3 perfzero/lib/setup.py --dockerfile_path=docker/Dockerfile_ubuntu_1804_tf_v2
+```
+
+For all options for building the docker image, including controlling the version
+of TensorFlow installed, checkout the public
+[README for PerfZero](https://github.com/tensorflow/benchmarks/tree/master/perfzero#build-docker-image).
+
+### Step three: Start and "enter" the docker instance
+
+```bash
+nvidia-docker run -it --rm -v $(pwd):/workspace -v /data:/data perfzero/tensorflow bash
+```
+
+### Step four: Run tests
+
+The command below pulls GitHub official/models, downloads the cifar-10 dataset
+from our internal Google Cloud storage bucket, and executes a ResNet56 benchmark
+with TensorFlow 2.0 nightly build. For info on the args read the
+[run benchmark section](https://github.com/tensorflow/benchmarks/tree/improved_execution_test/perfzero#run-benchmark).
+
+```bash
+python3 /workspace/perfzero/lib/benchmark.py \
+--git_repos="https://github.com/tensorflow/models.git" \
+--python_path=models \
+--data_downloads="gs://tf-perf-imagenet-uswest1/tensorflow/cifar10_data/cifar-10-batches-bin" \
+--benchmark_methods=official.resnet.keras.keras_cifar_benchmark.Resnet56KerasBenchmarkReal.benchmark_1_gpu_no_dist_strat
+```
+
+For all options that can be used when executing a test checkout the public
+[README for PerfZero](https://github.com/tensorflow/benchmarks/tree/master/perfzero#run-benchmark).
+
+### Step five: Delete the instance when done
+
+```bash
+python perfzero/lib/cloud_manager.py delete
+```
+
+## PerfZero on local workstation or any server
+
+This approach is the same as PerfZero on personal GCE instance, just jump to
+Step two: Build docker on GCE instance.
+
+If the workstation does not have access to the PerfZero GCS bucket and does not
+need access, e.g. data is already copied locally via another method, passing
+`--gcloud_key_file_url=""` will skip attempting to download the key.
+
+A quick test that does not require accessing GCS for data is:
+
+```bash
+python3 /workspace/perfzero/lib/benchmark.py \
+--git_repos="https://github.com/tensorflow/models.git" \
+--python_path=models \
+--gcloud_key_file_url="" \
+--benchmark_methods=official.resnet.keras.keras_cifar_benchmark.Resnet56KerasBenchmarkSynth.benchmark_1_gpu_no_dist_strat
+```
+
+## PerfZero without docker
+
+PerfZero is not dependent on Docker. Docker is used to handle dependencies and
+create a consistent environment. Most tests do not require much beyond
+TensorFlow and PerfZero mostly depends on Google Cloud, but only for downloading
+data and upload results if desired. While this approach works, we do not
+maintain a clear list of the required libraries. The Docker build files are a
+good starting point beyond.
+
+Once the requirements are met the command below can be executed which will pull
+GitHub official/models, downloads the cifar-10 dataset from our internal Google
+Cloud storage bucket, and executes a ResNet56 benchmark with TensorFlow 2.0
+nightly build.
+
+```bash
+python3 /workspace/perfzero/lib/benchmark.py \
+--git_repos="https://github.com/tensorflow/models.git" \
+--python_path=models \
+--data_downloads="https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz" \
+--benchmark_methods=official.resnet.estimator_benchmark.Resnet50EstimatorBenchmarkReal.benchmark_graph_1_gpu
+```
+
+# Creating tests
+
+Here are the instructions that developers of benchmark method needs to follow in
+order to run benchmark method in PerfZero. See
+[estimator_benchmark.py](https://github.com/tensorflow/models/blob/master/official/resnet/estimator_benchmark.py)
+for example test code that supports PerfZero.
+
+1) The benchmark class should extend the TensorFlow python class
+[tensorflow.test.Benchmark](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/platform/benchmark.py). The benchmark class constructor should have a
+constructor with signature `__init__(self, output_dir, data_dir, **kwargs)`.
+Below is the usage for each arguments:
+
+- Benchmark method should put all generated files (e.g. logs) in `output_dir` so that PerfZero can
+upload these files to Google Cloud Storage when `--output_gcs_url` is specified.
+
+- Benchmark method should read data from `root_data_dir`. For example, the benchmark method can read data from e.g. `${root_data_dir}/cifar-10-binary`
+
+- `**kwargs` is useful to make the benchmark constructor forward compatible when PerfZero provides more named arguments to the benchmark constructor before
+  updating the benchmark class.
+
+
+2) At the end of the benchmark method execution, the method should call [report_benchmark()](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/platform/benchmark.py)
+with the following parameters:
+
+```
+tf.test.Benchmark.report_benchmark(
+  iters=num_iteration,          # The number of iterations of the benchmark.
+
+  wall_time=wall_time_sec,      # Total wall time in sec for all iterations.
+  metrics = [                   # List of metric entries
+    {
+      'name': 'accuracy_top_5', # Metric name
+      'value': 80,              # Metric value
+      'min_value': 90,          # Optional. Minimum acceptable metric value for the benchmark to succeed.
+      'max_value': 99           # Optional. Maximum acceptable metric value for the benchmark to succeed.
+    },
+    {
+      'name': 'accuracy_top_1',
+      'value': 99.5
+    }
+  ]
+)
+```
+
+This format allows PerfZero to specify whether the benchmark has succeeded
+(e.g.  for convergence test) in its summary based on the logic determined by
+the benchmark developer.
+
+
+3) Include dependent libraries in `--git_repos` and `--python_path`. These
+libraries will be checked-out in the directory
+`path_to_perfzero/workspace/site-packages` by default. Developer can edit these
+libraries directly and execute benchmark with the local change.
+
+
+# Deep dive into individual tools
+
+The sections below go into details about the individual components of PerfZero.
 
 ## Build docker image
 
@@ -111,6 +277,39 @@ starts. Skip `end_time` in the flag value to collect data until the end of
 benchmark method execution. See [here](#visualize-tensorflow-graph-etc-using-tensorboard)
 for instructions on how to use the generated profiler data.
 
+## Instructions for managing Google Cloud Platform computing instance
+
+PerfZero aims to make it easy to run and debug TensorFlow which is usually run
+with GPU. However, most users do not have dedicated machine with the expensive
+hardware. One cost-effective solution is for users to create machine with the
+desired hardward on demand in a public cloud when they need to debug TensorFlow.
+
+We provide a script in PerfZero to make it easy to manage computing instance in
+Google Cloud Platform. This assumes that you have access to an existing project
+in GCP.
+
+Run `python perfzero/lib/cloud_manager.py -h` for list of commands supported
+by the script. Run `cloud_manager.py <command> -h` to see detailed documentation
+for all supported flags for the specified `command`.
+
+In most cases, user only needs to run the following commands:
+
+```
+# Create a new instance that is unique to your username
+python perfzero/lib/cloud_manager.py create --project=project_name
+
+# Query the status of the existing instanced created by your and its IP address
+python perfzero/lib/cloud_manager.py status --project=project_name
+
+# Stop the instance
+python perfzero/lib/cloud_manager.py stop --project=project_name
+
+# Start the instance
+python perfzero/lib/cloud_manager.py start --project=project_name
+
+# Delete the instance
+python perfzero/lib/cloud_manager.py delete --project=project_name
+```
 
 ## Understand the benchmark execution output
 
@@ -221,62 +420,7 @@ Run `python perfzero/scripts/plot_process_info.py process_info.log` to generate 
 pdf showing the value of these metrics over time.
 
 
-# Instructions for developer who writes benchmark classes
-
-Here are the instructions that developers of benchmark method needs to follow in
-order to run benchmark method in PerfZero. See
-[estimator_benchmark.py](https://github.com/tensorflow/models/blob/master/official/resnet/estimator_benchmark.py)
-for example test code that supports PerfZero.
-
-1) The benchmark class should extend the TensorFlow python class
-[tensorflow.test.Benchmark](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/platform/benchmark.py). The benchmark class constructor should have a
-constructor with signature `__init__(self, output_dir, data_dir, **kwargs)`.
-Below is the usage for each arguments:
-
-- Benchmark method should put all generated files (e.g. logs) in `output_dir` so that PerfZero can
-upload these files to Google Cloud Storage when `--output_gcs_url` is specified.
-
-- Benchmark method should read data from `root_data_dir`. For example, the benchmark method can read data from e.g. `${root_data_dir}/cifar-10-binary`
-
-- `**kwargs` is useful to make the benchmark constructor forward compatible when PerfZero provides more named arguments to the benchmark constructor before
-  updating the benchmark class.
-
-
-2) At the end of the benchmark method execution, the method should call [report_benchmark()](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/platform/benchmark.py)
-with the following parameters:
-
-```
-tf.test.Benchmark.report_benchmark(
-  iters=num_iteration,          # The number of iterations of the benchmark.
-
-  wall_time=wall_time_sec,      # Total wall time in sec for all iterations.
-  metrics = [                   # List of metric entries
-    {
-      'name': 'accuracy_top_5', # Metric name
-      'value': 80,              # Metric value
-      'min_value': 90,          # Optional. Minimum acceptable metric value for the benchmark to succeed.
-      'max_value': 99           # Optional. Maximum acceptable metric value for the benchmark to succeed.
-    },
-    {
-      'name': 'accuracy_top_1',
-      'value': 99.5
-    }
-  ]
-)
-```
-
-This format allows PerfZero to specify whether the benchmark has succeeded
-(e.g.  for convergence test) in its summary based on the logic determined by
-the benchmark developer.
-
-
-3) Include dependent libraries in `--git_repos` and `--python_path`. These
-libraries will be checked-out in the directory
-`path_to_perfzero/workspace/site-packages` by default. Developer can edit these
-libraries directly and execute benchmark with the local change.
-
-
-# Instructions for PerfZero developer
+# PerfZero development
 
 
 Avoid importing `tensorflow` package in any place that requires the `logging`
@@ -303,40 +447,3 @@ command and copy/paste it to the README.md.
 ```
 ./perfzero/scripts/generate-readme-header.sh perfzero/README.md
 ```
-
-
-# Instructions for managing Google Cloud Platform computing instance
-
-PerfZero aims to make it easy to run and debug TensorFlow which is usually run
-with GPU. However, most users do not have dedicated machine with the expensive
-hardware. One cost-effective solution is for users to create machine with the
-desired hardward on demand in a public cloud when they need to debug TensorFlow.
-
-We provide a script in PerfZero to make it easy to manage computing instance in
-Google Cloud Platform. This assumes that you have access to an existing project
-in GCP.
-
-Run `python perfzero/lib/cloud_manager.py -h` for list of commands supported
-by the script. Run `cloud_manager.py <command> -h` to see detailed documentation
-for all supported flags for the specified `command`.
-
-In most cases, user only needs to run the following commands:
-
-```
-# Create a new instance that is unique to your username
-python perfzero/lib/cloud_manager.py create --project=project_name
-
-# Query the status of the existing instanced created by your and its IP address
-python perfzero/lib/cloud_manager.py status --project=project_name
-
-# Stop the instance
-python perfzero/lib/cloud_manager.py stop --project=project_name
-
-# Start the instance
-python perfzero/lib/cloud_manager.py start --project=project_name
-
-# Delete the instance
-python perfzero/lib/cloud_manager.py delete --project=project_name
-```
-
-
