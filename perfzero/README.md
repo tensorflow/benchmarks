@@ -5,7 +5,7 @@ Table of Contents
    * [Introduction](#introduction)
    * [Executing tests](#executing-tests)
    * [Creating tests](#creating-tests)
-   * [Deep dive into individual tools](#deep-dive-into-individual-tools])
+   * [Deep dive into individual tools](#deep-dive-into-individual-tools)
       * [Build docker image](#build-docker-image)
       * [Run benchmark](#run-benchmark)
       * [Instructions for managing Google Cloud Platform computing instance](#instructions-for-managing-google-cloud-platform-computing-instance)
@@ -152,7 +152,7 @@ python3 /workspace/perfzero/lib/benchmark.py \
 --benchmark_methods=official.resnet.estimator_benchmark.Resnet50EstimatorBenchmarkReal.benchmark_graph_1_gpu
 ```
 
-# Create tests
+# Creating tests
 
 Here are the instructions that developers of benchmark method needs to follow in
 order to run benchmark method in PerfZero. See
