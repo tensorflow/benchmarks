@@ -48,10 +48,9 @@ setup in a table, and trigger alert on when there is performance regression.
 There are multiple ways to use PerfZero to execute a test. Listed from highest
 to lowest abstraction.
 
-*   PerfZero on private GCE instance.
-*   PerfZero on local workstation or any server
-*   PerfZero without docker
-
+*   [PerfZero on private GCE instance](#perfzero-on-private-gce-instance)
+*   [PerfZero on local workstation or any server](#perfzero-on-local-workstation-or-any-server)
+*   [PerfZero without docker](#perfzero-without-docker)
 
 ## PerfZero on private GCE instance.
 
@@ -63,7 +62,9 @@ and can only be deleted due to the local nvme drives.
 ### Step one: Create GCE Instance
 
 Creates an 8xV100 instance with 4 nvme drives. Output of the command will
-provide the command to run to SSH to the machine.
+provide the command to run to SSH to the machine. To set the project, zone, and
+other features read
+[cloud_manager tool details](https://github.com/tensorflow/benchmarks/tree/improved_execution_test/perfzero#instructions-for-managing-google-cloud-platform-computing-instance).
 
 ```bash
 python perfzero/lib/cloud_manager.py create --accelerator_count 8 --nvme_count 4
@@ -72,7 +73,8 @@ python perfzero/lib/cloud_manager.py create --accelerator_count 8 --nvme_count 4
 ### Step two: Build docker on GCE instance
 
 After logging into the instance run the following command to create a docker
-instance with the latest nightly TF 2.0 build.
+instance with the latest nightly TF 2.0 build. For more options read the
+[build docker image section](https://github.com/tensorflow/benchmarks/tree/improved_execution_test/perfzero#build-docker-image)
 
 ```bash
 python3 perfzero/lib/setup.py --dockerfile_path=docker/Dockerfile_ubuntu_1804_tf_v2
@@ -92,7 +94,8 @@ nvidia-docker run -it --rm -v $(pwd):/workspace -v /data:/data perfzero/tensorfl
 
 The command below pulls GitHub official/models, downloads the cifar-10 dataset
 from our internal Google Cloud storage bucket, and executes a ResNet56 benchmark
-with TensorFlow 2.0 nightly build.
+with TensorFlow 2.0 nightly build. For info on the args read the
+[run benchmark section](https://github.com/tensorflow/benchmarks/tree/improved_execution_test/perfzero#run-benchmark).
 
 ```bash
 python3 /workspace/perfzero/lib/benchmark.py \
