@@ -89,8 +89,18 @@ def get_machine_type(machine_type, accelerator_count):
   return 'n1-standard-{}'.format(cpu_count)
 
 
+def _ssh_prefix(project, zone, internal_ip, key_file):
+  if internal_ip:
+    ssh_prefix = 'gcloud compute beta ssh --internal-ip'
+  else:
+    ssh_prefix = 'gcloud compute ssh'
+  if ssh_key_file:
+    ssh_prefix = '{} --ssh-key-file={}'.format(ssh_prefix, key_file)
+  return '{} --project={} --zone={}'.format(ssh_prefix, project, zone)
+
+
 def create(username, project, zone, machine_type, accelerator_count,
-           accelerator_type, image, nvme_count):
+           accelerator_type, image, nvme_count, ssh_internal_ip, ssh_key_file):
   """Create gcloud computing instance.
 
   Args:
@@ -127,9 +137,10 @@ def create(username, project, zone, machine_type, accelerator_count,
   logging.info('Successfully created gcloud computing instance %s '
                'with %s accelerator.\n', instance_name, accelerator_count)
 
+  ssh_prefix = _ssh_prefix(project, zone, ssh_internal_ip, ssh_key_file)
   # Wait until we can ssh to the newly created computing instance
-  cmd = 'gcloud compute ssh {} --project={} --zone={} --strict-host-key-checking=no --command="exit"'.format(  # pylint: disable=line-too-long
-      instance_name, project, zone)
+  cmd = '{} --strict-host-key-checking=no --command="exit" {}'.format(
+      ssh_prefix, instance_name)
   ssh_remaining_retries = 12
   ssh_error = None
   while ssh_remaining_retries > 0:
@@ -153,25 +164,24 @@ def create(username, project, zone, machine_type, accelerator_count,
                  'git clone https://github.com/tensorflow/benchmarks.git\n'
                  'sudo usermod -a -G docker $USER\n')
   else:
-    cmd = 'gcloud compute ssh {} --project={} --zone={} --command="git clone {}"'.format(  # pylint: disable=line-too-long
-        instance_name, project, zone,
-        'https://github.com/tensorflow/benchmarks.git')
+    cmd = '{} --command="git clone {}" {}'.format(
+        ssh_prefix, 'https://github.com/tensorflow/benchmarks.git',
+        instance_name)
     run_command(cmd, is_from_user=True)
     logging.info('Successfully checked-out PerfZero code on the '
                  'computing instance\n')
 
-    cmd = 'gcloud compute ssh {} --project={} --zone={} --command="sudo usermod -a -G docker $USER"'.format(  # pylint: disable=line-too-long
-        instance_name, project, zone)
+    cmd = '{} --command="sudo usermod -a -G docker $USER" {}'.format(
+        ssh_prefix, instance_name)
     run_command(cmd, is_from_user=True)
     logging.info('Successfully added user to the docker group\n')
 
-  cmd = 'gcloud compute ssh {} --project={} --zone={} -- -L 6006:127.0.0.1:6006'.format(  # pylint: disable=line-too-long
-      instance_name, project, zone)
+  cmd = '{} {} -- -L 6006:127.0.0.1:6006'.format(ssh_prefix, instance_name)
   logging.info('Run the command below to ssh to the instance together with '
                'port forwarding for tensorboard:\n%s\n', cmd)
 
 
-def status(username, project, zone):
+def status(username, project, zone, ssh_internal_ip, ssh_key_file):
   """Query the status of the computing instance.
 
   Args:
@@ -192,8 +202,9 @@ def status(username, project, zone):
                num_instances, instance_name)
 
   if num_instances == 1:
-    cmd = 'gcloud compute ssh {} --project={} --zone={} -- -L 6006:127.0.0.1:6006'.format(  # pylint: disable=line-too-long
-        instance_name, project, zone)
+    cmd = '{} {} -- -L 6006:127.0.0.1:6006'.format(
+        _ssh_prefix(project, zone, ssh_internal_ip, ssh_key_file),
+        instance_name)
     logging.info('Run the command below to ssh to the instance together with '
                  'port forwarding for tensorboard:\n%s\n', cmd)
 
@@ -286,6 +297,17 @@ def parse_arguments(argv, command):  # pylint: disable=redefined-outer-name
         type=str,
         help='Zone of the instance to create.'
         )
+    parser.add_argument(
+        '--ssh-internal-ip',
+        action='store_true',
+        help='If set, use internal IP for ssh with `gcloud beta compute ssh`.'
+        )
+    parser.add_argument(
+        '--ssh-key-file',
+        default=None,
+        type=str,
+        help='The ssh key to use with with `gcloud (beta) compute ssh`.'
+        )
 
   if command == 'create':
     parser.add_argument(
@@ -364,7 +386,7 @@ The supported commands are:
   if command == 'create':
     create(flags.username, flags.project, flags.zone, flags.machine_type,
            flags.accelerator_count, flags.accelerator_type, flags.image,
-           flags.nvme_count)
+           flags.nvme_count, flags.ssh_internal_ip, flags.ssh_key_file)
   elif command == 'start':
     start(flags.username, flags.project, flags.zone)
   elif command == 'stop':
@@ -372,7 +394,8 @@ The supported commands are:
   elif command == 'delete':
     delete(flags.username, flags.project, flags.zone)
   elif command == 'status':
-    status(flags.username, flags.project, flags.zone)
+    status(flags.username, flags.project, flags.zone, flags.ssh_internal_ip,
+           flags.ssh_key_file)
   elif command == 'list_all':
     list_all(flags.project)
 
