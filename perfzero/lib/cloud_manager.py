@@ -94,7 +94,7 @@ def _ssh_prefix(project, zone, internal_ip, key_file):
     ssh_prefix = 'gcloud compute beta ssh --internal-ip'
   else:
     ssh_prefix = 'gcloud compute ssh'
-  if ssh_key_file:
+  if key_file:
     ssh_prefix = '{} --ssh-key-file={}'.format(ssh_prefix, key_file)
   return '{} --project={} --zone={}'.format(ssh_prefix, project, zone)
 
