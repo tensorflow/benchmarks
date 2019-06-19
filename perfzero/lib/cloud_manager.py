@@ -91,7 +91,7 @@ def get_machine_type(machine_type, accelerator_count):
 
 def _ssh_prefix(project, zone, internal_ip, key_file):
   if internal_ip:
-    ssh_prefix = 'gcloud compute beta ssh --internal-ip'
+    ssh_prefix = 'gcloud beta compute ssh --internal-ip'
   else:
     ssh_prefix = 'gcloud compute ssh'
   if key_file:
