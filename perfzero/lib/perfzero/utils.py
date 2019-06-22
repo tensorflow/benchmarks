@@ -30,7 +30,8 @@ def checkout_git_repos(git_repos, use_cached_site_packages):
 
   Args:
     git_repos: array of dict containing attributes of the git repo to checkout
-    use_cached_site_packages: If true, skip git pull if the git_repo already exists
+               use_cached_site_packages: If true, skip git pull if the git_repo
+               already exists
 
   Returns:
     A dict containing attributes of the git repositories
@@ -242,7 +243,7 @@ def run_command(cmd, shell=True):
   Returns:
     Tuple of the command return value and the standard out in as a string.
   """
-  logging.debug('Executing command: {}'.format(cmd))
+  logging.debug('Executing command: %s', cmd)
   p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                        stderr=subprocess.STDOUT, shell=shell)
 
@@ -298,14 +299,15 @@ def get_gpu_info():
   this may be a workstation and takes the second entry.
 
   Returns:
-    A dict containing gpu_driver_version, gpu_model and gpu_count
+    A dict containing gpu_driver_version, gpu_model and gpu_count or None if
+    `nvidia-smi` is not found or fails.
   """
   cmd = 'nvidia-smi --query-gpu=driver_version,gpu_name --format=csv'
   exit_code, result = run_command(cmd)
 
   if exit_code != 0:
     logging.error('nvidia-smi did not return as expected: %s', result)
-    return {}
+    return None
 
   lines = result.splitlines()
   gpu_info_line = lines[1]
