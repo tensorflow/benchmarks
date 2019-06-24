@@ -172,14 +172,15 @@ def build_execution_summary(execution_timestamp, execution_id,
     ml_framework_info['build_label'] = ml_framework_build_label
 
   system_info = {}
-  gpu_info = utils.get_gpu_info()
   if platform_name:
     system_info['platform_name'] = platform_name
   if system_name:
     system_info['system_name'] = system_name
-  system_info['accelerator_driver_version'] = gpu_info['gpu_driver_version']
-  system_info['accelerator_model'] = gpu_info['gpu_model']
-  system_info['accelerator_count'] = gpu_info['gpu_count']
+  gpu_info = utils.get_gpu_info()
+  if gpu_info:
+    system_info['accelerator_driver_version'] = gpu_info['gpu_driver_version']
+    system_info['accelerator_model'] = gpu_info['gpu_model']
+    system_info['accelerator_count'] = gpu_info['gpu_count']
   system_info['cpu_model'] = utils.get_cpu_name()
   system_info['physical_cpu_count'] = psutil.cpu_count(logical=False)
   system_info['logical_cpu_count'] = psutil.cpu_count(logical=True)
