@@ -29,9 +29,8 @@ def checkout_git_repos(git_repos, use_cached_site_packages):
   """Clone, update, or sync a repo.
 
   Args:
-    git_repos: array of dict containing attributes of the git repo to checkout
-               use_cached_site_packages: If true, skip git pull if the git_repo
-               already exists
+    git_repos: array of dict containing attributes of the git repo to checkout.
+    use_cached_site_packages: If true, skip git pull if git_repo already exists.
 
   Returns:
     A dict containing attributes of the git repositories
@@ -143,7 +142,7 @@ def download_data(download_infos):
 
   Args:
     download_infos: array of dict which specifies the url and local_path for
-                    data download
+      data download
   """
   for info in download_infos:
     if os.path.exists(info['local_path']):
@@ -185,12 +184,14 @@ def download_data(download_infos):
 
 
 def parse_data_downloads_str(root_data_dir, data_downloads_str):
-  """Parse a comma separated string into array of dict which specifies url and local_path for every downloads.
+  """Parse a comma separated string into array of dict.
+
+  Each dict specifies the url and local_path for every downloads.
 
   Args:
     root_data_dir: the directory which should contain all the dataset files
     data_downloads_str: a comma separated string specified by the
-                        flag --data_downloads
+      flag --data_downloads
 
   Returns:
     An array of dict which specifies the url and local_path for data download
