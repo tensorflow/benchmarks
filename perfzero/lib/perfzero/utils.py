@@ -184,9 +184,9 @@ def download_data(download_infos):
 
 
 def parse_data_downloads_str(root_data_dir, data_downloads_str):
-  """Parse a comma separated string into array of dict.
+  """Parse a comma separated string into array of dicts.
 
-  Each dict specifies the url and local_path for every downloads.
+  Each dict specifies the url and local_path for a download.
 
   Args:
     root_data_dir: the directory which should contain all the dataset files
