@@ -36,8 +36,9 @@ RUN apt-get install -y --no-install-recommends \
 # Setup Python3 environment
 RUN pip3 install --upgrade pip==9.0.1
 # setuptools upgraded to fix install requirements from model garden.
+RUN pip3 install wheel
 RUN pip3 install --upgrade setuptools google-api-python-client google-cloud google-cloud-bigquery
-RUN pip3 install wheel absl-py
+RUN pip3 install absl-py
 RUN pip3 install --upgrade --force-reinstall ${tensorflow_pip_spec}
 
 RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/requirements.txt > /tmp/requirements.txt
