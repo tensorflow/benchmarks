@@ -946,7 +946,9 @@ class COCOPreprocessor(BaseImagePreprocessor):
     image_buffer = data['image_buffer']
     boxes = data['groundtruth_boxes']
     classes = tf.reshape(data['groundtruth_classes'], [-1, 1])
-    source_id = tf.string_to_number(data['source_id'])
+    source_id0, source_id1 = tf.split(tf.strings.split(data['source_id'], sep='.', result_type="RaggedTensor"), [1, 1], 0)
+    source_id = tf.string_to_number(source_id0)
+    #source_id = tf.string_to_number(data['source_id'])
     raw_shape = data['raw_shape']
 
     ssd_encoder = ssd_dataloader.Encoder()
