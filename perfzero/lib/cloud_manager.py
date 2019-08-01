@@ -100,7 +100,8 @@ def _ssh_prefix(project, zone, internal_ip, key_file):
 
 
 def create(username, project, zone, machine_type, accelerator_count,
-           accelerator_type, image, nvme_count, ssh_internal_ip, ssh_key_file):
+           accelerator_type, image, nvme_count, ssh_internal_ip, ssh_key_file,
+           cpu_min_platform=None):
   """Create gcloud computing instance.
 
   Args:
@@ -113,6 +114,9 @@ def create(username, project, zone, machine_type, accelerator_count,
     accelerator_type: the specific type of accelerator to attach to the instance
     image: the name of the image that the disk will be initialized with
     nvme_count: the number of NVME local SSD devices to attach to the instance
+    ssh_internal_ip: internal ip to use for ssh.
+    ssh_key_file: ssh key file to use to connect to instance.
+    cpu_min_platform: minimum CPU platform to use, if None use default.
   """
   instance_name = get_instance_name(username)
   machine_type = get_machine_type(machine_type, accelerator_count)
@@ -129,6 +133,9 @@ def create(username, project, zone, machine_type, accelerator_count,
   if accelerator_count > 0:
     cmd += '--accelerator=count={},type={} '.format(
         accelerator_count, accelerator_type)
+
+  if cpu_min_platform:
+    cmd += '--min-cpu-platform="{}" '.format(cpu_min_platform)
 
   for _ in range(nvme_count):
     cmd += '--local-ssd=interface=NVME '
@@ -185,9 +192,11 @@ def status(username, project, zone, ssh_internal_ip, ssh_key_file):
   """Query the status of the computing instance.
 
   Args:
-    username: the username of the current user
-    project: project name
-    zone: zone of the GCP computing instance
+    username: the username of the current user.
+    project: project name.
+    zone: zone of the GCP computing instance.
+    ssh_internal_ip: internal ip of the instance.
+    ssh_key_file: SSH key file to use to connect to the instance.
   """
   instance_name = get_instance_name(username)
   logging.debug('Querying status of gcloud computing instance %s of '
@@ -325,6 +334,11 @@ def parse_arguments(argv, command):  # pylint: disable=redefined-outer-name
         learn about all available accelerator types.
         ''')
     parser.add_argument(
+        '--cpu_min_platform',
+        default=None,
+        type=str,
+        help='''Minimum cpu platform, only needed for CPU only instances.''')
+    parser.add_argument(
         '--machine_type',
         default=None,
         type=str,
@@ -386,7 +400,8 @@ The supported commands are:
   if command == 'create':
     create(flags.username, flags.project, flags.zone, flags.machine_type,
            flags.accelerator_count, flags.accelerator_type, flags.image,
-           flags.nvme_count, flags.ssh_internal_ip, flags.ssh_key_file)
+           flags.nvme_count, flags.ssh_internal_ip, flags.ssh_key_file,
+           cpu_min_platform=flags.cpu_min_platform)
   elif command == 'start':
     start(flags.username, flags.project, flags.zone)
   elif command == 'stop':
