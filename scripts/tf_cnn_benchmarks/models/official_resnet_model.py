@@ -61,7 +61,7 @@ class ImagenetResnetModel(model_lib.CNNModel):
                     data_type=tf.float32):
     # pylint: disable=g-import-not-at-top
     try:
-      from official.resnet.imagenet_main import ImagenetModel
+      from official.resnet.r1.imagenet_main import ImagenetModel
     except ImportError:
       tf.logging.fatal('Please include tensorflow/models to the PYTHONPATH.')
       raise

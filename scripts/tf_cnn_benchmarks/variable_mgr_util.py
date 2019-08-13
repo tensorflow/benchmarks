@@ -25,8 +25,9 @@ import tensorflow as tf
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import gradients_util
+from tensorflow.python.ops import math_ops
 
 
 PS_SHADOW_VAR_PREFIX = 'ps_var'
@@ -500,6 +501,49 @@ def aggregate_gradients_using_copy(tower_grads, use_mean, check_inf_nan):
     return agg_grads, None
 
 
+# The following two functions are copied from
+# tensorflow/python/eager/backprop.py. We do not directly use them as they are
+# not exported and subject to change at any time.
+def flatten_nested_indexed_slices(grad):
+  assert isinstance(grad, ops.IndexedSlices)
+  if isinstance(grad.values, ops.Tensor):
+    return grad
+  else:
+    assert isinstance(grad.values, ops.IndexedSlices)
+    g = flatten_nested_indexed_slices(grad.values)
+    return ops.IndexedSlices(g.values, array_ops.gather(grad.indices,
+                                                        g.indices),
+                             g.dense_shape)
+
+
+def aggregate_indexed_slices_gradients(grads):
+  """Aggregates gradients containing `IndexedSlices`s."""
+  if len(grads) < 1:
+    return None
+  elif len(grads) == 1:
+    return grads[0]
+  else:
+    grads = [g for g in grads if g is not None]
+    # If any gradient is a `Tensor`, sum them up and return a dense tensor
+    # object.
+    if any(isinstance(g, ops.Tensor) for g in grads):
+      return math_ops.add_n(grads)
+
+    # The following `_as_indexed_slices_list` casts ids of IndexedSlices into
+    # int64. It is to make sure the inputs of `concat` all have same the data
+    # type.
+    grads = math_ops._as_indexed_slices_list(grads)  # pylint: disable=protected-access
+
+    grads = [flatten_nested_indexed_slices(x) for x in grads]
+    # Form IndexedSlices out of the concatenated values and indices.
+    concat_grad = ops.IndexedSlices(
+        array_ops.concat([x.values for x in grads], axis=0),
+        array_ops.concat([x.indices for x in grads], axis=0),
+        grads[0].dense_shape)
+
+    return concat_grad
+
+
 def aggregate_single_gradient_using_copy(grad_and_vars, use_mean,
                                          check_inf_nan):
   """Calculate the average gradient for a shared variable across all towers.
@@ -522,7 +566,7 @@ def aggregate_single_gradient_using_copy(grad_and_vars, use_mean,
   grads = [g for g, _ in grad_and_vars]
   if any(isinstance(g, tf.IndexedSlices) for g in grads):
     # TODO(reedwm): All-reduce IndexedSlices more effectively.
-    grad = gradients_util._AggregateIndexedSlicesGradients(grads)  # pylint: disable=protected-access
+    grad = aggregate_indexed_slices_gradients(grads)
   else:
     grad = tf.add_n(grads)
 
