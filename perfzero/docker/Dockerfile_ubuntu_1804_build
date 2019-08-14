@@ -5,6 +5,8 @@
 
 FROM nvidia/cuda:10.0-base-ubuntu18.04 as base
 ARG tensorflow_pip_spec="tf-nightly-gpu-2.0-preview"
+ARG extra_pip_specs=""
+ENV EXTRA_PIP_SPECS $(sed 's/;/ /g' <<<$extra_pip_specs)
 
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -72,7 +74,7 @@ RUN pip3 install --upgrade pip
 RUN pip install wheel
 RUN pip install --upgrade setuptools google-api-python-client pyyaml google-cloud google-cloud-bigquery mock
 RUN pip install absl-py
-RUN pip install --upgrade --force-reinstall ${tensorflow_pip_spec}
+RUN pip install --upgrade --force-reinstall ${tensorflow_pip_spec} ${EXTRA_PIP_SPECS}
 RUN pip install tfds-nightly
 RUN pip install -U scikit-learn
 
