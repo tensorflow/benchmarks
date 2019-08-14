@@ -63,6 +63,13 @@ def add_setup_parser_arguments(parser):
       Example values include tf-nightly-gpu, and tensorflow==1.12.0. If it is specified, the corresponding tensorflow pip package/version
       will be installed. Otherwise, the default tensorflow pip package specified in the docker file will be installed.
       ''')
+  parser.add_argument(
+      '--extra_pip_specs',
+      default="",
+      type=str,
+      help='''Additional specifications to pass to `pip install`. (e.g. pinning certain dependencies)
+      Specifications should be semicolon separated: e.g. `numpy==1.16.4;scipy==1.3.1`
+      ''')
 
 
 def add_benchmark_parser_arguments(parser):

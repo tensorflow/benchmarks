@@ -79,14 +79,18 @@ if __name__ == '__main__':
     # dockerfile_path does not exist
     dockerfile_path = os.path.join(project_dir, FLAGS.dockerfile_path)
   docker_tag = 'perfzero/tensorflow'
-  if FLAGS.tensorflow_pip_spec and docker_context:
-    cmd = 'docker build --no-cache --pull -t {} --build-arg tensorflow_pip_spec={} -f {} {}'.format(  # pylint: disable=line-too-long
-        docker_tag, FLAGS.tensorflow_pip_spec, dockerfile_path, docker_context)
-  elif FLAGS.tensorflow_pip_spec:
-    cmd = 'docker build --no-cache --pull -t {} --build-arg tensorflow_pip_spec={} - < {}'.format(  # pylint: disable=line-too-long
-        docker_tag, FLAGS.tensorflow_pip_spec, dockerfile_path)
-  else:
-    cmd = 'docker build --no-cache --pull -t {} - < {}'.format(docker_tag, dockerfile_path)  # pylint: disable=line-too-long
+  cmd = 'docker build --no-cache --pull -t {docker_tag}{tf_pip}{extra_pip} {suffix}'.format(
+      docker_tag=docker_tag,
+      tf_pip=(
+          ' --build-arg tensorflow_pip_spec={}'.format(FLAGS.tensorflow_pip_spec)
+          if FLAGS.tensorflow_pip_spec else ''),
+      extra_pip=(
+          ' --build-arg extra_pip_specs={}'.format(FLAGS.extra_pip_specs)
+          if FLAGS.extra_pip_specs else ''),
+      suffix=(
+          '-f {} {}'.format(dockerfile_path, docker_context)
+          if docker_context else '- < {}'.format(dockerfile_path))
+  )
 
   utils.run_commands([cmd])
   logging.info('Built docker image with tag %s', docker_tag)
