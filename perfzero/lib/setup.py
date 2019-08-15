@@ -79,14 +79,13 @@ if __name__ == '__main__':
     # dockerfile_path does not exist
     dockerfile_path = os.path.join(project_dir, FLAGS.dockerfile_path)
   docker_tag = 'perfzero/tensorflow'
+  extra_pip_specs = (FLAGS.extra_pip_specs or '').replace(';', '')
   cmd = 'docker build --no-cache --pull -t {docker_tag}{tf_pip}{extra_pip} {suffix}'.format(
       docker_tag=docker_tag,
       tf_pip=(
           ' --build-arg tensorflow_pip_spec={}'.format(FLAGS.tensorflow_pip_spec)
           if FLAGS.tensorflow_pip_spec else ''),
-      extra_pip=(
-          ' --build-arg extra_pip_specs={}'.format(FLAGS.extra_pip_specs)
-          if FLAGS.extra_pip_specs else ''),
+      extra_pip=' --build-arg extra_pip_specs=\'{}\''.format(extra_pip_specs),
       suffix=(
           '-f {} {}'.format(dockerfile_path, docker_context)
           if docker_context else '- < {}'.format(dockerfile_path))
