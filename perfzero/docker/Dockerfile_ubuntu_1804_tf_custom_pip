@@ -11,7 +11,6 @@ FROM nvidia/cuda:10.0-base-ubuntu18.04 as base
 # Note that the version tag in the name of wheel file is meaningless.
 ARG tensorflow_pip_spec="resources/tensorflow-0.0.1-cp36-cp36m-linux_x86_64.whl"
 ARG extra_pip_specs=""
-ENV EXTRA_PIP_SPECS $(sed 's/;/ /g' <<<$extra_pip_specs)
 
 COPY ${tensorflow_pip_spec} /tensorflow-0.0.1-cp36-cp36m-linux_x86_64.whl
 
@@ -76,7 +75,7 @@ RUN pip3 install --upgrade pip==9.0.1
 RUN pip3 install wheel
 RUN pip3 install --upgrade setuptools google-api-python-client pyyaml google-cloud google-cloud-bigquery
 RUN pip3 install absl-py
-RUN pip3 install --upgrade --force-reinstall /tensorflow-0.0.1-cp36-cp36m-linux_x86_64.whl ${EXTRA_PIP_SPECS}
+RUN pip3 install --upgrade --force-reinstall /tensorflow-0.0.1-cp36-cp36m-linux_x86_64.whl ${extra_pip_specs}
 RUN pip3 install tfds-nightly
 RUN pip3 install -U scikit-learn
 
