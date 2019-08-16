@@ -101,7 +101,7 @@ def _ssh_prefix(project, zone, internal_ip, key_file):
 
 def create(username, project, zone, machine_type, accelerator_count,
            accelerator_type, image, nvme_count, ssh_internal_ip, ssh_key_file,
-           cpu_min_platform=None):
+           cpu_min_platform=None, boot_ssd_size=None):
   """Create gcloud computing instance.
 
   Args:
@@ -117,6 +117,7 @@ def create(username, project, zone, machine_type, accelerator_count,
     ssh_internal_ip: internal ip to use for ssh.
     ssh_key_file: ssh key file to use to connect to instance.
     cpu_min_platform: minimum CPU platform to use, if None use default.
+    boot_ssd_size: If set boot disk is changed to SSD and this size(GB) is used.
   """
   instance_name = get_instance_name(username)
   machine_type = get_machine_type(machine_type, accelerator_count)
@@ -129,6 +130,10 @@ def create(username, project, zone, machine_type, accelerator_count,
 --machine-type={} \
 --maintenance-policy=TERMINATE \
 '''.format(instance_name, image, project, zone, machine_type)
+
+  if boot_ssd_size:
+    cmd += '--boot-disk-size={}GB --boot-disk-type=pd-ssd '.format(
+        boot_ssd_size)
 
   if accelerator_count > 0:
     cmd += '--accelerator=count={},type={} '.format(
@@ -361,6 +366,14 @@ def parse_arguments(argv, command):  # pylint: disable=redefined-outer-name
         help='''Specifies the number of NVME local SSD devices to attach to the instance.
         '''
         )
+    parser.add_argument(
+        '--boot_ssd_size',
+        default=None,
+        type=int,
+        help='''Specifies the size (GB) of the boot disk or size is the image
+        size. Setting this also changes boot disk to Persistent SSD.
+        '''
+        )
 
   flags, unparsed = parser.parse_known_args(argv)  # pylint: disable=redefined-outer-name
   if unparsed:
@@ -401,7 +414,8 @@ The supported commands are:
     create(flags.username, flags.project, flags.zone, flags.machine_type,
            flags.accelerator_count, flags.accelerator_type, flags.image,
            flags.nvme_count, flags.ssh_internal_ip, flags.ssh_key_file,
-           cpu_min_platform=flags.cpu_min_platform)
+           cpu_min_platform=flags.cpu_min_platform,
+           boot_ssd_size=flags.boot_ssd_size)
   elif command == 'start':
     start(flags.username, flags.project, flags.zone)
   elif command == 'stop':
