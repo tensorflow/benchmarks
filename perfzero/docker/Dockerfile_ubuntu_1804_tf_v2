@@ -8,7 +8,7 @@ ARG local_tensorflow_pip_spec=""
 ARG extra_pip_specs=""
 ARG local_tensorflow_wheel=false
 
-COPY {local_tensorflow_pip_spec} /{local_tensorflow_pip_spec}
+COPY ${local_tensorflow_pip_spec} /${local_tensorflow_pip_spec}
 
 # Pick up some TF dependencies
 # cublas-dev and libcudnn7-dev only needed because of libnvinfer-dev which may not
