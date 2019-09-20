@@ -26,7 +26,7 @@ import perfzero.device_utils as device_utils
 import perfzero.perfzero_config as perfzero_config
 import perfzero.utils as utils
 
-
+    
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(
       formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -58,14 +58,18 @@ if __name__ == '__main__':
 
   # Create docker image
   start_time = time.time()
-  docker_context = None
+  
 
   # Download TensorFlow pip package from Google Cloud Storage and modify package
   # path accordingly, if applicable
+  local_tensorflow_pip_spec = None
+  docker_context = os.path.join(workspace_dir, 'resources')
+  # Necessary in case we don't have a local .whl file.
+  utils.create_empty_file(docker_context, 'EMPTY')
+  
   if (FLAGS.tensorflow_pip_spec and
       (FLAGS.tensorflow_pip_spec.startswith('gs://') or
-       FLAGS.tensorflow_pip_spec.startswith('file://'))):
-    docker_context = os.path.join(workspace_dir, 'resources')
+       FLAGS.tensorflow_pip_spec.startswith('file://'))):  
     local_pip_filename = os.path.basename(FLAGS.tensorflow_pip_spec)
     local_pip_path = os.path.join(docker_context, local_pip_filename)
     utils.download_data([{'url': FLAGS.tensorflow_pip_spec,
@@ -73,6 +77,9 @@ if __name__ == '__main__':
     # Update path to pip wheel file for the Dockerfile. Note that this path has
     # to be relative to the docker context (absolute path will not work).
     FLAGS.tensorflow_pip_spec = local_pip_filename
+    local_tensorflow_pip_spec = local_pip_filename     
+  else:
+    local_tensorflow_pip_spec = 'EMPTY'
 
   dockerfile_path = FLAGS.dockerfile_path
   if not os.path.exists(dockerfile_path):
@@ -81,11 +88,13 @@ if __name__ == '__main__':
     dockerfile_path = os.path.join(project_dir, FLAGS.dockerfile_path)
   docker_tag = 'perfzero/tensorflow'
   extra_pip_specs = (FLAGS.extra_pip_specs or '').replace(';', '')
-  cmd = 'docker build --no-cache --pull -t {docker_tag}{tf_pip}{extra_pip} {suffix}'.format(
+  cmd = 'docker build --no-cache --pull -t {docker_tag}{tf_pip}{local_tf_pip}{extra_pip} {suffix}'.format(
       docker_tag=docker_tag,
       tf_pip=(
           ' --build-arg tensorflow_pip_spec={}'.format(FLAGS.tensorflow_pip_spec)
           if FLAGS.tensorflow_pip_spec else ''),
+      # local_tensorflow_pip_spec is either 'EMPTY' or basename of local .whl file.
+      local_tf_pip=' --build-arg local_tensorflow_pip_spec={}'.format(local_tensorflow_pip_spec),
       extra_pip=' --build-arg extra_pip_specs=\'{}\''.format(extra_pip_specs),
       suffix=(
           '-f {} {}'.format(dockerfile_path, docker_context)
