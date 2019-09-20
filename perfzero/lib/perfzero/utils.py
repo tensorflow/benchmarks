@@ -39,7 +39,7 @@ def create_empty_file(parent_directory, file_basename):
     os.makedirs(parent_directory)
   full_file_name = os.path.join(parent_directory, file_basename)
   with open(full_file_name, 'w') as f:
-    print('Creating empty file: {full_file_name}'.format(full_file_name))
+    print('Creating empty file: {}'.format(full_file_name))
     
 
 def checkout_git_repos(git_repos, use_cached_site_packages):
