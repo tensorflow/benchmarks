@@ -11,6 +11,9 @@ FROM nvidia/cuda:10.0-base-ubuntu18.04 as base
 # Note that the version tag in the name of wheel file is meaningless.
 ARG tensorflow_pip_spec="resources/tensorflow-0.0.1-cp36-cp36m-linux_x86_64.whl"
 ARG extra_pip_specs=""
+ARG local_tensorflow_pip_spec=""
+
+COPY ${local_tensorflow_pip_spec} /${local_tensorflow_pip_spec}
 
 COPY ${tensorflow_pip_spec} /tensorflow-0.0.1-cp36-cp36m-linux_x86_64.whl
 
