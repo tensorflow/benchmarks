@@ -64,7 +64,7 @@ if __name__ == '__main__':
   # Download TensorFlow pip package from Google Cloud Storage and modify package
   # path accordingly, if applicable
   local_tensorflow_pip_spec = None
-  
+
   if (FLAGS.tensorflow_pip_spec and
       (FLAGS.tensorflow_pip_spec.startswith('gs://') or
        FLAGS.tensorflow_pip_spec.startswith('file://'))):
@@ -86,15 +86,17 @@ if __name__ == '__main__':
     dockerfile_path = os.path.join(project_dir, FLAGS.dockerfile_path)
   docker_tag = 'perfzero/tensorflow'
   extra_pip_specs = (FLAGS.extra_pip_specs or '').replace(';', '')
-  cmd = 'docker build --no-cache --pull -t {docker_tag}{tf_pip}{local_tf_pip}{extra_pip} {suffix}'.format(
+  docker_base_cmd = 'docker build --no-cache --pull'
+  cmd = '{docker_base_cmd} -t {docker_tag}{tf_pip}{local_tf_pip}{extra_pip} {suffix}'.format(
+      docker_base_cmd=docker_base_cmd,
       docker_tag=docker_tag,
       tf_pip=(
           ' --build-arg tensorflow_pip_spec={}'.format(
-            FLAGS.tensorflow_pip_spec) if FLAGS.tensorflow_pip_spec else ''),
+              FLAGS.tensorflow_pip_spec) if FLAGS.tensorflow_pip_spec else ''),
       # local_tensorflow_pip_spec is either string 'EMPTY' or basename of
       # local .whl file.
       local_tf_pip=' --build-arg local_tensorflow_pip_spec={}'.format(
-        local_tensorflow_pip_spec),
+          local_tensorflow_pip_spec),
       extra_pip=' --build-arg extra_pip_specs=\'{}\''.format(extra_pip_specs),
       suffix=(
           '-f {} {}'.format(dockerfile_path, docker_context)
