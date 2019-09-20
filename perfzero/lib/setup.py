@@ -63,7 +63,8 @@ if __name__ == '__main__':
   # Download TensorFlow pip package from Google Cloud Storage and modify package
   # path accordingly, if applicable
   if (FLAGS.tensorflow_pip_spec and
-      FLAGS.tensorflow_pip_spec.startswith('gs://')):
+      (FLAGS.tensorflow_pip_spec.startswith('gs://') or
+       FLAGS.tensorflow_pip_spec.startswith('file://'))):
     docker_context = os.path.join(workspace_dir, 'resources')
     local_pip_filename = os.path.basename(FLAGS.tensorflow_pip_spec)
     local_pip_path = os.path.join(docker_context, local_pip_filename)
