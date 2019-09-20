@@ -91,7 +91,7 @@ if __name__ == '__main__':
       tf_pip=(
           ' --build-arg tensorflow_pip_spec={}'.format(FLAGS.tensorflow_pip_spec)
           if FLAGS.tensorflow_pip_spec else ''),
-      # local_tensorflow_pip_spec is either 'EMPTY' or basename of local .whl file.
+      # local_tensorflow_pip_spec is either string 'EMPTY' or basename of local .whl file.
       local_tf_pip=' --build-arg local_tensorflow_pip_spec={}'.format(local_tensorflow_pip_spec),
       extra_pip=' --build-arg extra_pip_specs=\'{}\''.format(extra_pip_specs),
       suffix=(
