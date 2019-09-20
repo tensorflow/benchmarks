@@ -67,7 +67,7 @@ if __name__ == '__main__':
   
   if (FLAGS.tensorflow_pip_spec and
       (FLAGS.tensorflow_pip_spec.startswith('gs://') or
-       FLAGS.tensorflow_pip_spec.startswith('file://'))):  
+       FLAGS.tensorflow_pip_spec.startswith('file://'))):
     local_pip_filename = os.path.basename(FLAGS.tensorflow_pip_spec)
     local_pip_path = os.path.join(docker_context, local_pip_filename)
     utils.download_data([{'url': FLAGS.tensorflow_pip_spec,
@@ -75,7 +75,7 @@ if __name__ == '__main__':
     # Update path to pip wheel file for the Dockerfile. Note that this path has
     # to be relative to the docker context (absolute path will not work).
     FLAGS.tensorflow_pip_spec = local_pip_filename
-    local_tensorflow_pip_spec = local_pip_filename     
+    local_tensorflow_pip_spec = local_pip_filename
   else:
     local_tensorflow_pip_spec = 'EMPTY'
 
@@ -89,10 +89,12 @@ if __name__ == '__main__':
   cmd = 'docker build --no-cache --pull -t {docker_tag}{tf_pip}{local_tf_pip}{extra_pip} {suffix}'.format(
       docker_tag=docker_tag,
       tf_pip=(
-          ' --build-arg tensorflow_pip_spec={}'.format(FLAGS.tensorflow_pip_spec)
-          if FLAGS.tensorflow_pip_spec else ''),
-      # local_tensorflow_pip_spec is either string 'EMPTY' or basename of local .whl file.
-      local_tf_pip=' --build-arg local_tensorflow_pip_spec={}'.format(local_tensorflow_pip_spec),
+          ' --build-arg tensorflow_pip_spec={}'.format(
+            FLAGS.tensorflow_pip_spec) if FLAGS.tensorflow_pip_spec else ''),
+      # local_tensorflow_pip_spec is either string 'EMPTY' or basename of
+      # local .whl file.
+      local_tf_pip=' --build-arg local_tensorflow_pip_spec={}'.format(
+        local_tensorflow_pip_spec),
       extra_pip=' --build-arg extra_pip_specs=\'{}\''.format(extra_pip_specs),
       suffix=(
           '-f {} {}'.format(dockerfile_path, docker_context)
