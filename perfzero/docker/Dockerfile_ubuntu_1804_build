@@ -6,6 +6,9 @@
 FROM nvidia/cuda:10.0-base-ubuntu18.04 as base
 ARG tensorflow_pip_spec="tf-nightly-gpu-2.0-preview"
 ARG extra_pip_specs=""
+ARG local_tensorflow_pip_spec=""
+
+COPY ${local_tensorflow_pip_spec} /${local_tensorflow_pip_spec}
 
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
