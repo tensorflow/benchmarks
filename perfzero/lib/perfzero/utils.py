@@ -25,6 +25,23 @@ import traceback
 import requests
 
 
+def create_empty_file(parent_directory, file_basename):
+  """Creates an empty file with a given basename in a parent directory.
+  
+  Creates parent_directory and intermediate directories if it doesn't exist.
+  This is mostly used for creating no-op actions in the Dockerfile.
+  
+  Args:
+    parent_directory: The path to the parent directory.
+    file_basename: The basename for the empty file.  
+  """
+  if not os.path.isdir(parent_directory):
+    os.makedirs(parent_directory)
+  full_file_name = os.path.join(parent_directory, file_basename)
+  with open(full_file_name, 'w') as f:
+    print('Creating empty file: {full_file_name}'.format(full_file_name))
+    
+
 def checkout_git_repos(git_repos, use_cached_site_packages):
   """Clone, update, or sync a repo.
 
