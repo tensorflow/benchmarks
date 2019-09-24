@@ -70,7 +70,6 @@ def add_setup_parser_arguments(parser):
       help='''Additional specifications to pass to `pip install`. (e.g. pinning certain dependencies)
       Specifications should be semicolon separated: e.g. `numpy==1.16.4;scipy==1.3.1`
       ''')
-  
 
 def add_benchmark_parser_arguments(parser):
   """Add arguments to the parser used by the benchmark.py."""
@@ -288,4 +287,4 @@ class PerfZeroConfig(object):
 
     return git_repos
 
-  
+ 
