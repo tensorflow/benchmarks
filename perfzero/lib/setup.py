@@ -26,35 +26,15 @@ import perfzero.device_utils as device_utils
 import perfzero.perfzero_config as perfzero_config
 import perfzero.utils as utils
 
-if __name__ == '__main__':
-  parser = argparse.ArgumentParser(
-      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  perfzero_config.add_setup_parser_arguments(parser)
-  FLAGS, unparsed = parser.parse_known_args()
-
-  logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
-                      level=logging.DEBUG)
-  if unparsed:
-    logging.error('Arguments %s are not recognized', unparsed)
-    sys.exit(1)
-
-  setup_execution_time = {}
-  project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-  workspace_dir = os.path.join(project_dir, FLAGS.workspace)
-
-  # Download gcloud auth token. Remove this operation in the future when
-  # docker in Kokoro can accesss the GCP metadata server
-  start_time = time.time()
-  utils.active_gcloud_service(FLAGS.gcloud_key_file_url,
-                              workspace_dir, download_only=True)
-  setup_execution_time['download_token'] = time.time() - start_time
-
-  # Set up the raid array.
-  start_time = time.time()
-  device_utils.create_drive_from_devices(FLAGS.root_data_dir,
-                                         FLAGS.gce_nvme_raid)
-  setup_execution_time['create_drive'] = time.time() - start_time
-
+def _create_docker_image(FLAGS, project_dir, workspace_dir, setup_execution_time):
+  """Creates a docker image.
+  
+  Args:
+    FLAGS: parser.parse_known_args object.
+    project_dir: String - The current project path.
+    workspace_dir: String - The path to use for intermediate artifacts.
+    setup_execution_time: Map from string->double containing wall times for different operations. This will have insertions describing the docker setup time.
+  """
   # Create docker image
   start_time = time.time()
   docker_context = os.path.join(workspace_dir, 'resources')
@@ -106,6 +86,39 @@ if __name__ == '__main__':
   utils.run_commands([cmd])
   logging.info('Built docker image with tag %s', docker_tag)
   setup_execution_time['build_docker'] = time.time() - start_time
+
+if __name__ == '__main__':
+  parser = argparse.ArgumentParser(
+      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  perfzero_config.add_setup_parser_arguments(parser)
+  FLAGS, unparsed = parser.parse_known_args()
+
+  logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
+                      level=logging.DEBUG)
+  if unparsed:
+    logging.error('Arguments %s are not recognized', unparsed)
+    sys.exit(1)
+
+  setup_execution_time = {}
+  project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+  workspace_dir = os.path.join(project_dir, FLAGS.workspace)
+
+  # Download gcloud auth token. Remove this operation in the future when
+  # docker in Kokoro can accesss the GCP metadata server
+  start_time = time.time()
+  utils.active_gcloud_service(FLAGS.gcloud_key_file_url,
+                              workspace_dir, download_only=True)
+  setup_execution_time['download_token'] = time.time() - start_time
+
+  # Set up the raid array.
+  start_time = time.time()
+  device_utils.create_drive_from_devices(FLAGS.root_data_dir,
+                                         FLAGS.gce_nvme_raid)
+  setup_execution_time['create_drive'] = time.time() - start_time
+  
+  if FLAGS.enable_docker_setup:
+    _create_docker_image(FLAGS, project_dir, workspace_dir, setup_execution_time)
+
 
   logging.info('Setup time in seconds by operation:\n %s',
                json.dumps(setup_execution_time, indent=2))
