@@ -65,11 +65,17 @@ def add_setup_parser_arguments(parser):
       ''')
   parser.add_argument(
       '--extra_pip_specs',
-      default="",
+      default='',
       type=str,
       help='''Additional specifications to pass to `pip install`. (e.g. pinning certain dependencies)
       Specifications should be semicolon separated: e.g. `numpy==1.16.4;scipy==1.3.1`
       ''')
+  parser.add_argument(
+      '--docker_tag',
+      default='perfzero/tensorflow',
+      type=str,
+      help='The docker tag to use if building a docker image.'
+      )
 
 
 def add_benchmark_parser_arguments(parser):
@@ -287,5 +293,4 @@ class PerfZeroConfig(object):
       git_repos.append(git_repo)
 
     return git_repos
-
 
