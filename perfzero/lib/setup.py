@@ -67,12 +67,11 @@ def _create_docker_image(FLAGS, project_dir, workspace_dir, setup_execution_time
     # Fall back to the deprecated approach if the user-specified
     # dockerfile_path does not exist
     dockerfile_path = os.path.join(project_dir, FLAGS.dockerfile_path)
-  docker_tag = 'perfzero/tensorflow'
   extra_pip_specs = (FLAGS.extra_pip_specs or '').replace(';', '')
   docker_base_cmd = 'docker build --no-cache --pull'
   cmd = '{docker_base_cmd} -t {docker_tag}{tf_pip}{local_tf_pip}{extra_pip} {suffix}'.format(
       docker_base_cmd=docker_base_cmd,
-      docker_tag=docker_tag,
+      docker_tag=FLAGS.docker_tag,
       tf_pip=(
           ' --build-arg tensorflow_pip_spec={}'.format(
               FLAGS.tensorflow_pip_spec) if FLAGS.tensorflow_pip_spec else ''),
@@ -87,7 +86,7 @@ def _create_docker_image(FLAGS, project_dir, workspace_dir, setup_execution_time
   )
 
   utils.run_commands([cmd])
-  logging.info('Built docker image with tag %s', docker_tag)
+  logging.info('Built docker image with tag %s', FLAGS.docker_tag)
   setup_execution_time['build_docker'] = time.time() - docker_start_time
 
 
