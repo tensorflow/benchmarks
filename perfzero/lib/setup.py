@@ -120,7 +120,7 @@ if __name__ == '__main__':
                                          FLAGS.gce_nvme_raid)
   setup_execution_time['create_drive'] = time.time() - start_time
 
-  if FLAGS.enable_docker_setup:
+  if FLAGS.dockerfile_path:
     _create_docker_image(FLAGS, project_dir, workspace_dir,
                          setup_execution_time)
 
