@@ -70,13 +70,7 @@ def add_setup_parser_arguments(parser):
       help='''Additional specifications to pass to `pip install`. (e.g. pinning certain dependencies)
       Specifications should be semicolon separated: e.g. `numpy==1.16.4;scipy==1.3.1`
       ''')
-  parser.add_argument(
-      '--enable_docker_setup',
-      default=True,
-      type=bool,
-      help='Whether to enable docker build in setup.py (can be skipped in case using a custom docker).'
-      )
-
+  
 
 def add_benchmark_parser_arguments(parser):
   """Add arguments to the parser used by the benchmark.py."""
@@ -293,3 +287,5 @@ class PerfZeroConfig(object):
       git_repos.append(git_repo)
 
     return git_repos
+
+  
