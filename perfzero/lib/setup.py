@@ -26,17 +26,20 @@ import perfzero.device_utils as device_utils
 import perfzero.perfzero_config as perfzero_config
 import perfzero.utils as utils
 
+
 def _create_docker_image(FLAGS, project_dir, workspace_dir, setup_execution_time):
   """Creates a docker image.
-  
+
   Args:
     FLAGS: parser.parse_known_args object.
     project_dir: String - The current project path.
     workspace_dir: String - The path to use for intermediate artifacts.
-    setup_execution_time: Map from string->double containing wall times for different operations. This will have insertions describing the docker setup time.
+    setup_execution_time: Map from string->double containing wall times for
+      different operations. This will have insertions describing the docker
+      setup time.
   """
   # Create docker image
-  start_time = time.time()
+  docker_start_time = time.time()
   docker_context = os.path.join(workspace_dir, 'resources')
   # Necessary in case we don't have a local .whl file.
   utils.create_empty_file(docker_context, 'EMPTY')
@@ -85,7 +88,8 @@ def _create_docker_image(FLAGS, project_dir, workspace_dir, setup_execution_time
 
   utils.run_commands([cmd])
   logging.info('Built docker image with tag %s', docker_tag)
-  setup_execution_time['build_docker'] = time.time() - start_time
+  setup_execution_time['build_docker'] = time.time() - docker_start_time
+
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(
@@ -115,10 +119,10 @@ if __name__ == '__main__':
   device_utils.create_drive_from_devices(FLAGS.root_data_dir,
                                          FLAGS.gce_nvme_raid)
   setup_execution_time['create_drive'] = time.time() - start_time
-  
-  if FLAGS.enable_docker_setup:
-    _create_docker_image(FLAGS, project_dir, workspace_dir, setup_execution_time)
 
+  if FLAGS.enable_docker_setup:
+    _create_docker_image(FLAGS, project_dir, workspace_dir,
+                         setup_execution_time)
 
   logging.info('Setup time in seconds by operation:\n %s',
                json.dumps(setup_execution_time, indent=2))
