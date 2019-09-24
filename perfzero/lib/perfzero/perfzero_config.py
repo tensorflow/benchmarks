@@ -71,6 +71,7 @@ def add_setup_parser_arguments(parser):
       Specifications should be semicolon separated: e.g. `numpy==1.16.4;scipy==1.3.1`
       ''')
 
+
 def add_benchmark_parser_arguments(parser):
   """Add arguments to the parser used by the benchmark.py."""
   parser.add_argument(
@@ -286,4 +287,5 @@ class PerfZeroConfig(object):
       git_repos.append(git_repo)
 
     return git_repos
+
 
