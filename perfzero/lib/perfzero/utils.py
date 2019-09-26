@@ -193,8 +193,9 @@ def download_data(download_infos):
           os.path.join(local_path_parent, expected_base_name))])
     logging.info('Downloaded data from %s to %s',
                  info['url'], info['local_path'])
-    # Decompress file if file name ends with .gz
-    if info['url'].endswith('.gz'):
+    # Decompress file if file name ends with .gz unless caller sets 'decompress'
+    # to False in info.
+    if info['url'].endswith('.gz') and info.get('decompress', True):
       run_commands(['tar xvf {} -C {}'.format(
           info['local_path'], local_path_parent)])
       logging.info('Decompressed file %s', info['local_path'])
@@ -376,4 +377,3 @@ def instantiate_benchmark_class(benchmark_class, output_dir, root_data_dir):
   instance = class_(output_dir=output_dir, root_data_dir=root_data_dir)
 
   return instance
-
