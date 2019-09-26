@@ -153,7 +153,7 @@ if __name__ == '__main__':
   workspace_dir = os.path.join(project_dir, FLAGS.workspace)
 
   activate_gcloud = False
-  if FLAGS.dockerfile_path.startswith('gs://'):
+  if FLAGS.dockerfile_path and FLAGS.dockerfile_path.startswith('gs://'):
     # We might end up doing gsutil fetch later, so need to call
     # active_gcloud_service().
     activate_gcloud = True
