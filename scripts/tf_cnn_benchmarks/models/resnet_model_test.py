@@ -32,23 +32,23 @@ class ResNetModelTest(tf.test.TestCase):
                                              'parameter_server',
                                              256,
                                              base_lr=.050)
-    self.assertEquals(lr, .050)
+    self.assertEqual(lr, .050)
 
   def testGetScaledBaseLearningRateOneGpu(self):
     lr = self._get_scaled_base_learning_rate(1, 'parameter_server', 128)
-    self.assertEquals(lr, .064)
+    self.assertEqual(lr, .064)
 
   def testGetScaledBaseLearningRateEightGpuReplicated(self):
     lr = self._get_scaled_base_learning_rate(8, 'replicated', 256 * 8)
-    self.assertEquals(lr, .128)
+    self.assertEqual(lr, .128)
 
   def testGetScaledBaseLearningRateTwoGpuParameter(self):
     lr = self._get_scaled_base_learning_rate(2, 'parameter_server', 256 * 2)
-    self.assertEquals(lr, .256)
+    self.assertEqual(lr, .256)
 
   def testGetScaledBaseLearningRateTwoGpuUneven(self):
     lr = self._get_scaled_base_learning_rate(2, 'replicated', 13)
-    self.assertEquals(lr, 0.0032500000000000003)
+    self.assertEqual(lr, 0.0032500000000000003)
 
   def _get_scaled_base_learning_rate(self,
                                      num_gpus,
