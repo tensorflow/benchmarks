@@ -1,4 +1,4 @@
-# Ubuntu 18.04 Python3 with CUDA 10 and the following:
+# Ubuntu 18.04 Python3 with CUDA 10.1 and the following:
 #  - Installs tf-nightly-gpu (this is TF 2.0)
 #  - Installs requirements.txt for tensorflow/models
 
