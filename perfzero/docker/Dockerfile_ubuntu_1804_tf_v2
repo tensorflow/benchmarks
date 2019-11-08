@@ -29,8 +29,6 @@ COPY ${local_tensorflow_pip_spec} /${local_tensorflow_pip_spec}
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         cuda-command-line-tools-10-1 \
-        cuda-cublas-10-0 \
-        cuda-cublas-dev-10-0 \
         cuda-cufft-10-1 \
         cuda-curand-10-1 \
         cuda-cusolver-10-1 \
