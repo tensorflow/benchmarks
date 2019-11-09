@@ -24,8 +24,6 @@ COPY ${local_tensorflow_pip_spec} /${local_tensorflow_pip_spec}
 # sudo apt-cache search cuda-cusolver
 # sudo apt-cache search cuda-cusparse
 
-# cuda-cublas-10-1 is not available, we use 10-0.
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         cuda-command-line-tools-10-1 \
