@@ -215,6 +215,11 @@ def add_benchmark_parser_arguments(parser):
       default=None,
       type=str,
       help='A string that uniquely identifies the benchmark execution.')
+  parser.add_argument(
+      '--result_uploader_methods',
+      default=None,
+      type=str,
+      help='A comma separated list of class.method values to upload results.')
 
 
 class PerfZeroConfig(object):
