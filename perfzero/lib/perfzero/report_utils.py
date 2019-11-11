@@ -48,7 +48,7 @@ def run_uploader_methods(uploader_methods, execution_summary):
     except Exception as e:  # pylint: disable=broad-except
       errors.append(str(e))
   if errors:
-    raise RuntimeError('\n'.join(errors))
+    raise RuntimeError('\n' + '\n'.join(errors))
 
 
 def upload_execution_summary(bigquery_project_name, bigquery_dataset_table_name,
