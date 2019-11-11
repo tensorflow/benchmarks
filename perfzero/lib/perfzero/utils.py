@@ -118,8 +118,10 @@ def setup_python_path(site_packages_dir, python_path_str):
   if python_path_str:
     python_paths = python_path_str.split(',')
     for python_path in python_paths:
+      logging.info('Adding path %s to sys.path', python_path)
       sys.path.append(os.path.join(site_packages_dir, python_path))
   
+  logging.info('my cwd is %s', os.getcwd())
   for ff in pkgutil.walk_packages([site_packages_dir]):
     logging.info('initial package: %s', ff)
     
