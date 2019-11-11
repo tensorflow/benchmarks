@@ -76,6 +76,16 @@ def add_setup_parser_arguments(parser):
       type=str,
       help='The docker tag to use if building a docker image.'
       )
+  parser.add_argument(
+      '--include_dirs_in_site_package',
+      default='',
+      type=str,
+      help='''Comma separated list of dirs in the external vm to copy to the docker\'s site package dir.
+      Format: <absolute-path>/src/dir:new_base_dir_name,<absolute-path>/src/dir2>:new_name,....
+      This will copy <absolute-path>/src/dir to <site-packages>/new_base_dir_name.
+      '''
+      )
+
 
 
 def add_benchmark_parser_arguments(parser):
@@ -299,4 +309,3 @@ class PerfZeroConfig(object):
       git_repos.append(git_repo)
 
     return git_repos
-
