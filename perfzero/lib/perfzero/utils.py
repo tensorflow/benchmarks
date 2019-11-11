@@ -23,6 +23,7 @@ import sys
 import threading
 import traceback
 import requests
+import pkgutil
 
 
 def create_empty_file(parent_directory, file_basename):
@@ -118,6 +119,9 @@ def setup_python_path(site_packages_dir, python_path_str):
     python_paths = python_path_str.split(',')
     for python_path in python_paths:
       sys.path.append(os.path.join(site_packages_dir, python_path))
+  
+  for ff in pkgutil.walk_packages([site_packages_dir]):
+    print(ff)
   logging.debug('PYTHONPATH: %s', sys.path)
 
 
