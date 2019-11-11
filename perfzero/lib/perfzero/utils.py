@@ -119,7 +119,6 @@ def setup_python_path(site_packages_dir, python_path_str):
     for python_path in python_paths:
       logging.info('Adding path %s to sys.path', python_path)
       sys.path.append(os.path.join(site_packages_dir, python_path))
-    
   logging.debug('PYTHONPATH: %s', sys.path)
 
 
