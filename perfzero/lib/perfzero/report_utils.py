@@ -15,6 +15,7 @@
 """Upload test results."""
 from __future__ import print_function
 
+import importlib
 import json
 import logging
 import perfzero.utils as utils
