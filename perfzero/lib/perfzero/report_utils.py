@@ -29,17 +29,21 @@ def run_uploader_methods(uploader_methods, execution_summary):
   """Calls a list of exporter functions for a single execution summary.
 
   Args:
-    uploader_methods: List of strings - In the format module.foo.bar.method.
-      The functions imports module.foo.bar for each such entry and calls
-      method(execution_summary).
+    uploader_methods: String - Comma-separated module.foo.bar.method 
+      strings. The functions imports module.foo.bar for each such entry 
+      and calls method(execution_summary).
     execution_summary: The complete execution summary for a benchmark.
   """
   errors = []
-  for module_method in uploader_methods:
+  uploader_methods_list = uploader_methods.split(',')
+  for module_method in uploader_methods_list:
     try:
+      logging.info('Trying to call %s', module_method)
       module_path, method_path = module_method.rsplit('.', 1)
       this_module = importlib.import_module(module_path)
+      logging.info('Found module %s, looking for %s', module_path, method_path)
       this_method = getattr(this_module, method_path)
+      logging.info('Found method %s', method_path)
       this_method(execution_summary)
     except Exception as e:  # pylint: disable=broad-except
       errors.append(str(e))
