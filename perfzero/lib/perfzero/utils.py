@@ -121,7 +121,8 @@ def setup_python_path(site_packages_dir, python_path_str):
       sys.path.append(os.path.join(site_packages_dir, python_path))
   
   for ff in pkgutil.walk_packages([site_packages_dir]):
-    print(ff)
+    logging.info('initial package: %s', ff)
+    
   logging.debug('PYTHONPATH: %s', sys.path)
 
 
