@@ -136,6 +136,30 @@ def _create_docker_image(FLAGS, project_dir, workspace_dir,
   setup_execution_time['build_docker'] = time.time() - docker_start_time
 
 
+def _add_local_includes(dir_list_string, dst_base_dir):
+  """Copies list of <dir-path>:new_name specs into a new dest dir.
+
+  If a path /path1/path2/dir:new_dir is given, it copies /path1/path2/dir to
+  dst_base_dir/new_dir.
+
+  Args:
+    dir_list_string: Comma separated list of /path1/path2:new_name specs.
+    dst_base_dir: The base dir to contain the copies.
+  """
+  if not dir_list_string:
+    return
+  dir_list = dir_list_string.split(',')
+  for src_dir_with_name in dir_list:
+    src_dir, final_basename = src_dir_with_name.split(':')
+    dst_dir = os.path.join(dst_base_dir, final_basename)
+
+    if os.path.isdir(dst_dir):
+      logging.info('[DELETE] pre-existing %s', dst_dir)
+      shutil.rmtree(dst_dir)
+    logging.info('[COPY] %s -> %s', src_dir, dst_dir)
+    shutil.copytree(src_dir, dst_dir)
+
+
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(
       formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -151,13 +175,15 @@ if __name__ == '__main__':
   setup_execution_time = {}
   project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
   workspace_dir = os.path.join(project_dir, FLAGS.workspace)
+  site_package_dir = os.path.join(workspace_dir, 'site-packages')
+  _add_local_includes(FLAGS.include_dirs_in_site_package, site_package_dir)
 
   activate_gcloud = False
   if FLAGS.dockerfile_path and FLAGS.dockerfile_path.startswith('gs://'):
     # We might end up doing gsutil fetch later, so need to call
     # active_gcloud_service().
     activate_gcloud = True
-  
+
   if FLAGS.tensorflow_pip_spec and FLAGS.tensorflow_pip_spec.startswith('gs://'):
     activate_gcloud = True
 
