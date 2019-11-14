@@ -38,6 +38,8 @@ def execute_methods(method_names_str, *args, **kwargs):
   Raises:
     RuntimeError: If any of the invoked methods raised an exception.
   """
+  if not method_names_str:
+    return
   errors = []
   module_methods_list = method_names_str.split(',')
   for module_method in module_methods_list:
