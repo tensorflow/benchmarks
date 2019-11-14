@@ -568,6 +568,17 @@ class Resnet50v15Benchmarks(BenchmarkBase):
         xla_compile=True)
     self._run_benchmark(params)
 
+  def benchmark_fp16_xla_synth_8gpu_gpureplicated(self):
+    """Tests 8 gpu with synthetic data with parameters replicated."""
+    params = self._shared_params_fp16()._replace(
+        num_gpus=8,
+        num_batches=200,
+        variable_update='replicated',
+        all_reduce_spec='nccl',
+        gradient_repacking=2,
+        xla=True)
+    self._run_benchmark(params)
+
   def benchmark_fp16_xla_compile_fake_8gpu_gpureplicated(self):
     """Tests 8 gpu with fake data with parameters replicated."""
     params = self._shared_params_fp16()._replace(
