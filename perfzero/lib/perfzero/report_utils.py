@@ -15,6 +15,7 @@
 """Upload test results."""
 from __future__ import print_function
 
+import importlib
 import json
 import logging
 import perfzero.utils as utils
@@ -22,6 +23,36 @@ import psutil
 import socket
 
 from six import u as unicode  # pylint: disable=W0622
+
+
+def execute_methods(method_names_str, *args, **kwargs):
+  """Calls a list of method names on given function params.
+
+  Args:
+    method_names_str: String - Comma-separated module.foo.bar.method strings.
+      This function imports module.foo.bar for each such method and calls it
+      with *args and **kwargs.
+    *args: Function params common to each method.
+    **kwargs: Function params common to each method.
+
+  Raises:
+    RuntimeError: If any of the invoked methods raised an exception.
+  """
+  errors = []
+  module_methods_list = method_names_str.split(',')
+  for module_method in module_methods_list:
+    try:
+      logging.info('Trying to call %s', module_method)
+      module_path, method_path = module_method.rsplit('.', 1)
+      this_module = importlib.import_module(module_path)
+      logging.info('Found module %s, looking for %s', module_path, method_path)
+      this_method = getattr(this_module, method_path)
+      logging.info('Found method %s', method_path)
+      this_method(*args, **kwargs)
+    except Exception as e:  # pylint: disable=broad-except
+      errors.append(str(e))
+  if errors:
+    raise RuntimeError('\n' + '\n'.join(errors))
 
 
 def upload_execution_summary(bigquery_project_name, bigquery_dataset_table_name,

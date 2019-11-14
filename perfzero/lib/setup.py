@@ -151,13 +151,16 @@ if __name__ == '__main__':
   setup_execution_time = {}
   project_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
   workspace_dir = os.path.join(project_dir, FLAGS.workspace)
+  site_package_dir = os.path.join(workspace_dir, 'site-packages')
+  utils.copy_and_rename_dirs(FLAGS.site_package_downloads,
+                             site_package_dir)
 
   activate_gcloud = False
   if FLAGS.dockerfile_path and FLAGS.dockerfile_path.startswith('gs://'):
     # We might end up doing gsutil fetch later, so need to call
     # active_gcloud_service().
     activate_gcloud = True
-  
+
   if FLAGS.tensorflow_pip_spec and FLAGS.tensorflow_pip_spec.startswith('gs://'):
     activate_gcloud = True
 

@@ -18,6 +18,7 @@ from __future__ import print_function
 import importlib
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -117,6 +118,7 @@ def setup_python_path(site_packages_dir, python_path_str):
   if python_path_str:
     python_paths = python_path_str.split(',')
     for python_path in python_paths:
+      logging.info('Adding path %s to sys.path', python_path)
       sys.path.append(os.path.join(site_packages_dir, python_path))
   logging.debug('PYTHONPATH: %s', sys.path)
 
@@ -377,3 +379,27 @@ def instantiate_benchmark_class(benchmark_class, output_dir, root_data_dir):
   instance = class_(output_dir=output_dir, root_data_dir=root_data_dir)
 
   return instance
+
+
+def copy_and_rename_dirs(dir_spec_string, dst_base_dir):
+  """Copies list of <dir-path>:new_name specs into a new dest dir.
+
+  If a path /path1/path2/dir:new_dir is given, it copies /path1/path2/dir to
+  dst_base_dir/new_dir.
+
+  Args:
+    dir_spec_string: Comma separated list of /path1/path2:new_name specs.
+    dst_base_dir: The base dir to contain the copies.
+  """
+  if not dir_spec_string:
+    return
+  dir_specs = dir_spec_string.split(',')
+  for src_dir_with_name in dir_specs:
+    src_dir, final_basename = src_dir_with_name.split(':')
+    dst_dir = os.path.join(dst_base_dir, final_basename)
+
+    if os.path.isdir(dst_dir):
+      logging.info('[DELETE] pre-existing %s', dst_dir)
+      shutil.rmtree(dst_dir)
+    logging.info('[COPY] %s -> %s', src_dir, dst_dir)
+    shutil.copytree(src_dir, dst_dir)

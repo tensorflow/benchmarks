@@ -76,6 +76,16 @@ def add_setup_parser_arguments(parser):
       type=str,
       help='The docker tag to use if building a docker image.'
       )
+  parser.add_argument(
+      '--site_package_downloads',
+      default='',
+      type=str,
+      help='''Comma separated list of dirs in the external vm to copy to the docker\'s site package dir.
+      Format: <absolute-path>/src/dir:new_base_dir_name,<absolute-path>/src/dir2>:new_name,....
+      This will copy <absolute-path>/src/dir to <site-packages>/new_base_dir_name.
+      '''
+      )
+
 
 
 def add_benchmark_parser_arguments(parser):
@@ -215,6 +225,11 @@ def add_benchmark_parser_arguments(parser):
       default=None,
       type=str,
       help='A string that uniquely identifies the benchmark execution.')
+  parser.add_argument(
+      '--result_upload_methods',
+      default=None,
+      type=str,
+      help='A comma separated list of class.method values to upload results.')
 
 
 class PerfZeroConfig(object):
@@ -244,6 +259,7 @@ class PerfZeroConfig(object):
       self.gcloud_key_file_url = flags.gcloud_key_file_url
       self.profiler_enabled_time_str = flags.profiler_enabled_time
       self.execution_id = flags.execution_id
+      self.result_upload_methods = flags.result_upload_methods
 
       if not flags.benchmark_methods:
         logging.warning('No benchmark method is specified by '
@@ -293,4 +309,3 @@ class PerfZeroConfig(object):
       git_repos.append(git_repo)
 
     return git_repos
-
