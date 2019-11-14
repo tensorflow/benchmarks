@@ -25,18 +25,22 @@ import socket
 from six import u as unicode  # pylint: disable=W0622
 
 
-def run_uploader_methods(uploader_methods, execution_summary):
-  """Calls a list of exporter functions for a single execution summary.
+def execute_methods(method_names_str, *args, **kwargs):
+  """Calls a list of method names on given function params.
 
   Args:
-    uploader_methods: String - Comma-separated module.foo.bar.method 
-      strings. The functions imports module.foo.bar for each such entry 
-      and calls method(execution_summary).
-    execution_summary: The complete execution summary for a benchmark.
+    method_names_str: String - Comma-separated module.foo.bar.method strings.
+      This function imports module.foo.bar for each such method and calls it
+      with *args and **kwargs.
+    *args: Function params common to each method.
+    **kwargs: Function params common to each method.
+
+  Raises:
+    RuntimeError: If any of the invoked methods raised an exception.
   """
   errors = []
-  uploader_methods_list = uploader_methods.split(',')
-  for module_method in uploader_methods_list:
+  module_methods_list = method_names_str.split(',')
+  for module_method in module_methods_list:
     try:
       logging.info('Trying to call %s', module_method)
       module_path, method_path = module_method.rsplit('.', 1)
@@ -44,7 +48,7 @@ def run_uploader_methods(uploader_methods, execution_summary):
       logging.info('Found module %s, looking for %s', module_path, method_path)
       this_method = getattr(this_module, method_path)
       logging.info('Found method %s', method_path)
-      this_method(execution_summary)
+      this_method(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
       errors.append(str(e))
   if errors:
