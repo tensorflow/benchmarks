@@ -77,7 +77,7 @@ def add_setup_parser_arguments(parser):
       help='The docker tag to use if building a docker image.'
       )
   parser.add_argument(
-      '--include_dirs_in_site_package',
+      '--site_package_downloads',
       default='',
       type=str,
       help='''Comma separated list of dirs in the external vm to copy to the docker\'s site package dir.
@@ -226,7 +226,7 @@ def add_benchmark_parser_arguments(parser):
       type=str,
       help='A string that uniquely identifies the benchmark execution.')
   parser.add_argument(
-      '--result_uploader_methods',
+      '--result_upload_methods',
       default=None,
       type=str,
       help='A comma separated list of class.method values to upload results.')
