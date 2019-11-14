@@ -135,7 +135,7 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
       config.bigquery_project_name,
       config.bigquery_dataset_table_name,
       execution_summary)
-  report_utils.run_uploader_methods(
+  report_utils.execute_methods(
       config.result_uploader_methods,
       execution_summary)
   logging.info('Benchmark execution for %s completed with summary:\n %s',
