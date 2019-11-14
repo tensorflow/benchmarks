@@ -259,7 +259,7 @@ class PerfZeroConfig(object):
       self.gcloud_key_file_url = flags.gcloud_key_file_url
       self.profiler_enabled_time_str = flags.profiler_enabled_time
       self.execution_id = flags.execution_id
-      self.result_upload_methods = flags.result_uploader_methods
+      self.result_upload_methods = flags.result_upload_methods
 
       if not flags.benchmark_methods:
         logging.warning('No benchmark method is specified by '
