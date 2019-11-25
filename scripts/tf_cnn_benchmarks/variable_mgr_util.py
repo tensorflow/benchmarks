@@ -274,13 +274,15 @@ class StagedModelVariable(object):
     """Return the non-reference dtype."""
     return self.var_stage_get.dtype
 
-  def assign_sub(self, delta, name=None):
+  def assign_sub(self, delta, name=None, read_value=True):
     """Mimic the updates to the variable.
 
     Args:
       delta: is pushed into a staging buffer and will be pumped later.
       name: currently ignored; names of ops and the StagingArea are
             computed without using this pass name.
+      read_value: if True, will return something which evaluates to the new
+              value of the variable; if False will return the assign op.
     Returns:
       The actual updates. The colocation constraint will be reapplied.
     """
@@ -297,7 +299,7 @@ class StagedModelVariable(object):
       self.variable_mgr.staging_delta_ops.append(delta_put_op)
       delta_get_op = delta_staging_area.get()[0]
     # Return the actual updates. The colocation constraint will be reapplied.
-    return self.real_var.assign_sub(delta_get_op)
+    return self.real_var.assign_sub(delta_get_op, read_value=read_value)
 
   @staticmethod
   # pylint: disable=bad-staticmethod-argument,invalid-name
