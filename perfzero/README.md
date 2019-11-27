@@ -151,7 +151,7 @@ nightly build.
 python3 /workspace/perfzero/lib/benchmark.py \
 --git_repos="https://github.com/tensorflow/models.git" \
 --python_path=models \
---data_downloads="https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz" \
+--data_downloads="gs://tf-perf-imagenet-uswest1/tensorflow/cifar10_data/cifar-10-batches-bin" \
 --benchmark_methods=official.resnet.estimator_benchmark.Resnet50EstimatorBenchmarkReal.benchmark_graph_1_gpu
 ```
 
