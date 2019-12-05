@@ -24,6 +24,7 @@ import contextlib
 import numpy as np
 
 import tensorflow as tf
+from tensorflow.contrib import layers as contrib_layers
 
 from tensorflow.python.layers import convolutional as conv_layers
 from tensorflow.python.layers import core as core_layers
@@ -461,7 +462,7 @@ class ConvNetBuilder(object):
     center = True
     with tf.variable_scope(name) as scope:
       if self.use_tf_layers:
-        bn = tf.contrib.layers.batch_norm(
+        bn = contrib_layers.batch_norm(
             input_layer,
             decay=decay,
             scale=scale,

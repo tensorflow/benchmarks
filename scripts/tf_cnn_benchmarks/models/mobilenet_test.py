@@ -25,9 +25,8 @@ import tensorflow as tf
 from models import mobilenet
 from models import mobilenet_conv_blocks as ops
 from models import mobilenet_v2
+from tensorflow.contrib import slim
 
-
-slim = tf.contrib.slim
 
 
 def find_ops(optype):

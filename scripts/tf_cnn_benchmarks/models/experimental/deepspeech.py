@@ -31,6 +31,7 @@ import tensorflow as tf
 import constants
 from cnn_util import log_fn
 from models import model as model_lib
+from tensorflow.contrib import framework as contrib_framework
 
 
 class DeepSpeechDecoder(object):
@@ -291,7 +292,7 @@ class DeepSpeech2Model(model_lib.Model):
   def get_synthetic_inputs(self, input_name, nclass):
     inputs = tf.random_uniform(self.get_input_shapes('train')[0],
                                dtype=self.get_input_data_types('train')[0])
-    inputs = tf.contrib.framework.local_variable(inputs, name=input_name)
+    inputs = contrib_framework.local_variable(inputs, name=input_name)
     labels = tf.convert_to_tensor(
         np.random.randint(28, size=[self.batch_size, self.max_label_length]))
     input_lengths = tf.convert_to_tensor(

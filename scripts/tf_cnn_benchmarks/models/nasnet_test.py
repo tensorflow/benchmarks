@@ -20,8 +20,8 @@ from __future__ import print_function
 import tensorflow as tf
 
 from models import nasnet_model as nasnet
+from tensorflow.contrib import slim
 
-slim = tf.contrib.slim
 
 
 class NASNetTest(tf.test.TestCase):
