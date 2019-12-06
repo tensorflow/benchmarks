@@ -69,6 +69,12 @@ class BenchmarkRunner(object):
     self.benchmark_execution_time['checkout_repository'] = (
         time.time() - start_time)
 
+    # Start cloud TPU.
+    if self.config.tpu_parameters is not None:
+      start_time = time.time()
+      utils.setup_tpu(self.config.tpu_parameters)
+      self.benchmark_execution_time['start_tpu'] = time.time() - start_time
+
     self.stream_handler = logging.StreamHandler(sys.stdout)
     self.stream_handler.setFormatter(
         logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
@@ -106,24 +112,28 @@ class BenchmarkRunner(object):
     benchmark_success_results = {}
     benchmark_output_dirs = {}
 
-    for benchmark_method in self._get_benchmark_methods():
-      # Run the benchmark method in a separate process so that its memory usage
-      # will not affect the execution of other benchmark method
-      # This is a walkaround before we fix all memory leak issues in TensorFlow
-      queue = multiprocessing.Queue()
-      process = multiprocessing.Process(target=benchmark_method_runner.run,
-                                        args=(benchmark_method,
-                                              harness_info,
-                                              site_package_info,
-                                              self.root_output_dir,
-                                              self.config, queue))
-      process.start()
-      process.join()
-      method_has_exception, method_execution_time, succeeded, output_dir = queue.get()  # pylint: disable=line-too-long
-      has_exception |= method_has_exception
-      self.benchmark_execution_time[benchmark_method] = method_execution_time
-      benchmark_success_results[benchmark_method] = succeeded
-      benchmark_output_dirs[benchmark_method] = output_dir
+    try:
+      for benchmark_method in self._get_benchmark_methods():
+        # Run the benchmark method in a separate process so that its memory usage
+        # will not affect the execution of other benchmark method
+        # This is a walkaround before we fix all memory leak issues in TensorFlow
+        queue = multiprocessing.Queue()
+        process = multiprocessing.Process(target=benchmark_method_runner.run,
+                                          args=(benchmark_method,
+                                                harness_info,
+                                                site_package_info,
+                                                self.root_output_dir,
+                                                self.config, queue))
+        process.start()
+        process.join()
+        method_has_exception, method_execution_time, succeeded, output_dir = queue.get()  # pylint: disable=line-too-long
+        has_exception |= method_has_exception
+        self.benchmark_execution_time[benchmark_method] = method_execution_time
+        benchmark_success_results[benchmark_method] = succeeded
+        benchmark_output_dirs[benchmark_method] = output_dir
+    finally:
+      if self.config.tpu_parameters is not None:
+        has_exception |= utils.cleanup_tpu(self.config.tpu_parameters)
 
     print('Benchmark execution time in seconds by operation:\n {}'.format(
         json.dumps(self.benchmark_execution_time, indent=2)))
