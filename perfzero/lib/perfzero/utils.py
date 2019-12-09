@@ -343,6 +343,72 @@ def get_gpu_info():
   return gpu_info
 
 
+def _install_tpu_tool():
+  """Installs the ctpu tool to managing cloud TPUs.
+
+  Follows the instructions here:
+  https://github.com/tensorflow/tpu/tree/master/tools/ctpu
+  """
+  if not os.path.exists('ctpu'):
+    commands = [
+        'wget https://dl.google.com/cloud_tpu/ctpu/latest/linux/ctpu',
+        'chmod a+x ctpu',
+    ]
+    run_commands(commands)
+
+
+def setup_tpu(parameters):
+  """Sets up a TPU with a given set of parameters.
+
+  Args:
+    parameters: dictionary of TPU parameters.
+
+  Returns:
+    True if an error occurs during setup.
+  """
+  try:
+    _install_tpu_tool()
+
+    args = [
+        '--name={}'.format(parameters.get('name')),
+        '--project={}'.format(parameters.get('project')),
+        '--zone={}'.format(parameters.get('zone')),
+        '--tpu-size={}'.format(parameters.get('size')),
+        '--tf-version={}'.format(parameters.get('version')),
+        '--tpu-only',
+        '-noconf',
+    ]
+    command = 'ctpu up {}'.fomat(' '.join(args))
+    exit_code, _ = run_command(command)
+    return exit_code != 0
+  except Exception:
+    run_command('rm -f ctpu')
+    sys.exit(1)
+
+
+def cleanup_tpu(parameters):
+  """Cleans up an existing TPU.
+
+  Args:
+    parameters: dictionary of TPU parameters.
+
+  Returns:
+    True if an error occurs during cleanup.
+  """
+  _install_tpu_tool()
+
+  args = [
+      '--name={}'.format(parameters.get('name')),
+      '--project={}'.format(parameters.get('project')),
+      '--zone={}'.format(parameters.get('zone')),
+      '--tpu-only',
+      '-noconfig',
+  ]
+  command = 'ctpu delete {}'.format(' '.join(args))
+  exit_code, _ = run_command(command)
+  return exit_code != 0
+
+
 def read_benchmark_result(benchmark_result_file_path):
   """Read benchmark result from the protobuf file."""
   from google.protobuf import json_format  # pylint: disable=g-import-not-at-top

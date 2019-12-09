@@ -15,6 +15,7 @@
 """PerfZero configs provided by user."""
 from __future__ import print_function
 
+import json
 import logging
 import os
 
@@ -230,6 +231,13 @@ def add_benchmark_parser_arguments(parser):
       default=None,
       type=str,
       help='A comma separated list of class.method values to upload results.')
+  parser.add_argument(
+      '--tpu_parameters',
+      default=None,
+      type=str,
+      help='''A json dictionary of cloud tpu parameters. The format must look like the following:
+      {"name": "my-tpu-name", project": "my-gcp-project-id", "zone": "europe-west4-a", "size": "v3-8", "version": "nightly-2.x"}
+      ''')
 
 
 class PerfZeroConfig(object):
@@ -260,6 +268,10 @@ class PerfZeroConfig(object):
       self.profiler_enabled_time_str = flags.profiler_enabled_time
       self.execution_id = flags.execution_id
       self.result_upload_methods = flags.result_upload_methods
+      if flags.tpu_parameters is not None:
+        self.tpu_parameters = json.loads(flags.tpu_parameters)
+      else:
+        self.tpu_parameters = None
 
       if not flags.benchmark_methods:
         logging.warning('No benchmark method is specified by '
