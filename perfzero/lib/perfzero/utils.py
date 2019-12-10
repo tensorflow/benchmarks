@@ -350,6 +350,7 @@ def _install_tpu_tool():
   https://github.com/tensorflow/tpu/tree/master/tools/ctpu
   """
   if not os.path.exists('ctpu'):
+    logging.info('Installing TPU tool')
     commands = [
         'wget https://dl.google.com/cloud_tpu/ctpu/latest/linux/ctpu',
         'chmod a+x ctpu',
@@ -378,10 +379,14 @@ def setup_tpu(parameters):
         '--tpu-only',
         '-noconf',
     ]
-    command = 'ctpu up {}'.fomat(' '.join(args))
-    exit_code, _ = run_command(command)
+    command = './ctpu up {}'.format(' '.join(args))
+    logging.info('Setting up TPU: %s', command)
+    exit_code, output = run_command(command)
+    if exit_code != 0:
+      logging.error('Error in setup with output: %s', output)
     return exit_code != 0
   except Exception:
+    logging.error('Unable to setup TPU')
     run_command('rm -f ctpu')
     sys.exit(1)
 
@@ -402,10 +407,13 @@ def cleanup_tpu(parameters):
       '--project={}'.format(parameters.get('project')),
       '--zone={}'.format(parameters.get('zone')),
       '--tpu-only',
-      '-noconfig',
+      '-noconf',
   ]
-  command = 'ctpu delete {}'.format(' '.join(args))
-  exit_code, _ = run_command(command)
+  command = './ctpu delete {}'.format(' '.join(args))
+  logging.info('Cleaning up TPU: %s', command)
+  exit_code, output = run_command(command)
+  if exit_code != 0:
+    logging.error('Error in cleanup with output: %s', output)
   return exit_code != 0
 
 
