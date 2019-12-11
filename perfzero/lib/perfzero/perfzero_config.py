@@ -268,7 +268,7 @@ class PerfZeroConfig(object):
       self.profiler_enabled_time_str = flags.profiler_enabled_time
       self.execution_id = flags.execution_id
       self.result_upload_methods = flags.result_upload_methods
-      if flags.tpu_parameters is not None:
+      if flags.tpu_parameters:
         self.tpu_parameters = json.loads(flags.tpu_parameters)
       else:
         self.tpu_parameters = None
