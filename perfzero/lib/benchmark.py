@@ -94,7 +94,8 @@ class BenchmarkRunner(object):
         pattern = benchmark_method_pattern[index + len(filter_prefix):]
         class_instance = utils.instantiate_benchmark_class(benchmark_class,
                                                            '/dev/null',
-                                                           '')
+                                                           '',
+                                                           None)
         for benchmark_method_name in dir(class_instance):
           if re.match(pattern, benchmark_method_name):
             benchmark_methods.append(benchmark_class + '.' +

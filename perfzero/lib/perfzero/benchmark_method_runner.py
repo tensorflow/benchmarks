@@ -74,8 +74,12 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
   logging.getLogger().addHandler(filehandler)
 
   try:
+    if config.tpu_parameters:
+      tpu = config.tpu_parameters.get('name')
+    else:
+      tpu = None
     class_instance = utils.instantiate_benchmark_class(
-        benchmark_class, output_dir, config.root_data_dir)
+        benchmark_class, output_dir, config.root_data_dir, tpu=tpu)
     # tf.test.Benchmark.report_benchmark() writes results to a file with
     # path benchmark_result_file_path_prefix + benchmark_method
     benchmark_result_file_path_prefix = os.path.join(output_dir, 'proto_')
