@@ -57,6 +57,10 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
   execution_id = (config.execution_id if config.execution_id else
                   datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S-%f'))
   output_dir = os.path.join(root_output_dir, execution_id)
+  if config.scratch_gcs_url:
+    model_output_dir = os.path.join(config.scratch_gcs_url, execution_id)
+  else:
+    model_output_dir = output_dir
   utils.make_dir_if_not_exist(output_dir)
   benchmark_class, benchmark_method_name = benchmark_method.rsplit('.', 1)
   benchmark_class_name = benchmark_class.rsplit('.', 1)[1]
@@ -79,7 +83,10 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
     else:
       tpu = None
     class_instance = utils.instantiate_benchmark_class(
-        benchmark_class, output_dir, config.root_data_dir, tpu=tpu)
+        benchmark_class=benchmark_class,
+        output_dir=model_output_dir,
+        root_data_dir=config.root_data_dir,
+        tpu=tpu)
     # tf.test.Benchmark.report_benchmark() writes results to a file with
     # path benchmark_result_file_path_prefix + benchmark_method
     benchmark_result_file_path_prefix = os.path.join(output_dir, 'proto_')
