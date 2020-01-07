@@ -24,7 +24,8 @@ import re
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.contrib.all_reduce.python import all_reduce
+# pylint: disable=g-direct-tensorflow-import
+from tensorflow.python.distribute import all_reduce
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import collective_ops

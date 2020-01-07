@@ -37,14 +37,15 @@ import re
 import threading
 import tensorflow as tf
 
+# pylint: disable=g-direct-tensorflow-import
 import constants
 import mlperf
 import ssd_constants
 from cnn_util import log_fn
 from models import model as model_lib
 from models import resnet_model
-from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers as contrib_layers
+from tensorflow.python.ops import variables
 
 BACKBONE_MODEL_SCOPE_NAME = 'resnet34_backbone'
 
@@ -435,8 +436,8 @@ class SSD300Model(model_lib.CNNModel):
 
     # Hard example mining
     neg_masked_cross_entropy = cross_entropy * (1 - float_mask)
-    relative_position = contrib_framework.argsort(
-        contrib_framework.argsort(
+    relative_position = tf.argsort(
+        tf.argsort(
             neg_masked_cross_entropy, direction='DESCENDING'))
     num_neg_boxes = tf.minimum(
         tf.to_int32(num_matched_boxes) * ssd_constants.NEGS_PER_POSITIVE,
@@ -666,7 +667,9 @@ class SSD300Model(model_lib.CNNModel):
     """Generating synthetic data matching real data shape and type."""
     inputs = tf.random_uniform(
         self.get_input_shapes('train')[0], dtype=self.data_type)
-    inputs = contrib_framework.local_variable(inputs, name=input_name)
+    inputs = variables.VariableV1(inputs, trainable=False,
+                                  collections=[tf.GraphKeys.LOCAL_VARIABLES],
+                                  name=input_name)
     boxes = tf.random_uniform(
         [self.batch_size, ssd_constants.NUM_SSD_BOXES, 4], dtype=tf.float32)
     classes = tf.random_uniform(

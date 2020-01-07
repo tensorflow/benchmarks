@@ -24,9 +24,10 @@ import math
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+# pylint: disable=g-direct-tensorflow-import
 import cnn_util
-from tensorflow.contrib.data.python.ops import threadpool
 from tensorflow.contrib.image.python.ops import distort_image_ops
+from tensorflow.python.data.experimental.ops import threadpool
 from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.framework import function
 from tensorflow.python.layers import utils

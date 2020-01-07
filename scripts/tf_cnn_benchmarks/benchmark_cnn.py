@@ -39,6 +39,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+# pylint: disable=g-direct-tensorflow-import
 import cnn_util
 import constants
 import datasets
@@ -2625,7 +2626,7 @@ class BenchmarkCNN(object):
     if self.params.trt_mode:
       # Import here instead of at top, because this will crash if TensorRT is
       # not installed
-      from tensorflow.contrib import tensorrt as trt  # pylint: disable=g-import-not-at-top
+      from tensorflow.python.compiler.tensorrt import trt_convert  # pylint: disable=g-import-not-at-top
       # Avoid TF-TRT bridge from touching all variable initializer ops and their
       # dependencies, since they can directly be fetched by sess.run()s that
       # initialize the variables.
@@ -2636,7 +2637,7 @@ class BenchmarkCNN(object):
           variable_initializers, name_to_input_name)
       # pylint: enable=protected-access
 
-      graphdef = trt.create_inference_graph(
+      graphdef = trt_convert.create_inference_graph(
           graphdef,
           outputs=output_node_names + list(initializer_subgraph_ops),
           max_batch_size=self.model.get_batch_size(),
