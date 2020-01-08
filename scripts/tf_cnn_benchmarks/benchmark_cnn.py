@@ -785,8 +785,7 @@ def create_config_proto(params):
         rewriter_config_pb2.RewriterConfig.ON)
     rewrite_options.scoped_allocator_opts.enable_op.append('CollectiveReduce')
   if params.variable_update == 'horovod':
-    import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
-    config.gpu_options.visible_device_list = str(hvd.local_rank())
+    config.gpu_options.visible_device_list = str(0)
   # For collective_all_reduce, ignore all devices except current worker.
   if params.variable_update == 'collective_all_reduce':
     del config.device_filters[:]
@@ -3516,6 +3515,7 @@ def setup(params):
   if params.variable_update == 'horovod':
     import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
     hvd.init()
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
 
   platforms_util.initialize(params, create_config_proto(params))
 
