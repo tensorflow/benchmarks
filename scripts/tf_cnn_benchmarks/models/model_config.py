@@ -27,12 +27,9 @@ from models import densenet_model
 from models import googlenet_model
 from models import inception_model
 from models import lenet_model
-from models import mobilenet_v2
-from models import nasnet_model
 from models import official_resnet_model
 from models import overfeat_model
 from models import resnet_model
-from models import ssd_model
 from models import trivial_model
 from models import vgg_model
 from models.experimental import deepspeech
@@ -81,9 +78,6 @@ _model_name_to_imagenet_model = {
     'resnet101_v2': resnet_model.create_resnet101_v2_model,
     'resnet152': resnet_model.create_resnet152_model,
     'resnet152_v2': resnet_model.create_resnet152_v2_model,
-    'nasnet': nasnet_model.NasnetModel,
-    'nasnetlarge': nasnet_model.NasnetLargeModel,
-    'mobilenet': mobilenet_v2.MobilenetModel,
     'ncf': official_ncf_model.NcfModel,
 }
 
@@ -104,12 +98,10 @@ _model_name_to_cifar_model = {
     'densenet40_k12': densenet_model.create_densenet40_k12_model,
     'densenet100_k12': densenet_model.create_densenet100_k12_model,
     'densenet100_k24': densenet_model.create_densenet100_k24_model,
-    'nasnet': nasnet_model.NasnetCifarModel,
 }
 
 
 _model_name_to_object_detection_model = {
-    'ssd300': ssd_model.SSD300Model,
     'trivial': trivial_model.TrivialSSD300Model,
 }
 
@@ -128,14 +120,22 @@ def _get_model_map(dataset_name):
     raise ValueError('Invalid dataset name: %s' % dataset_name)
 
 
+# A model map dict can have this string as a value when TF2 is used, to indicate
+# the model is only available in TF1.
+_TF1_ONLY_STRING = 'TF1_ONLY'
+
+
 def get_model_config(model_name, dataset, params):
   """Map model name to model network configuration."""
   model_map = _get_model_map(dataset.name)
   if model_name not in model_map:
     raise ValueError('Invalid model name \'%s\' for dataset \'%s\'' %
                      (model_name, dataset.name))
-  else:
-    return model_map[model_name](params=params)
+  model = model_map[model_name](params=params)
+  if model == 'TF1_ONLY':
+    raise ValueError('Model \'%s\' can only be used with TensorFlow 1'
+                     % (model_name,))
+  return model
 
 
 def register_model(model_name, dataset_name, model_func):
@@ -145,3 +145,37 @@ def register_model(model_name, dataset_name, model_func):
     raise ValueError('Model "%s" is already registered for dataset "%s"' %
                      (model_name, dataset_name))
   model_map[model_name] = model_func
+
+
+# pylint: disable=g-import-not-at-top
+try:
+  from tensorflow.contrib import slim  # pylint: disable=unused-import
+  can_import_contrib = True
+except ImportError:
+  can_import_contrib = False
+
+
+def register_tf1_models():
+  """Registers all the TensorFlow 1-only models.
+
+  TF 1-only models use contrib, which was removed in TF 2. If contrib can be
+  imported, the TF 1-only models are registered normally. If contrib cannot be
+  imported, the models are registered with the 'TF1_ONLY' string instead, which
+  will cause an error to be thrown if these models are used.
+  """
+  if can_import_contrib:
+    from models.tf1_only import mobilenet_v2
+    from models.tf1_only import nasnet_model
+    from models.tf1_only import ssd_model
+    register_model('mobilenet', 'imagenet', mobilenet_v2.MobilenetModel)
+    register_model('nasnet', 'imagenet', nasnet_model.NasnetModel)
+    register_model('nasnetlarge', 'imagenet', nasnet_model.NasnetLargeModel)
+    register_model('nasnet', 'cifar10', nasnet_model.NasnetCifarModel)
+    register_model('ssd300', 'coco', ssd_model.SSD300Model)
+  else:
+    register_model('mobilenet', 'imagenet', 'TF1_ONLY')
+    register_model('nasnet', 'imagenet', 'TF1_ONLY')
+    register_model('nasnetlarge', 'imagenet', 'TF1_ONLY')
+    register_model('nasnet', 'cifar10', 'TF1_ONLY')
+    register_model('ssd300', 'coco', 'TF1_ONLY')
+

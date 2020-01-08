@@ -23,7 +23,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from models import model
-from models import nasnet_utils
+from models.tf1_only import nasnet_utils
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers as contrib_layers
 from tensorflow.contrib import slim
