@@ -26,7 +26,6 @@ import tensorflow as tf
 
 # pylint: disable=g-direct-tensorflow-import
 import cnn_util
-from tensorflow.contrib.image.python.ops import distort_image_ops
 from tensorflow.python.data.experimental.ops import threadpool
 from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.framework import function
@@ -430,6 +429,17 @@ def distort_color(image, batch_position=0, distort_color_in_yiq=False,
   Returns:
     color-distorted image
   """
+  if distort_color_in_yiq:
+    try:
+      from tensorflow.contrib.image.python.ops import distort_image_ops  # pylint: disable=g-import-not-at-top
+    except ImportError:
+      raise ValueError(
+          'In TF2, you cannot pass --distortions unless you also pass '
+          '--nodistort_color_in_yiq. This is because the random_hsv_in_yiq was '
+          'removed in TF2. --distortions does not improve accuracy on resnet '
+          'so it is not recommended. --nodistort_color_in_yiq also has no '
+          'impact on accuracy, but may hurt performance.')
+
   with tf.name_scope(scope or 'distort_color'):
 
     def distort_fn_0(image=image):
