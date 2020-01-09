@@ -212,7 +212,7 @@ flags.DEFINE_string('resize_method', 'bilinear',
                     'a round-robin fashion. Other modes support any sizes and '
                     'apply random bbox distortions before resizing (even with '
                     'distortions=False).')
-flags.DEFINE_boolean('distortions', True,
+flags.DEFINE_boolean('distortions', False,
                      'Enable/disable distortions during image preprocessing. '
                      'These include bbox and color distortions.')
 flags.DEFINE_boolean('use_datasets', True,
