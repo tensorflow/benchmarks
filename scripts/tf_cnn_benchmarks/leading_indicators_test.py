@@ -30,7 +30,7 @@ import sys
 
 from absl import flags
 from absl.testing import absltest  # pylint: disable=unused-import
-import tensorflow as tf  # pylint: disable=g-bad-import-order
+import tensorflow.compat.v1 as tf  # pylint: disable=g-bad-import-order
 import benchmark_cnn
 from platforms import util as platforms_util
 
@@ -999,4 +999,5 @@ class SsdBenchmarks(BenchmarkBase):
 
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   tf.test.main()

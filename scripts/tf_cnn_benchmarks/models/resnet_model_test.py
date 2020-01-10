@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import mock
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from models import resnet_model
 
@@ -76,4 +76,5 @@ class ResNetModelTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   tf.test.main()

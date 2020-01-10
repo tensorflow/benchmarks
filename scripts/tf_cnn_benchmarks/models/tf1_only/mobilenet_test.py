@@ -20,13 +20,12 @@ from __future__ import print_function
 
 import copy
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from models.tf1_only import mobilenet
 from models.tf1_only import mobilenet_conv_blocks as ops
 from models.tf1_only import mobilenet_v2
 from tensorflow.contrib import slim
-
 
 
 def find_ops(optype):
@@ -43,7 +42,7 @@ def find_ops(optype):
 
 class MobilenetV2Test(tf.test.TestCase):
 
-  def setUp(self):
+  def setUp(self):  # pylint: disable=g-missing-super-call
     tf.reset_default_graph()
 
   def testCreation(self):
@@ -188,4 +187,5 @@ class MobilenetV2Test(tf.test.TestCase):
 
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   tf.test.main()

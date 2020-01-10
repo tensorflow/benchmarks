@@ -26,7 +26,7 @@ from __future__ import print_function
 
 import copy
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from models import model
 from models.tf1_only import mobilenet as lib

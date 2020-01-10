@@ -17,11 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from models.tf1_only import nasnet_model as nasnet
 from tensorflow.contrib import slim
-
 
 
 class NASNetTest(tf.test.TestCase):
@@ -286,4 +285,5 @@ class NASNetTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   tf.test.main()

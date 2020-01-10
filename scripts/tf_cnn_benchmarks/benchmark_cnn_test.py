@@ -25,7 +25,7 @@ import unittest
 
 import mock
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from google.protobuf import text_format
 from tensorflow.core.framework import step_stats_pb2
 from tensorflow.core.profiler import tfprof_log_pb2
@@ -728,7 +728,7 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     self.assertRaises(benchmark_cnn.CheckpointNotFoundException,
                       benchmark_cnn._get_checkpoint_to_load, ckpt_path)
 
-  @mock.patch('tensorflow.train.get_checkpoint_state')
+  @mock.patch('tensorflow.compat.v1.train.get_checkpoint_state')
   def testGetCheckpointToLoad(self, mock_checkpoint_state):
     """Tests passing path to checkpoint folder."""
     expected_checkpoint = '/path/to/checkpoints/model.ckpt-1243'
@@ -1489,4 +1489,5 @@ class VariableMgrLocalReplicatedTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   tf.test.main()

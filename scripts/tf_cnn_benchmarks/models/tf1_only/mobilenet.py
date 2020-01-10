@@ -22,7 +22,7 @@ import contextlib
 import copy
 import os
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.contrib import slim as contrib_slim
 
 slim = contrib_slim
@@ -118,7 +118,7 @@ class NoOpScope(object):
   """No-op context manager."""
 
   def __enter__(self):
-    return None
+    return
 
   def __exit__(self, exc_type, exc_value, traceback):
     return False

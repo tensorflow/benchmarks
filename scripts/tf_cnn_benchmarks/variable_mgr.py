@@ -23,7 +23,7 @@ from __future__ import print_function
 import contextlib
 import re
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 import allreduce
 import batch_allreduce

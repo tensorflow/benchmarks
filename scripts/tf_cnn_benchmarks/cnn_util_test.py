@@ -22,7 +22,7 @@ from __future__ import print_function
 import threading
 import time
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 import cnn_util
 
@@ -125,4 +125,5 @@ class ImageProducerTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   tf.test.main()

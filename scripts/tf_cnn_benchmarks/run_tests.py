@@ -23,6 +23,7 @@ import unittest
 
 from absl import app
 from absl import flags as absl_flags
+import tensorflow.compat.v2 as tf
 
 import all_reduce_benchmark_test
 import allreduce_test
@@ -102,4 +103,5 @@ def main(_):
 
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   app.run(main)

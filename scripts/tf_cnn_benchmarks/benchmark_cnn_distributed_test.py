@@ -33,7 +33,7 @@ import unittest
 from absl import flags as absl_flags
 import portpicker
 import six
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import flags
 import test_util
 from platforms import util as platforms_util
@@ -489,4 +489,5 @@ class DistributedVariableUpdateTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   tf.test.main()

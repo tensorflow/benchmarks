@@ -35,7 +35,7 @@ import multiprocessing
 import os
 import re
 import threading
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 # pylint: disable=g-direct-tensorflow-import
 import constants
@@ -515,7 +515,7 @@ class SSD300Model(model_lib.CNNModel):
                         'https://github.com/cocodataset/cocoapi')
 
     # Unpack model output back to locations and confidence scores of predictions
-    # pred_locs: relative locations (coordiates) of objects in all SSD boxes
+    # pred_locs: relative locations (coordinates) of objects in all SSD boxes
     # shape: [batch_size, NUM_SSD_BOXES, 4]
     # pred_labels: confidence scores of objects being of all categories
     # shape: [batch_size, NUM_SSD_BOXES, label_num]

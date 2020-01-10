@@ -27,7 +27,7 @@ from __future__ import print_function
 
 from absl import flags as absl_flags
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import benchmark_cnn
 import flags
 import preprocessing
@@ -118,4 +118,5 @@ def main(_):
 
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   tf.app.run()

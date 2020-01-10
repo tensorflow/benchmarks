@@ -54,7 +54,7 @@ import random
 
 import numpy as np
 import six
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 
 def _int64_feature(value):

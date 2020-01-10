@@ -27,7 +27,7 @@ import itertools
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import constants
 from cnn_util import log_fn
 from models import model as model_lib

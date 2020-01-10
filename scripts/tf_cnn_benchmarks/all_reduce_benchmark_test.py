@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 import all_reduce_benchmark
 import benchmark_cnn
@@ -48,4 +48,5 @@ class AllReduceBenchmarkTest(tf.test.TestCase):
     self._test_run_benchmark(params)
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   tf.test.main()

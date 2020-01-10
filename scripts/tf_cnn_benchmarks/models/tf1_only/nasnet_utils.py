@@ -31,7 +31,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import slim
 
@@ -238,7 +238,7 @@ def _pooling(net, stride, operation):
   return net
 
 
-class NasNetABaseCell(object):
+class NasNetABaseCell(object):  # pylint: disable=g-classes-have-attributes
   """NASNet Cell class that is used as a 'layer' in image architectures.
 
   Args:
