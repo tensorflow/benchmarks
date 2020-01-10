@@ -704,7 +704,7 @@ class TfCnnBenchmarksTest(tf.test.TestCase):
     params = params._replace(train_dir=new_train_dir, eval=True)
     self._run_benchmark_cnn_with_black_and_white_images(params)
 
-  @mock.patch('tensorflow.train.Saver')
+  @mock.patch('tensorflow.compat.v1.train.Saver')
   @mock.patch('benchmark_cnn._get_checkpoint_to_load')
   def testLoadCheckpoint(self, mock_checkpoint_to_load, mock_saver):
     """Tests load checkpoint with full path to checkpoint."""
