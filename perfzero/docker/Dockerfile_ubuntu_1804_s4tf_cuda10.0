@@ -1,11 +1,14 @@
 # Ubuntu 18.04 Python3 with CUDA 10 and the following:
 #  - Installs tf-nightly-gpu (this is TF 2.0)
 #  - Installs requirements.txt for tensorflow/models
+# Additionally also installs:
+#  - Latest S4TF development snapshot for cuda 10.0
 
 FROM nvidia/cuda:10.0-base-ubuntu18.04 as base
 ARG tensorflow_pip_spec="tf-nightly-gpu"
 ARG local_tensorflow_pip_spec=""
 ARG extra_pip_specs=""
+ARG swift_tf_url=https://storage.googleapis.com/swift-tensorflow-artifacts/nightlies/latest/swift-tensorflow-DEVELOPMENT-cuda10.0-cudnn7-ubuntu18.04.tar.gz
 
 # setup.py passes the base path of local .whl file is chosen for the docker image.
 # Otherwise passes an empty existing file from the context.
@@ -83,3 +86,36 @@ RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/req
 RUN pip install -r /tmp/requirements.txt
 
 RUN pip freeze
+
+### Install Swift deps.
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        python \
+        python-dev \
+        python-pip \
+        python-setuptools \
+        python-tk \
+        python3 \
+        python3-pip \
+        python3-setuptools \
+        clang \
+        libcurl4-openssl-dev \
+        libicu-dev \
+        libpython-dev \
+        libpython3-dev \
+        libncurses5-dev \
+        libxml2 \
+        libblocksruntime-dev
+
+# Download and extract S4TF
+WORKDIR /swift-tensorflow-toolchain
+RUN curl -fSsL $swift_tf_url -o swift.tar.gz \
+    && mkdir usr \
+    && tar -xzf swift.tar.gz --directory=usr --strip-components=1 \
+    && rm swift.tar.gz
+ENV PATH="/swift-tensorflow-toolchain/usr/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/swift-tensorflow-toolchain/usr/lib/swift/linux/:${LD_LIBRARY_PATH}"

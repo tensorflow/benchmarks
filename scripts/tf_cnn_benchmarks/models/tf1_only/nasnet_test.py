@@ -17,11 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
-from models import nasnet_model as nasnet
-
-slim = tf.contrib.slim
+from models.tf1_only import nasnet_model as nasnet
+from tensorflow.contrib import slim
 
 
 class NASNetTest(tf.test.TestCase):
@@ -85,8 +84,8 @@ class NASNetTest(tf.test.TestCase):
     tf.train.create_global_step()
     with slim.arg_scope(nasnet.nasnet_cifar_arg_scope()):
       net, end_points = nasnet.build_nasnet_cifar(inputs, num_classes)
-    self.assertFalse('AuxLogits' in end_points)
-    self.assertFalse('Predictions' in end_points)
+    self.assertNotIn('AuxLogits', end_points)
+    self.assertNotIn('Predictions', end_points)
     self.assertTrue(net.op.name.startswith('final_layer/Mean'))
     self.assertListEqual(net.get_shape().as_list(), [batch_size, 768])
 
@@ -98,8 +97,8 @@ class NASNetTest(tf.test.TestCase):
     tf.train.create_global_step()
     with slim.arg_scope(nasnet.nasnet_mobile_arg_scope()):
       net, end_points = nasnet.build_nasnet_mobile(inputs, num_classes)
-    self.assertFalse('AuxLogits' in end_points)
-    self.assertFalse('Predictions' in end_points)
+    self.assertNotIn('AuxLogits', end_points)
+    self.assertNotIn('Predictions', end_points)
     self.assertTrue(net.op.name.startswith('final_layer/Mean'))
     self.assertListEqual(net.get_shape().as_list(), [batch_size, 1056])
 
@@ -111,8 +110,8 @@ class NASNetTest(tf.test.TestCase):
     tf.train.create_global_step()
     with slim.arg_scope(nasnet.nasnet_large_arg_scope()):
       net, end_points = nasnet.build_nasnet_large(inputs, num_classes)
-    self.assertFalse('AuxLogits' in end_points)
-    self.assertFalse('Predictions' in end_points)
+    self.assertNotIn('AuxLogits', end_points)
+    self.assertNotIn('Predictions', end_points)
     self.assertTrue(net.op.name.startswith('final_layer/Mean'))
     self.assertListEqual(net.get_shape().as_list(), [batch_size, 4032])
 
@@ -150,11 +149,11 @@ class NASNetTest(tf.test.TestCase):
                         'AuxLogits': [batch_size, num_classes],
                         'Logits': [batch_size, num_classes],
                         'Predictions': [batch_size, num_classes]}
-    self.assertItemsEqual(endpoints_shapes.keys(), end_points.keys())
+    self.assertCountEqual(endpoints_shapes.keys(), end_points.keys())
     for endpoint_name in endpoints_shapes:
       tf.logging.info('Endpoint name: {}'.format(endpoint_name))
       expected_shape = endpoints_shapes[endpoint_name]
-      self.assertTrue(endpoint_name in end_points)
+      self.assertIn(endpoint_name, end_points)
       self.assertListEqual(end_points[endpoint_name].get_shape().as_list(),
                            expected_shape)
 
@@ -186,11 +185,11 @@ class NASNetTest(tf.test.TestCase):
                         'AuxLogits': [batch_size, num_classes],
                         'Logits': [batch_size, num_classes],
                         'Predictions': [batch_size, num_classes]}
-    self.assertItemsEqual(endpoints_shapes.keys(), end_points.keys())
+    self.assertCountEqual(endpoints_shapes.keys(), end_points.keys())
     for endpoint_name in endpoints_shapes:
       tf.logging.info('Endpoint name: {}'.format(endpoint_name))
       expected_shape = endpoints_shapes[endpoint_name]
-      self.assertTrue(endpoint_name in end_points)
+      self.assertIn(endpoint_name, end_points)
       self.assertListEqual(end_points[endpoint_name].get_shape().as_list(),
                            expected_shape)
 
@@ -228,11 +227,11 @@ class NASNetTest(tf.test.TestCase):
                         'AuxLogits': [batch_size, num_classes],
                         'Logits': [batch_size, num_classes],
                         'Predictions': [batch_size, num_classes]}
-    self.assertItemsEqual(endpoints_shapes.keys(), end_points.keys())
+    self.assertCountEqual(endpoints_shapes.keys(), end_points.keys())
     for endpoint_name in endpoints_shapes:
       tf.logging.info('Endpoint name: {}'.format(endpoint_name))
       expected_shape = endpoints_shapes[endpoint_name]
-      self.assertTrue(endpoint_name in end_points)
+      self.assertIn(endpoint_name, end_points)
       self.assertListEqual(end_points[endpoint_name].get_shape().as_list(),
                            expected_shape)
 
@@ -267,7 +266,7 @@ class NASNetTest(tf.test.TestCase):
       images = tf.random_uniform((batch_size, height, width, 3))
       sess.run(tf.global_variables_initializer())
       output = sess.run(logits, {inputs: images.eval()})
-      self.assertEquals(output.shape, (batch_size, num_classes))
+      self.assertEqual(output.shape, (batch_size, num_classes))
 
   def testEvaluationMobileModel(self):
     batch_size = 2
@@ -282,8 +281,9 @@ class NASNetTest(tf.test.TestCase):
       predictions = tf.argmax(logits, 1)
       sess.run(tf.global_variables_initializer())
       output = sess.run(predictions)
-      self.assertEquals(output.shape, (batch_size,))
+      self.assertEqual(output.shape, (batch_size,))
 
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   tf.test.main()

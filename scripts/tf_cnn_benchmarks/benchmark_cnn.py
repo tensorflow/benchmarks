@@ -37,8 +37,9 @@ import numpy as np
 
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
+# pylint: disable=g-direct-tensorflow-import
 import cnn_util
 import constants
 import datasets
@@ -211,7 +212,7 @@ flags.DEFINE_string('resize_method', 'bilinear',
                     'a round-robin fashion. Other modes support any sizes and '
                     'apply random bbox distortions before resizing (even with '
                     'distortions=False).')
-flags.DEFINE_boolean('distortions', True,
+flags.DEFINE_boolean('distortions', False,
                      'Enable/disable distortions during image preprocessing. '
                      'These include bbox and color distortions.')
 flags.DEFINE_boolean('use_datasets', True,
@@ -367,9 +368,18 @@ flags.DEFINE_boolean('timestamped_allocator', False,
                      'If True marks free BFCAllocator::Chunks with time '
                      'at which they are freed which can allow more efficient '
                      'memory allocation in cases like RDMA networking.')
-flags.DEFINE_integer('gpu_pending_cap', 0, 'If > 0 then then number of pending '
-                     '(queued but not yet known to have terminated) kernels '
-                     'per GPU device will be capped to this number.')
+flags.DEFINE_integer('gpu_kt_max_interval', 0,
+                     'If > 0, the maximum number of GPU Ops that may be queued '
+                     'in a row without also queuing a tracking event.')
+flags.DEFINE_integer('gpu_kt_max_bytes', 0,
+                     'If > 0, the maximum number of bytes '
+                     'of GPU memory that may be allocated by sequential '
+                     'GPU Ops without queuing a tracking event.')
+flags.DEFINE_integer('gpu_kt_max_pending', 0,
+                     'If > 0 no more than this many GPU tracking events may be '
+                     'outstanding at any time.  When this limit is reached '
+                     'launch of additional kernels will stall until an '
+                     'outstanding event completes.')
 flags.DEFINE_boolean('use_tf_layers', True,
                      'If True, use tf.layers for neural network layers. This '
                      'should not affect performance or accuracy in any way.')
@@ -751,8 +761,15 @@ def create_config_proto(params):
   if params.timestamped_allocator:
     config.gpu_options.experimental.timestamped_allocator = (
         params.timestamped_allocator)
-  if params.gpu_pending_cap > 0:
-    config.gpu_options.experimental.pending_cap = params.gpu_pending_cap
+  if params.gpu_kt_max_interval > 0:
+    config.gpu_options.experimental.kernel_tracker_max_interval = (
+        params.gpu_kt_max_interval)
+  if params.gpu_kt_max_bytes > 0:
+    config.gpu_options.experimental.kernel_tracker_max_bytes = (
+        params.gpu_kt_max_bytes)
+  if params.gpu_kt_max_pending > 0:
+    config.gpu_options.experimental.kernel_tracker_max_pending = (
+        params.gpu_kt_max_pending)
   if params.xla:
     config.graph_options.optimizer_options.global_jit_level = (
         tf.OptimizerOptions.ON_1)
@@ -2609,7 +2626,7 @@ class BenchmarkCNN(object):
     if self.params.trt_mode:
       # Import here instead of at top, because this will crash if TensorRT is
       # not installed
-      from tensorflow.contrib import tensorrt as trt  # pylint: disable=g-import-not-at-top
+      from tensorflow.python.compiler.tensorrt import trt_convert  # pylint: disable=g-import-not-at-top
       # Avoid TF-TRT bridge from touching all variable initializer ops and their
       # dependencies, since they can directly be fetched by sess.run()s that
       # initialize the variables.
@@ -2620,7 +2637,7 @@ class BenchmarkCNN(object):
           variable_initializers, name_to_input_name)
       # pylint: enable=protected-access
 
-      graphdef = trt.create_inference_graph(
+      graphdef = trt_convert.create_inference_graph(
           graphdef,
           outputs=output_node_names + list(initializer_subgraph_ops),
           max_batch_size=self.model.get_batch_size(),

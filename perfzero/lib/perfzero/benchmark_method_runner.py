@@ -54,8 +54,13 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
   start_timestamp = time.time()
   execution_timestamp = start_timestamp
   method_has_exception = False
-  execution_id = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S-%f')
+  execution_id = (config.execution_id if config.execution_id else
+                  datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S-%f'))
   output_dir = os.path.join(root_output_dir, execution_id)
+  if config.scratch_gcs_url:
+    model_output_dir = os.path.join(config.scratch_gcs_url, execution_id)
+  else:
+    model_output_dir = output_dir
   utils.make_dir_if_not_exist(output_dir)
   benchmark_class, benchmark_method_name = benchmark_method.rsplit('.', 1)
   benchmark_class_name = benchmark_class.rsplit('.', 1)[1]
@@ -73,8 +78,15 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
   logging.getLogger().addHandler(filehandler)
 
   try:
+    if config.tpu_parameters:
+      tpu = config.tpu_parameters.get('name')
+    else:
+      tpu = None
     class_instance = utils.instantiate_benchmark_class(
-        benchmark_class, output_dir, config.root_data_dir)
+        benchmark_class=benchmark_class,
+        output_dir=model_output_dir,
+        root_data_dir=config.root_data_dir,
+        tpu=tpu)
     # tf.test.Benchmark.report_benchmark() writes results to a file with
     # path benchmark_result_file_path_prefix + benchmark_method
     benchmark_result_file_path_prefix = os.path.join(output_dir, 'proto_')
@@ -133,6 +145,9 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
   report_utils.upload_execution_summary(
       config.bigquery_project_name,
       config.bigquery_dataset_table_name,
+      execution_summary)
+  report_utils.execute_methods(
+      config.result_upload_methods,
       execution_summary)
   logging.info('Benchmark execution for %s completed with summary:\n %s',
                benchmark_method, json.dumps(execution_summary, indent=2))

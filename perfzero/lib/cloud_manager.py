@@ -43,27 +43,19 @@ def run_command(cmd, is_from_user=False):
   Raises:
     Exception: raised when the command execution has non-zero exit code
   """
-  if is_from_user:
-    logging.info('Executing command: %s\n', cmd)
-  else:
-    logging.debug('Executing command: %s\n', cmd)
-
-  stdout = ''
+  _log = logging.info if is_from_user else logging.debug
+  _log('Executing command: {}'.format(cmd))
   p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                        stderr=subprocess.STDOUT, shell=True)
+
   exit_code = None
-  while exit_code is None:
+  line = ''
+  stdout = ''
+  while exit_code is None or line:
     exit_code = p.poll()
-    line = p.stdout.readline().decode('utf-8').strip()
-    if not line:
-      continue
-
-    if is_from_user:
-      logging.info(line)
-    else:
-      logging.debug(line)
-    stdout = stdout + line + '\n'
-
+    line = p.stdout.readline().decode('utf-8')
+    stdout += line
+    _log(line)
   if exit_code and is_from_user:
     sys.exit(exit_code)
   elif exit_code:
@@ -97,8 +89,19 @@ def get_machine_type(machine_type, accelerator_count):
   return 'n1-standard-{}'.format(cpu_count)
 
 
+def _ssh_prefix(project, zone, internal_ip, key_file):
+  if internal_ip:
+    ssh_prefix = 'gcloud beta compute ssh --internal-ip'
+  else:
+    ssh_prefix = 'gcloud compute ssh'
+  if key_file:
+    ssh_prefix = '{} --ssh-key-file={}'.format(ssh_prefix, key_file)
+  return '{} --project={} --zone={}'.format(ssh_prefix, project, zone)
+
+
 def create(username, project, zone, machine_type, accelerator_count,
-           accelerator_type, image, nvme_count):
+           accelerator_type, image, nvme_count, ssh_internal_ip, ssh_key_file,
+           cpu_min_platform=None, boot_ssd_size=None):
   """Create gcloud computing instance.
 
   Args:
@@ -111,6 +114,10 @@ def create(username, project, zone, machine_type, accelerator_count,
     accelerator_type: the specific type of accelerator to attach to the instance
     image: the name of the image that the disk will be initialized with
     nvme_count: the number of NVME local SSD devices to attach to the instance
+    ssh_internal_ip: internal ip to use for ssh.
+    ssh_key_file: ssh key file to use to connect to instance.
+    cpu_min_platform: minimum CPU platform to use, if None use default.
+    boot_ssd_size: If set boot disk is changed to SSD and this size(GB) is used.
   """
   instance_name = get_instance_name(username)
   machine_type = get_machine_type(machine_type, accelerator_count)
@@ -124,9 +131,16 @@ def create(username, project, zone, machine_type, accelerator_count,
 --maintenance-policy=TERMINATE \
 '''.format(instance_name, image, project, zone, machine_type)
 
+  if boot_ssd_size:
+    cmd += '--boot-disk-size={}GB --boot-disk-type=pd-ssd '.format(
+        boot_ssd_size)
+
   if accelerator_count > 0:
     cmd += '--accelerator=count={},type={} '.format(
         accelerator_count, accelerator_type)
+
+  if cpu_min_platform:
+    cmd += '--min-cpu-platform="{}" '.format(cpu_min_platform)
 
   for _ in range(nvme_count):
     cmd += '--local-ssd=interface=NVME '
@@ -135,9 +149,10 @@ def create(username, project, zone, machine_type, accelerator_count,
   logging.info('Successfully created gcloud computing instance %s '
                'with %s accelerator.\n', instance_name, accelerator_count)
 
+  ssh_prefix = _ssh_prefix(project, zone, ssh_internal_ip, ssh_key_file)
   # Wait until we can ssh to the newly created computing instance
-  cmd = 'gcloud compute ssh {} --project={} --zone={} --strict-host-key-checking=no --command="exit"'.format(  # pylint: disable=line-too-long
-      instance_name, project, zone)
+  cmd = '{} --strict-host-key-checking=no --command="exit" {}'.format(
+      ssh_prefix, instance_name)
   ssh_remaining_retries = 12
   ssh_error = None
   while ssh_remaining_retries > 0:
@@ -161,31 +176,32 @@ def create(username, project, zone, machine_type, accelerator_count,
                  'git clone https://github.com/tensorflow/benchmarks.git\n'
                  'sudo usermod -a -G docker $USER\n')
   else:
-    cmd = 'gcloud compute ssh {} --project={} --zone={} --command="git clone {}"'.format(  # pylint: disable=line-too-long
-        instance_name, project, zone,
-        'https://github.com/tensorflow/benchmarks.git')
+    cmd = '{} --command="git clone {}" {}'.format(
+        ssh_prefix, 'https://github.com/tensorflow/benchmarks.git',
+        instance_name)
     run_command(cmd, is_from_user=True)
     logging.info('Successfully checked-out PerfZero code on the '
                  'computing instance\n')
 
-    cmd = 'gcloud compute ssh {} --project={} --zone={} --command="sudo usermod -a -G docker $USER"'.format(  # pylint: disable=line-too-long
-        instance_name, project, zone)
+    cmd = '{} --command="sudo usermod -a -G docker $USER" {}'.format(
+        ssh_prefix, instance_name)
     run_command(cmd, is_from_user=True)
     logging.info('Successfully added user to the docker group\n')
 
-  cmd = 'gcloud compute ssh {} --project={} --zone={} -- -L 6006:127.0.0.1:6006'.format(  # pylint: disable=line-too-long
-      instance_name, project, zone)
+  cmd = '{} {} -- -L 6006:127.0.0.1:6006'.format(ssh_prefix, instance_name)
   logging.info('Run the command below to ssh to the instance together with '
                'port forwarding for tensorboard:\n%s\n', cmd)
 
 
-def status(username, project, zone):
+def status(username, project, zone, ssh_internal_ip, ssh_key_file):
   """Query the status of the computing instance.
 
   Args:
-    username: the username of the current user
-    project: project name
-    zone: zone of the GCP computing instance
+    username: the username of the current user.
+    project: project name.
+    zone: zone of the GCP computing instance.
+    ssh_internal_ip: internal ip of the instance.
+    ssh_key_file: SSH key file to use to connect to the instance.
   """
   instance_name = get_instance_name(username)
   logging.debug('Querying status of gcloud computing instance %s of '
@@ -200,8 +216,9 @@ def status(username, project, zone):
                num_instances, instance_name)
 
   if num_instances == 1:
-    cmd = 'gcloud compute ssh {} --project={} --zone={} -- -L 6006:127.0.0.1:6006'.format(  # pylint: disable=line-too-long
-        instance_name, project, zone)
+    cmd = '{} {} -- -L 6006:127.0.0.1:6006'.format(
+        _ssh_prefix(project, zone, ssh_internal_ip, ssh_key_file),
+        instance_name)
     logging.info('Run the command below to ssh to the instance together with '
                  'port forwarding for tensorboard:\n%s\n', cmd)
 
@@ -294,6 +311,17 @@ def parse_arguments(argv, command):  # pylint: disable=redefined-outer-name
         type=str,
         help='Zone of the instance to create.'
         )
+    parser.add_argument(
+        '--ssh-internal-ip',
+        action='store_true',
+        help='If set, use internal IP for ssh with `gcloud beta compute ssh`.'
+        )
+    parser.add_argument(
+        '--ssh-key-file',
+        default=None,
+        type=str,
+        help='The ssh key to use with with `gcloud (beta) compute ssh`.'
+        )
 
   if command == 'create':
     parser.add_argument(
@@ -310,6 +338,11 @@ def parse_arguments(argv, command):  # pylint: disable=redefined-outer-name
         accelerator to attach to the instance. Use 'gcloud compute accelerator-types list --project=${project_name}' to
         learn about all available accelerator types.
         ''')
+    parser.add_argument(
+        '--cpu_min_platform',
+        default=None,
+        type=str,
+        help='''Minimum cpu platform, only needed for CPU only instances.''')
     parser.add_argument(
         '--machine_type',
         default=None,
@@ -331,6 +364,14 @@ def parse_arguments(argv, command):  # pylint: disable=redefined-outer-name
         default=0,
         type=int,
         help='''Specifies the number of NVME local SSD devices to attach to the instance.
+        '''
+        )
+    parser.add_argument(
+        '--boot_ssd_size',
+        default=None,
+        type=int,
+        help='''Specifies the size (GB) of the boot disk or size is the image
+        size. Setting this also changes boot disk to Persistent SSD.
         '''
         )
 
@@ -372,7 +413,9 @@ The supported commands are:
   if command == 'create':
     create(flags.username, flags.project, flags.zone, flags.machine_type,
            flags.accelerator_count, flags.accelerator_type, flags.image,
-           flags.nvme_count)
+           flags.nvme_count, flags.ssh_internal_ip, flags.ssh_key_file,
+           cpu_min_platform=flags.cpu_min_platform,
+           boot_ssd_size=flags.boot_ssd_size)
   elif command == 'start':
     start(flags.username, flags.project, flags.zone)
   elif command == 'stop':
@@ -380,7 +423,8 @@ The supported commands are:
   elif command == 'delete':
     delete(flags.username, flags.project, flags.zone)
   elif command == 'status':
-    status(flags.username, flags.project, flags.zone)
+    status(flags.username, flags.project, flags.zone, flags.ssh_internal_ip,
+           flags.ssh_key_file)
   elif command == 'list_all':
     list_all(flags.project)
 

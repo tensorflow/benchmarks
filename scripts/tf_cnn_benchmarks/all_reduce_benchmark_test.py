@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 import all_reduce_benchmark
 import benchmark_cnn
@@ -35,7 +35,7 @@ class AllReduceBenchmarkTest(tf.test.TestCase):
                                 log_fn=test_util.print_and_add_to_list(logs)):
       bench_cnn = benchmark_cnn.BenchmarkCNN(params)
       all_reduce_benchmark.run_benchmark(bench_cnn, num_iters=5)
-      self.assertRegexpMatches(logs[-1], '^Average time per step: [0-9.]+$')
+      self.assertRegex(logs[-1], '^Average time per step: [0-9.]+$')
 
   def test_run_benchmark(self):
     """Tests that run_benchmark() runs successfully."""
@@ -48,4 +48,5 @@ class AllReduceBenchmarkTest(tf.test.TestCase):
     self._test_run_benchmark(params)
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   tf.test.main()

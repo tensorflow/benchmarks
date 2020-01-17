@@ -34,7 +34,7 @@ import time
 
 from absl import app
 from absl import flags as absl_flags
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from tensorflow.python.ops import control_flow_ops
 import benchmark_cnn
@@ -286,4 +286,5 @@ def main(positional_arguments):
   run_benchmark(bench, absl_flags.FLAGS.iters_per_step)
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   app.run(main)  # Raises error on invalid flags, unlike tf.app.run()

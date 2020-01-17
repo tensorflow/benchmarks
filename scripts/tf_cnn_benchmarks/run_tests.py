@@ -23,6 +23,7 @@ import unittest
 
 from absl import app
 from absl import flags as absl_flags
+import tensorflow.compat.v1 as tf
 
 import all_reduce_benchmark_test
 import allreduce_test
@@ -30,8 +31,7 @@ import benchmark_cnn_distributed_test
 import benchmark_cnn_test
 import cnn_util_test
 import variable_mgr_util_test
-from models import nasnet_test
-
+from models import model_config
 
 # Ideally, we wouldn't need this option, and run both distributed tests and non-
 # distributed tests. But, TensorFlow allocates all the GPU memory by default, so
@@ -64,8 +64,10 @@ def main(_):
         loader.loadTestsFromModule(variable_mgr_util_test),
         loader.loadTestsFromModule(benchmark_cnn_test),
         loader.loadTestsFromModule(all_reduce_benchmark_test),
-        loader.loadTestsFromModule(nasnet_test),
     ])
+    if model_config.can_import_contrib:
+      from models.tf1_only import nasnet_test  # pylint: disable=g-import-not-at-top
+      suite.addTest(loader.loadTestsFromModule(nasnet_test))
     dist_suite = unittest.TestSuite([
         loader.loadTestsFromModule(benchmark_cnn_distributed_test),
     ])
@@ -101,4 +103,5 @@ def main(_):
 
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   app.run(main)

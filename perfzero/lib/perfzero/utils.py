@@ -18,6 +18,7 @@ from __future__ import print_function
 import importlib
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -25,12 +26,29 @@ import traceback
 import requests
 
 
+def create_empty_file(parent_directory, file_basename):
+  """Creates an empty file with a given basename in a parent directory.
+
+  Creates parent_directory and intermediate directories if it doesn't exist.
+  This is mostly used for creating no-op actions in the Dockerfile.
+
+  Args:
+    parent_directory: The path to the parent directory.
+    file_basename: The basename for the empty file.
+  """
+  if not os.path.isdir(parent_directory):
+    os.makedirs(parent_directory)
+  full_file_name = os.path.join(parent_directory, file_basename)
+  with open(full_file_name, 'w'):
+    print('Creating empty file: {}'.format(full_file_name))
+
+
 def checkout_git_repos(git_repos, use_cached_site_packages):
   """Clone, update, or sync a repo.
 
   Args:
-    git_repos: array of dict containing attributes of the git repo to checkout
-    use_cached_site_packages: If true, skip git pull if the git_repo already exists
+    git_repos: array of dict containing attributes of the git repo to checkout.
+    use_cached_site_packages: If true, skip git pull if git_repo already exists.
 
   Returns:
     A dict containing attributes of the git repositories
@@ -100,6 +118,7 @@ def setup_python_path(site_packages_dir, python_path_str):
   if python_path_str:
     python_paths = python_path_str.split(',')
     for python_path in python_paths:
+      logging.info('Adding path %s to sys.path', python_path)
       sys.path.append(os.path.join(site_packages_dir, python_path))
   logging.debug('PYTHONPATH: %s', sys.path)
 
@@ -142,7 +161,7 @@ def download_data(download_infos):
 
   Args:
     download_infos: array of dict which specifies the url and local_path for
-                    data download
+      data download
   """
   for info in download_infos:
     if os.path.exists(info['local_path']):
@@ -176,20 +195,23 @@ def download_data(download_infos):
           os.path.join(local_path_parent, expected_base_name))])
     logging.info('Downloaded data from %s to %s',
                  info['url'], info['local_path'])
-    # Decompress file if file name ends with .gz
-    if info['url'].endswith('.gz'):
+    # Decompress file if file name ends with .gz unless caller sets 'decompress'
+    # to False in info.
+    if info['url'].endswith('.gz') and info.get('decompress', True):
       run_commands(['tar xvf {} -C {}'.format(
           info['local_path'], local_path_parent)])
       logging.info('Decompressed file %s', info['local_path'])
 
 
 def parse_data_downloads_str(root_data_dir, data_downloads_str):
-  """Parse a comma separated string into array of dict which specifies url and local_path for every downloads.
+  """Parse a comma separated string into array of dicts.
+
+  Each dict specifies the url and local_path for a download.
 
   Args:
     root_data_dir: the directory which should contain all the dataset files
     data_downloads_str: a comma separated string specified by the
-                        flag --data_downloads
+      flag --data_downloads
 
   Returns:
     An array of dict which specifies the url and local_path for data download
@@ -245,13 +267,16 @@ def run_command(cmd, shell=True):
   logging.debug('Executing command: %s', cmd)
   p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                        stderr=subprocess.STDOUT, shell=shell)
-  stdout = ''
+
   exit_code = None
-  while exit_code is None:
+  line = ''
+  stdout = ''
+  while exit_code is None or line:
     exit_code = p.poll()
-    line_str = p.stdout.readline().decode('utf-8')
-    logging.debug(line_str)
-    stdout += line_str
+    line = p.stdout.readline().decode('utf-8')
+    stdout += line
+    logging.debug(line)
+
   return exit_code, stdout
 
 
@@ -295,14 +320,15 @@ def get_gpu_info():
   this may be a workstation and takes the second entry.
 
   Returns:
-    A dict containing gpu_driver_version, gpu_model and gpu_count
+    A dict containing gpu_driver_version, gpu_model and gpu_count or None if
+    `nvidia-smi` is not found or fails.
   """
   cmd = 'nvidia-smi --query-gpu=driver_version,gpu_name --format=csv'
   exit_code, result = run_command(cmd)
 
   if exit_code != 0:
     logging.error('nvidia-smi did not return as expected: %s', result)
-    return {}
+    return None
 
   lines = result.splitlines()
   gpu_info_line = lines[1]
@@ -315,6 +341,80 @@ def get_gpu_info():
   gpu_info['gpu_count'] = len(lines) - 1
 
   return gpu_info
+
+
+def _install_tpu_tool():
+  """Installs the ctpu tool to managing cloud TPUs.
+
+  Follows the instructions here:
+  https://github.com/tensorflow/tpu/tree/master/tools/ctpu
+  """
+  if not os.path.exists('ctpu'):
+    logging.info('Installing TPU tool')
+    commands = [
+        'wget https://dl.google.com/cloud_tpu/ctpu/latest/linux/ctpu',
+        'chmod a+x ctpu',
+    ]
+    run_commands(commands)
+
+
+def setup_tpu(parameters):
+  """Sets up a TPU with a given set of parameters.
+
+  Args:
+    parameters: dictionary of TPU parameters.
+
+  Returns:
+    True if an error occurs during setup.
+  """
+  try:
+    _install_tpu_tool()
+
+    args = [
+        '--name={}'.format(parameters.get('name')),
+        '--project={}'.format(parameters.get('project')),
+        '--zone={}'.format(parameters.get('zone')),
+        '--tpu-size={}'.format(parameters.get('size')),
+        '--tf-version={}'.format(parameters.get('version')),
+        '--tpu-only',
+        '-noconf',
+    ]
+    command = './ctpu up {}'.format(' '.join(args))
+    logging.info('Setting up TPU: %s', command)
+    exit_code, output = run_command(command)
+    if exit_code != 0:
+      logging.error('Error in setup with output: %s', output)
+    return exit_code != 0
+  except Exception:
+    logging.error('Unable to setup TPU')
+    run_command('rm -f ctpu')
+    sys.exit(1)
+
+
+def cleanup_tpu(parameters):
+  """Cleans up an existing TPU.
+
+  Args:
+    parameters: dictionary of TPU parameters.
+
+  Returns:
+    True if an error occurs during cleanup.
+  """
+  _install_tpu_tool()
+
+  args = [
+      '--name={}'.format(parameters.get('name')),
+      '--project={}'.format(parameters.get('project')),
+      '--zone={}'.format(parameters.get('zone')),
+      '--tpu-only',
+      '-noconf',
+  ]
+  command = './ctpu delete {}'.format(' '.join(args))
+  logging.info('Cleaning up TPU: %s', command)
+  exit_code, output = run_command(command)
+  if exit_code != 0:
+    logging.error('Error in cleanup with output: %s', output)
+  return exit_code != 0
 
 
 def read_benchmark_result(benchmark_result_file_path):
@@ -332,7 +432,9 @@ def read_benchmark_result(benchmark_result_file_path):
     benchmark_entries.ParseFromString(f.read())
 
     return json_format.MessageToDict(
-        benchmark_entries, preserving_proto_field_name=True)['entry'][0]
+        benchmark_entries,
+        preserving_proto_field_name=True,
+        including_default_value_fields=True)['entry'][0]
 
 
 def print_thread_stacktrace():
@@ -343,12 +445,35 @@ def print_thread_stacktrace():
     traceback.print_stack(frame)
 
 
-def instantiate_benchmark_class(benchmark_class, output_dir, root_data_dir):
+def instantiate_benchmark_class(benchmark_class, output_dir, root_data_dir, tpu):
   """Return initialized benchmark class."""
   module_import_path, class_name = benchmark_class.rsplit('.', 1)
   module = importlib.import_module(module_import_path)
   class_ = getattr(module, class_name)
-  instance = class_(output_dir=output_dir, root_data_dir=root_data_dir)
+  instance = class_(output_dir=output_dir, root_data_dir=root_data_dir, tpu=tpu)
 
   return instance
 
+
+def copy_and_rename_dirs(dir_spec_string, dst_base_dir):
+  """Copies list of <dir-path>:new_name specs into a new dest dir.
+
+  If a path /path1/path2/dir:new_dir is given, it copies /path1/path2/dir to
+  dst_base_dir/new_dir.
+
+  Args:
+    dir_spec_string: Comma separated list of /path1/path2:new_name specs.
+    dst_base_dir: The base dir to contain the copies.
+  """
+  if not dir_spec_string:
+    return
+  dir_specs = dir_spec_string.split(',')
+  for src_dir_with_name in dir_specs:
+    src_dir, final_basename = src_dir_with_name.split(':')
+    dst_dir = os.path.join(dst_base_dir, final_basename)
+
+    if os.path.isdir(dst_dir):
+      logging.info('[DELETE] pre-existing %s', dst_dir)
+      shutil.rmtree(dst_dir)
+    logging.info('[COPY] %s -> %s', src_dir, dst_dir)
+    shutil.copytree(src_dir, dst_dir)

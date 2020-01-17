@@ -33,7 +33,7 @@ from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 import six
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 import mlperf
 import ssd_constants

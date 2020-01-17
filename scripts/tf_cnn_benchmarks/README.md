@@ -1,18 +1,16 @@
 # tf_cnn_benchmarks: High performance benchmarks
 
-tf_cnn_benchmarks contains implementations of several popular convolutional
-models, and is designed to be as fast as possible. tf_cnn_benchmarks supports
-both running on a single machine or running in distributed mode across multiple
-hosts. See the [High-Performance models
-guide](https://www.tensorflow.org/performance/performance_models) for more
-information.
+**Note: tf_cnn_benchmarks is no longer maintained.**
 
-These models utilize many of the strategies in the [TensorFlow Performance
-Guide](https://www.tensorflow.org/performance/performance_guide). Benchmark
-results can be found [here](https://www.tensorflow.org/performance/benchmarks).
+tf_cnn_benchmarks contains TensorFlow 1 implementations of several popular
+convolutional models, and is designed to be as fast as possible.
+tf_cnn_benchmarks supports both running on a single machine or running in
+distributed mode across multiple hosts.
 
-These models are designed for performance. For models that have clean and
-easy-to-read implementations, see the [TensorFlow Official
+tf_cnn_benchmarks is no longer maintained. Although it will run with TensorFlow
+2, it was written and optimized for TensorFlow 1, and has not been maintained
+since TensorFlow 2 was released. For clean and easy-to-read TensorFlow 2 models,
+please see the [TensorFlow Official
 Models](https://github.com/tensorflow/models/tree/master/official).
 
 ## Getting Started
@@ -23,14 +21,15 @@ To run ResNet50 with synthetic data without distortions with a single GPU, run
 python tf_cnn_benchmarks.py --num_gpus=1 --batch_size=32 --model=resnet50 --variable_update=parameter_server
 ```
 
-Note that the master branch of tf_cnn_benchmarks requires the latest nightly
-version of TensorFlow. You can install the nightly version by running `pip
-install tf-nightly-gpu` in a clean environment, or by installing TensorFlow from
-source. We sometimes will create a branch of tf_cnn_benchmarks, in the form of
-cnn_tf_vX.Y_compatible, that is compatible with TensorFlow version X.Y For
-example, branch
+Note that the master branch of tf_cnn_benchmarks occasionally requires the
+latest nightly version of TensorFlow. You can install the nightly version by
+running `pip install tf-nightly-gpu` in a clean environment, or by installing
+TensorFlow from source. We sometimes will create a branch of tf_cnn_benchmarks,
+in the form of cnn_tf_vX.Y_compatible, that is compatible with TensorFlow
+version X.Y. For example, branch
 [cnn_tf_v1.9_compatible](https://github.com/tensorflow/benchmarks/tree/cnn_tf_v1.9_compatible/scripts/tf_cnn_benchmarks)
-works with TensorFlow 1.9.
+works with TensorFlow 1.9. However, as tf_cnn_benchmarks is no longer
+maintained, we will likely no longer create new branches.
 
 Some important flags are
 

@@ -15,12 +15,46 @@
 """Upload test results."""
 from __future__ import print_function
 
+import importlib
 import json
 import logging
 import perfzero.utils as utils
 import psutil
+import socket
 
 from six import u as unicode  # pylint: disable=W0622
+
+
+def execute_methods(method_names_str, *args, **kwargs):
+  """Calls a list of method names on given function params.
+
+  Args:
+    method_names_str: String - Comma-separated module.foo.bar.method strings.
+      This function imports module.foo.bar for each such method and calls it
+      with *args and **kwargs.
+    *args: Function params common to each method.
+    **kwargs: Function params common to each method.
+
+  Raises:
+    RuntimeError: If any of the invoked methods raised an exception.
+  """
+  if not method_names_str:
+    return
+  errors = []
+  module_methods_list = method_names_str.split(',')
+  for module_method in module_methods_list:
+    try:
+      logging.info('Trying to call %s', module_method)
+      module_path, method_path = module_method.rsplit('.', 1)
+      this_module = importlib.import_module(module_path)
+      logging.info('Found module %s, looking for %s', module_path, method_path)
+      this_method = getattr(this_module, method_path)
+      logging.info('Found method %s', method_path)
+      this_method(*args, **kwargs)
+    except Exception as e:  # pylint: disable=broad-except
+      errors.append(str(e))
+  if errors:
+    raise RuntimeError('\n' + '\n'.join(errors))
 
 
 def upload_execution_summary(bigquery_project_name, bigquery_dataset_table_name,
@@ -107,7 +141,7 @@ def build_benchmark_result(raw_benchmark_result, has_exception):
   benchmark_result['wall_time'] = raw_benchmark_result['wall_time']
 
   succeeded = not has_exception
-  metrics = []
+  extras = []
   for name in raw_benchmark_result.get('extras', {}):
     entry = {}
     entry['name'] = name
@@ -115,16 +149,10 @@ def build_benchmark_result(raw_benchmark_result, has_exception):
     if 'double_value' in raw_benchmark_result['extras'][name]:
       entry['value'] = raw_benchmark_result['extras'][name]['double_value']
     else:
-      attributes = json.loads(
-          raw_benchmark_result['extras'][name]['string_value'])
-      entry['value'] = attributes['value']
-      if 'succeeded' in attributes:
-        entry['succeeded'] = attributes['succeeded']
-        succeeded = succeeded and attributes['succeeded']
-      if 'description' in attributes:
-        entry['description'] = attributes['description']
-    metrics.append(entry)
+      entry['value'] = raw_benchmark_result['extras'][name]['string_value']
+    extras.append(entry)
 
+  metrics = []
   for metric in raw_benchmark_result.get('metrics', []):
     value = metric['value']
     if 'min_value' in metric and metric['min_value'] > value:
@@ -134,6 +162,7 @@ def build_benchmark_result(raw_benchmark_result, has_exception):
     metrics.append(metric)
 
   benchmark_result['succeeded'] = succeeded
+  benchmark_result['extras'] = extras
   benchmark_result['metrics'] = metrics
 
   return benchmark_result
@@ -176,18 +205,20 @@ def build_execution_summary(execution_timestamp, execution_id,
     ml_framework_info['build_label'] = ml_framework_build_label
 
   system_info = {}
-  gpu_info = utils.get_gpu_info()
   if platform_name:
     system_info['platform_name'] = platform_name
   if system_name:
     system_info['system_name'] = system_name
-  system_info['accelerator_driver_version'] = gpu_info['gpu_driver_version']
-  system_info['accelerator_model'] = gpu_info['gpu_model']
-  system_info['accelerator_count'] = gpu_info['gpu_count']
+  gpu_info = utils.get_gpu_info()
+  if gpu_info:
+    system_info['accelerator_driver_version'] = gpu_info['gpu_driver_version']
+    system_info['accelerator_model'] = gpu_info['gpu_model']
+    system_info['accelerator_count'] = gpu_info['gpu_count']
   system_info['cpu_model'] = utils.get_cpu_name()
   system_info['physical_cpu_count'] = psutil.cpu_count(logical=False)
   system_info['logical_cpu_count'] = psutil.cpu_count(logical=True)
   system_info['cpu_socket_count'] = utils.get_cpu_socket_count()
+  system_info['hostname'] = socket.gethostname()
 
   execution_summary = {}
   execution_summary['execution_id'] = execution_id

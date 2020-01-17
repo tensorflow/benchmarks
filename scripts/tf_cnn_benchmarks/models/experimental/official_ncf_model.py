@@ -25,7 +25,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from models import model
 
@@ -121,13 +121,13 @@ class NcfModel(model.Model):
   def get_synthetic_inputs(self, input_name, nclass):
     """Returns the ops to generate synthetic inputs and labels."""
     def users_init_val():
-      return tf.random_uniform((self.batch_size,), minval=0,
+      return tf.random_uniform((self.batch_size, 1), minval=0,
                                maxval=_NUM_USERS_20M, dtype=tf.int32)
     users = tf.Variable(users_init_val, dtype=tf.int32, trainable=False,
                         collections=[tf.GraphKeys.LOCAL_VARIABLES],
                         name='synthetic_users')
     def items_init_val():
-      return tf.random_uniform((self.batch_size,), minval=0,
+      return tf.random_uniform((self.batch_size, 1), minval=0,
                                maxval=_NUM_ITEMS_20M, dtype=tf.int32)
     items = tf.Variable(items_init_val, dtype=tf.int32, trainable=False,
                         collections=[tf.GraphKeys.LOCAL_VARIABLES],
@@ -144,7 +144,7 @@ class NcfModel(model.Model):
 
   def get_input_shapes(self, subset):
     del subset
-    return [[self.batch_size], [self.batch_size], [self.batch_size]]
+    return [[self.batch_size, 1], [self.batch_size, 1], [self.batch_size]]
 
   def get_input_data_types(self, subset):
     del subset

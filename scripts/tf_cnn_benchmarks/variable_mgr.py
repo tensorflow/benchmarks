@@ -23,7 +23,7 @@ from __future__ import print_function
 import contextlib
 import re
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 import allreduce
 import batch_allreduce
@@ -669,8 +669,8 @@ class VariableMgrDistributedFetchFromPS(VariableMgr):
     return agg_grads
 
   def get_devices(self):
-    ps_strategy = tf.contrib.training.GreedyLoadBalancingStrategy(
-        self.benchmark_cnn.num_ps, tf.contrib.training.byte_size_load_fn)
+    ps_strategy = variable_mgr_util.GreedyLoadBalancingStrategy(
+        self.benchmark_cnn.num_ps, variable_mgr_util.byte_size_load_fn)
     return [
         tf.train.replica_device_setter(
             worker_device=d,

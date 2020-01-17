@@ -22,7 +22,7 @@ from __future__ import print_function
 import collections as pycoll
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
@@ -444,4 +444,5 @@ class DynamicPackingTest(test_util.TensorFlowTestCase):
 
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   tf.test.main()

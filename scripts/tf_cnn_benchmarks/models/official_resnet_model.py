@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import datasets
 from models import model as model_lib
 
@@ -61,7 +61,7 @@ class ImagenetResnetModel(model_lib.CNNModel):
                     data_type=tf.float32):
     # pylint: disable=g-import-not-at-top
     try:
-      from official.resnet.imagenet_main import ImagenetModel
+      from official.resnet.r1.imagenet_main import ImagenetModel
     except ImportError:
       tf.logging.fatal('Please include tensorflow/models to the PYTHONPATH.')
       raise

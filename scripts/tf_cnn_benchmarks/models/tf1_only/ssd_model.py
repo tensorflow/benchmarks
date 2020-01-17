@@ -35,14 +35,17 @@ import multiprocessing
 import os
 import re
 import threading
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
+# pylint: disable=g-direct-tensorflow-import
 import constants
 import mlperf
 import ssd_constants
 from cnn_util import log_fn
 from models import model as model_lib
 from models import resnet_model
+from tensorflow.contrib import layers as contrib_layers
+from tensorflow.python.ops import variables
 
 BACKBONE_MODEL_SCOPE_NAME = 'resnet34_backbone'
 
@@ -192,9 +195,15 @@ class SSD300Model(model_lib.CNNModel):
     # --------------------------------------------------------------------------
 
     def add_ssd_layer(cnn, depth, k_size, stride, mode):
-      return cnn.conv(depth, k_size, k_size, stride, stride,
-                      mode=mode, use_batch_norm=False,
-                      kernel_initializer=tf.contrib.layers.xavier_initializer())
+      return cnn.conv(
+          depth,
+          k_size,
+          k_size,
+          stride,
+          stride,
+          mode=mode,
+          use_batch_norm=False,
+          kernel_initializer=contrib_layers.xavier_initializer())
 
     # Activations for feature maps of different layers
     self.activations = [cnn.top_layer]
@@ -227,9 +236,17 @@ class SSD300Model(model_lib.CNNModel):
     self.conf = []
 
     for nd, ac, oc in zip(self.num_dboxes, self.activations, self.out_chan):
-      l = cnn.conv(nd * 4, 3, 3, 1, 1, input_layer=ac,
-                   num_channels_in=oc, activation=None, use_batch_norm=False,
-                   kernel_initializer=tf.contrib.layers.xavier_initializer())
+      l = cnn.conv(
+          nd * 4,
+          3,
+          3,
+          1,
+          1,
+          input_layer=ac,
+          num_channels_in=oc,
+          activation=None,
+          use_batch_norm=False,
+          kernel_initializer=contrib_layers.xavier_initializer())
       scale = l.get_shape()[-1]
       # shape = [batch_size, nd * 4, scale, scale]
       l = tf.reshape(l, [self.batch_size, nd, 4, scale, scale])
@@ -239,9 +256,17 @@ class SSD300Model(model_lib.CNNModel):
       self.loc.append(tf.reshape(l, [self.batch_size, -1, 4]))
       # shape = [batch_size, nd * scale * scale, 4]
 
-      c = cnn.conv(nd * self.label_num, 3, 3, 1, 1, input_layer=ac,
-                   num_channels_in=oc, activation=None, use_batch_norm=False,
-                   kernel_initializer=tf.contrib.layers.xavier_initializer())
+      c = cnn.conv(
+          nd * self.label_num,
+          3,
+          3,
+          1,
+          1,
+          input_layer=ac,
+          num_channels_in=oc,
+          activation=None,
+          use_batch_norm=False,
+          kernel_initializer=contrib_layers.xavier_initializer())
       # shape = [batch_size, nd * label_num, scale, scale]
       c = tf.reshape(c, [self.batch_size, nd, self.label_num, scale, scale])
       # shape = [batch_size, nd, label_num, scale, scale]
@@ -399,6 +424,7 @@ class SSD300Model(model_lib.CNNModel):
         The shape is [batch_size, num_anchors, 1].
       num_matched_boxes: the number of anchors that are matched to a groundtruth
         targets. This is used as the loss normalizater.
+
     Returns:
       box_loss: a float32 representing total box regression loss.
     """
@@ -410,8 +436,8 @@ class SSD300Model(model_lib.CNNModel):
 
     # Hard example mining
     neg_masked_cross_entropy = cross_entropy * (1 - float_mask)
-    relative_position = tf.contrib.framework.argsort(
-        tf.contrib.framework.argsort(
+    relative_position = tf.argsort(
+        tf.argsort(
             neg_masked_cross_entropy, direction='DESCENDING'))
     num_neg_boxes = tf.minimum(
         tf.to_int32(num_matched_boxes) * ssd_constants.NEGS_PER_POSITIVE,
@@ -489,7 +515,7 @@ class SSD300Model(model_lib.CNNModel):
                         'https://github.com/cocodataset/cocoapi')
 
     # Unpack model output back to locations and confidence scores of predictions
-    # pred_locs: relative locations (coordiates) of objects in all SSD boxes
+    # pred_locs: relative locations (coordinates) of objects in all SSD boxes
     # shape: [batch_size, NUM_SSD_BOXES, 4]
     # pred_labels: confidence scores of objects being of all categories
     # shape: [batch_size, NUM_SSD_BOXES, label_num]
@@ -641,7 +667,9 @@ class SSD300Model(model_lib.CNNModel):
     """Generating synthetic data matching real data shape and type."""
     inputs = tf.random_uniform(
         self.get_input_shapes('train')[0], dtype=self.data_type)
-    inputs = tf.contrib.framework.local_variable(inputs, name=input_name)
+    inputs = variables.VariableV1(inputs, trainable=False,
+                                  collections=[tf.GraphKeys.LOCAL_VARIABLES],
+                                  name=input_name)
     boxes = tf.random_uniform(
         [self.batch_size, ssd_constants.NUM_SSD_BOXES, 4], dtype=tf.float32)
     classes = tf.random_uniform(

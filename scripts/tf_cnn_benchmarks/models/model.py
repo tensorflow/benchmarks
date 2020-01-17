@@ -20,10 +20,11 @@ from __future__ import print_function
 
 from collections import namedtuple
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 import convnet_builder
 import mlperf
+from tensorflow.python.ops import variables as variables_module  # pylint: disable=g-direct-tensorflow-import
 
 # BuildNetworkResult encapsulate the result (e.g. logits) of a
 # Model.build_network() call.
@@ -248,7 +249,9 @@ class CNNModel(Model):
         mean=127,
         stddev=60,
         name=self.model_name + '_synthetic_inputs')
-    inputs = tf.contrib.framework.local_variable(inputs, name=input_name)
+    inputs = variables_module.VariableV1(
+        inputs, trainable=False, collections=[tf.GraphKeys.LOCAL_VARIABLES],
+        name=input_name)
     labels = tf.random_uniform(
         label_shape,
         minval=0,

@@ -24,7 +24,7 @@ from __future__ import print_function
 
 from absl import app
 from absl import flags as absl_flags
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 import benchmark_cnn
 import cnn_util
@@ -69,4 +69,5 @@ def main(positional_arguments):
 
 
 if __name__ == '__main__':
+  tf.disable_v2_behavior()
   app.run(main)  # Raises error on invalid flags, unlike tf.app.run()

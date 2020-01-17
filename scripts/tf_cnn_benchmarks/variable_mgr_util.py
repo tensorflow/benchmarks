@@ -21,12 +21,15 @@ from __future__ import print_function
 import collections as pycoll
 import operator
 
-import tensorflow as tf
+import numpy as np
+import tensorflow.compat.v1 as tf
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import gradients_util
+from tensorflow.python.ops import math_ops
 
 
 PS_SHADOW_VAR_PREFIX = 'ps_var'
@@ -273,13 +276,15 @@ class StagedModelVariable(object):
     """Return the non-reference dtype."""
     return self.var_stage_get.dtype
 
-  def assign_sub(self, delta, name=None):
+  def assign_sub(self, delta, name=None, read_value=True):
     """Mimic the updates to the variable.
 
     Args:
       delta: is pushed into a staging buffer and will be pumped later.
       name: currently ignored; names of ops and the StagingArea are
             computed without using this pass name.
+      read_value: if True, will return something which evaluates to the new
+              value of the variable; if False will return the assign op.
     Returns:
       The actual updates. The colocation constraint will be reapplied.
     """
@@ -296,7 +301,7 @@ class StagedModelVariable(object):
       self.variable_mgr.staging_delta_ops.append(delta_put_op)
       delta_get_op = delta_staging_area.get()[0]
     # Return the actual updates. The colocation constraint will be reapplied.
-    return self.real_var.assign_sub(delta_get_op)
+    return self.real_var.assign_sub(delta_get_op, read_value=read_value)
 
   @staticmethod
   # pylint: disable=bad-staticmethod-argument,invalid-name
@@ -500,6 +505,49 @@ def aggregate_gradients_using_copy(tower_grads, use_mean, check_inf_nan):
     return agg_grads, None
 
 
+# The following two functions are copied from
+# tensorflow/python/eager/backprop.py. We do not directly use them as they are
+# not exported and subject to change at any time.
+def flatten_nested_indexed_slices(grad):
+  assert isinstance(grad, ops.IndexedSlices)
+  if isinstance(grad.values, ops.Tensor):
+    return grad
+  else:
+    assert isinstance(grad.values, ops.IndexedSlices)
+    g = flatten_nested_indexed_slices(grad.values)
+    return ops.IndexedSlices(g.values, array_ops.gather(grad.indices,
+                                                        g.indices),
+                             g.dense_shape)
+
+
+def aggregate_indexed_slices_gradients(grads):
+  """Aggregates gradients containing `IndexedSlices`s."""
+  if len(grads) < 1:
+    return None
+  elif len(grads) == 1:
+    return grads[0]
+  else:
+    grads = [g for g in grads if g is not None]
+    # If any gradient is a `Tensor`, sum them up and return a dense tensor
+    # object.
+    if any(isinstance(g, ops.Tensor) for g in grads):
+      return math_ops.add_n(grads)
+
+    # The following `_as_indexed_slices_list` casts ids of IndexedSlices into
+    # int64. It is to make sure the inputs of `concat` all have same the data
+    # type.
+    grads = math_ops._as_indexed_slices_list(grads)  # pylint: disable=protected-access
+
+    grads = [flatten_nested_indexed_slices(x) for x in grads]
+    # Form IndexedSlices out of the concatenated values and indices.
+    concat_grad = ops.IndexedSlices(
+        array_ops.concat([x.values for x in grads], axis=0),
+        array_ops.concat([x.indices for x in grads], axis=0),
+        grads[0].dense_shape)
+
+    return concat_grad
+
+
 def aggregate_single_gradient_using_copy(grad_and_vars, use_mean,
                                          check_inf_nan):
   """Calculate the average gradient for a shared variable across all towers.
@@ -522,7 +570,7 @@ def aggregate_single_gradient_using_copy(grad_and_vars, use_mean,
   grads = [g for g, _ in grad_and_vars]
   if any(isinstance(g, tf.IndexedSlices) for g in grads):
     # TODO(reedwm): All-reduce IndexedSlices more effectively.
-    grad = gradients_util._AggregateIndexedSlicesGradients(grads)  # pylint: disable=protected-access
+    grad = aggregate_indexed_slices_gradients(grads)
   else:
     grad = tf.add_n(grads)
 
@@ -536,3 +584,93 @@ def aggregate_single_gradient_using_copy(grad_and_vars, use_mean,
     return (grad, v), has_nan_or_inf
   else:
     return (grad, v), None
+
+
+# This class is copied from
+# https://github.com/tensorflow/tensorflow/blob/590d6eef7e91a6a7392c8ffffb7b58f2e0c8bc6b/tensorflow/contrib/training/python/training/device_setter.py#L56.
+# We copy it since contrib has been removed from TensorFlow.
+class GreedyLoadBalancingStrategy(object):
+  """Returns the least-loaded ps task for op placement.
+
+  The load is calculated by a user-specified load function passed in at
+  construction.  There are no units for load, and the load function is
+  responsible for providing an internally consistent measure.
+
+  Note that this strategy is very sensitive to the exact order in which
+  ps ops (typically variables) are created, as it greedily places ops
+  on the least-loaded ps at the point each op is processed.
+
+  One reasonable heuristic is the `byte_size_load_fn`, which
+  estimates load as the number of bytes that would be used to store and
+  transmit the entire variable.  More advanced load functions
+  could consider the difference in access patterns across ops, or trade
+  off CPU-intensive ops with RAM-intensive ops with network bandwidth.
+
+  This class is intended to be used as a `ps_strategy` in
+  `tf.compat.v1.train.replica_device_setter`.
+  """
+
+  def __init__(self, num_tasks, load_fn):
+    """Create a new `LoadBalancingStrategy`.
+
+    Args:
+      num_tasks: Number of ps tasks to cycle among.
+      load_fn: A callable that takes an `Operation` and returns a
+        numeric load value for that op.
+    """
+    self._num_tasks = num_tasks
+    self._load_fn = load_fn
+    self._ps_loads = np.zeros(num_tasks)
+
+  def __call__(self, op):
+    """Choose a ps task index for the given `Operation`.
+
+    Args:
+      op: A `Operation` to be placed on ps.
+
+    Returns:
+      The next ps task index to use for the `Operation`. Greedily
+      places the op on the least-loaded ps task so far, as determined
+      by the load function.
+    """
+    task = np.argmin(self._ps_loads)
+    self._ps_loads[task] += self._load_fn(op)
+    return task
+
+
+# This function is copied from
+# https://github.com/tensorflow/tensorflow/blob/590d6eef7e91a6a7392c8ffffb7b58f2e0c8bc6b/tensorflow/contrib/training/python/training/device_setter.py#L105.
+# We copy it since contrib has been removed from TensorFlow.
+def byte_size_load_fn(op):
+  """Load function that computes the byte size of a single-output `Operation`.
+
+  This is intended to be used with `"Variable"` ops, which have a single
+  `Tensor` output with the contents of the variable.  However, it can also be
+  used for calculating the size of any op that has a single output.
+
+  Intended to be used with `GreedyLoadBalancingStrategy`.
+
+  Args:
+    op: An `Operation` with a single output, typically a "Variable" op.
+
+  Returns:
+    The number of bytes in the output `Tensor`.
+
+  Raises:
+    ValueError: if `op` does not have a single output, or if the shape of the
+      single output is not fully-defined.
+  """
+  if len(op.outputs) != 1:
+    raise ValueError('Op %s must have a single output' % op)
+  output = op.outputs[0]
+  elem_size = output.dtype.size
+  shape = output.get_shape()
+  if not shape.is_fully_defined():
+    # Due to legacy behavior, scalar "Variable" ops have output Tensors that
+    # have unknown shape when the op is created (and hence passed to this
+    # load function for placement), even though the scalar shape is set
+    # explicitly immediately afterward.
+    shape = tensor_shape.TensorShape(op.get_attr('shape'))
+  shape.assert_is_fully_defined()
+  return shape.num_elements() * elem_size
+
