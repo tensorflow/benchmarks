@@ -101,7 +101,7 @@ class SSD300Model(model_lib.CNNModel):
     # create a separate process (async_eval_process) that continuously pull
     # intermediate results from the predictions queue (a multiprocessing queue),
     # process them, and push final results into results queue (another
-    # multiprocessing queue). The main thread is responsible to push message
+    # multiprocessing queue). The main thread is responsible to push messages
     # into predictions queue, and start a separate thread to continuously pull
     # messages from results queue to update final results.
     # Message in predictions queue should be a tuple of two elements:
