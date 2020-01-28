@@ -925,8 +925,21 @@ class COCOPreprocessor(BaseImagePreprocessor):
     del shift_ratio  # Not used when using datasets instead of data_flow_ops
     with tf.name_scope('batch_processing'):
       ds = self.create_dataset(
-          self.batch_size, self.num_splits, self.batch_size_per_split,
-          dataset, subset, self.train, params.datasets_repeat_cached_sample)
+          batch_size=self.batch_size,
+          num_splits=self.num_splits,
+          batch_size_per_split=self.batch_size_per_split,
+          dataset=dataset,
+          subset=subset,
+          train=self.train,
+          datasets_repeat_cached_sample=params.datasets_repeat_cached_sample,
+          num_threads=params.datasets_num_private_threads,
+          datasets_use_caching=params.datasets_use_caching,
+          datasets_parallel_interleave_cycle_length=(
+              params.datasets_parallel_interleave_cycle_length),
+          datasets_sloppy_parallel_interleave=(
+              params.datasets_sloppy_parallel_interleave),
+          datasets_parallel_interleave_prefetch=(
+              params.datasets_parallel_interleave_prefetch))
       ds_iterator = self.create_iterator(ds)
 
       # Training data: 4 tuple
