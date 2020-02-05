@@ -76,7 +76,6 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
   process_info_tracker = ProcessInfoTracker(output_dir)
   process_info = None
 
-
   # Setup per-method file logger
   filehandler = logging.FileHandler(
       filename=os.path.join(output_dir, 'perfzero.log'), mode='w')
