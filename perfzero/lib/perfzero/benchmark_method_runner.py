@@ -39,6 +39,12 @@ def run(benchmark_method, harness_info, site_package_info,
     queue.put((True, None, False, None))
 
 
+def _set_file_contents(content_str, output_filename):
+  with open(output_filename, 'w') as f:
+    f.write(content_str)
+  logging.info('Wrote summary to file %s', output_filename)
+
+
 def _run_internal(benchmark_method, harness_info, site_package_info,
                   root_output_dir, config, queue):
   """Run benchmark method and put result to the queue.
@@ -69,6 +75,7 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
       config.profiler_enabled_time_str, output_dir)
   process_info_tracker = ProcessInfoTracker(output_dir)
   process_info = None
+
 
   # Setup per-method file logger
   filehandler = logging.FileHandler(
@@ -149,6 +156,8 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
   report_utils.execute_methods(
       config.result_upload_methods,
       execution_summary)
+  _set_file_contents(json.dumps(execution_summary, indent=2),
+                     os.path.join(output_dir, 'perfzero_summary.json'))
   logging.info('Benchmark execution for %s completed with summary:\n %s',
                benchmark_method, json.dumps(execution_summary, indent=2))
   utils.maybe_upload_to_gcs(output_dir, config.output_gcs_url)
