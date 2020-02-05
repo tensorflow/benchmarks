@@ -319,10 +319,7 @@ PerfZero outputs a json-formatted summary that provides the information needed
 to understand the benchmark result. The summary is printed in the stdout and
 in the file `path_to_perfzero/${workspace}/output/${execution_id}/perfzero.log`.
 
-Additionally it prints a pure json file with the summary at
-`path_to_perfzero/${workspace}/output/${execution_id}/perfzero_summary.json`
-
-Here is an example output from PerfZero. Explanation is provided inline for each
+Here is an example output from PerZero. Explanation is provided inline for each
 key when the name of the key is not sufficiently self-explanary.
 
 ```
