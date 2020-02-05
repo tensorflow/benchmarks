@@ -155,10 +155,10 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
   report_utils.execute_methods(
       config.result_upload_methods,
       execution_summary)
-  _set_file_contents(json.dumps(execution_summary, indent=2),
-                     os.path.join(output_dir, 'perfzero_summary.json'))
   logging.info('Benchmark execution for %s completed with summary:\n %s',
                benchmark_method, json.dumps(execution_summary, indent=2))
+  _set_file_contents(json.dumps(execution_summary, indent=2),
+                     os.path.join(output_dir, 'perfzero_summary.json'))
   utils.maybe_upload_to_gcs(output_dir, config.output_gcs_url)
   logging.getLogger().removeHandler(filehandler)
   method_execution_time = {
