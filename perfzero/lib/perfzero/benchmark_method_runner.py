@@ -169,5 +169,3 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
 
   queue.put((method_has_exception, method_execution_time,
              benchmark_result['succeeded'], output_dir))
-
-
