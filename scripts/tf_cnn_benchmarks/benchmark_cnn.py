@@ -672,6 +672,9 @@ flags.DEFINE_string('benchmark_test_id', None,
                     'different test runs. This flag is designed for human '
                     'consumption, and does not have any impact within the '
                     'system.')
+flags.DEFINE_boolean('auto_mixed_precision', False,
+                     'enable/disable grappler optimization that implements'
+                     'automatic mixed precision support.')
 
 platforms_util.define_platform_params()
 
@@ -799,6 +802,9 @@ def create_config_proto(params):
   # OOM/perf cliffs.
   config.graph_options.rewrite_options.pin_to_host_optimization = (
       rewriter_config_pb2.RewriterConfig.OFF)
+  if params.auto_mixed_precision:
+    config.graph_options.rewrite_options.auto_mixed_precision = (
+      rewriter_config_pb2.RewriterConfig.ON)
   return config
 
 
