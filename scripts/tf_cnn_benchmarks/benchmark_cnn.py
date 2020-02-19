@@ -673,8 +673,9 @@ flags.DEFINE_string('benchmark_test_id', None,
                     'consumption, and does not have any impact within the '
                     'system.')
 flags.DEFINE_boolean('auto_mixed_precision', False,
-                     'enable/disable grappler optimization that implements'
-                     'automatic mixed precision support.')
+                     'enable/disable grappler optimization that implements '
+                     'automatic mixed precision support. Enabling automatic '
+                     'mixed precision also enables automatic loss scaling')
 
 platforms_util.define_platform_params()
 
@@ -1359,7 +1360,9 @@ class BenchmarkCNN(object):
     if self.params.variable_update == 'horovod' and self.params.job_name:
       raise ValueError('job_name should not be specified for Horovod.')
 
-    if self.params.use_fp16 and self.params.fp16_enable_auto_loss_scale:
+    self.enable_auto_loss_scale = self.params.auto_mixed_precision or (
+        self.params.use_fp16 and self.params.fp16_enable_auto_loss_scale)
+    if self.enable_auto_loss_scale:
       if self.params.all_reduce_spec and 'nccl' in self.params.all_reduce_spec:
         raise ValueError('Automatic loss scaling is not supported with NCCL.')
       if self.params.variable_update not in ('parameter_server', 'replicated',
@@ -1458,8 +1461,6 @@ class BenchmarkCNN(object):
     else:
       self.eval_batch_size = None
     self.batch_group_size = self.params.batch_group_size
-    self.enable_auto_loss_scale = (
-        self.params.use_fp16 and self.params.fp16_enable_auto_loss_scale)
     self.loss_scale = None
     self.loss_scale_normal_steps = None
 
@@ -2765,7 +2766,8 @@ class BenchmarkCNN(object):
 
   def _maybe_initialize_fp16(self):
     """Initialize fp16 settings."""
-    if self.params.use_fp16 and not self._doing_eval:
+    if (self.params.auto_mixed_precision or
+        self.params.use_fp16) and not self._doing_eval:
       init_loss_scale_val = float(self.params.fp16_loss_scale or
                                   self.model.get_fp16_loss_scale())
       self.loss_scale = None
