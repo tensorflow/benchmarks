@@ -86,6 +86,17 @@ def add_setup_parser_arguments(parser):
       This will copy <absolute-path>/src/dir to <site-packages>/new_base_dir_name.
       '''
       )
+  parser.add_argument(
+      '--extra_docker_build_args',
+      nargs='*',
+      default='',
+      type=str,
+      help='''Additional build-args to pass to `docker build`.
+      Example: --extra_docker_build_args arg0 arg1=value1 "arg2=value with space" arg3=300.
+      Each string will be passed directly as a build-arg to docker, so the above example will be passed as follows:
+      --build-arg arg0 --build-arg arg1=value1 --build-arg "arg2=value with space" --build-arg arg3=300
+      '''
+      )
 
 
 
