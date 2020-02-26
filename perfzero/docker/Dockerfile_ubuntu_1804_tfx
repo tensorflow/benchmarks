@@ -9,7 +9,8 @@ FROM nvidia/cuda:10.0-base-ubuntu18.04 as base
 ARG tensorflow_pip_spec="tf-nightly-gpu"
 ARG local_tensorflow_pip_spec=""
 ARG extra_pip_specs=""
-# If 1, use the GitHub HEAD version. Otherwise, use the PIP package.
+# If 1, use the GitHub HEAD version for TFX, tf.Transform and tf.ModelAnalysis.
+# Otherwise, use the released PyPI packages.
 ARG use_github_version=1
 
 # setup.py passes the base path of local .whl file is chosen for the docker image.
@@ -87,6 +88,10 @@ RUN pip install -U scikit-learn
 RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/requirements.txt > /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt
 
+# Install yolk3k, for getting package versions from PyPI (so we can pull
+# TFX from GitHub even when we need to install from the released version)
+RUN pip install yolk3k
+
 # Install protoc
 RUN PROTOC_ZIP=protoc-3.7.1-linux-x86_64.zip; \
     curl -OL https://github.com/protocolbuffers/protobuf/releases/download/v3.7.1/$PROTOC_ZIP; \
@@ -94,28 +99,25 @@ RUN PROTOC_ZIP=protoc-3.7.1-linux-x86_64.zip; \
     unzip -o $PROTOC_ZIP -d /usr/local 'include/*'; \
     rm -f $PROTOC_ZIP;
 
-
-# If we're installing from GitHub, then install TFX, tf.Transform and
-# tf.ModelAnalysis all from the HEAD revision on GitHub.
-# Note that the order matters - we want to install tf.Transform and
-# tf.ModelAnalysis after TFX so they override the version associated with TFX.
+# Install TFX, tf.Transform and tf.ModelAnalysis.
 RUN if [ ${use_github_version} = 1 ]; then \
-      # Install packages directly to the PerfZero site packages path
-      SITE_PACKAGES_PATH="/workspace/benchmarks/perfzero/workspace/site-packages/"; \
-      mkdir -p ${SITE_PACKAGES_PATH}; \
-      git clone https://github.com/tensorflow/tfx ${SITE_PACKAGES_PATH}/tfx; \
-      OLD=$(pwd); cd ${SITE_PACKAGES_PATH}/tfx && python setup.py install && cd ${OLD}; \
-      pip install -e ${SITE_PACKAGES_PATH}/tfx; \
-      git clone https://github.com/tensorflow/transform.git ${SITE_PACKAGES_PATH}/tf-transform; \
-      pip install -e ${SITE_PACKAGES_PATH}/tf-transform; \
-      git clone https://github.com/tensorflow/model-analysis.git ${SITE_PACKAGES_PATH}/tf-model-analysis; \
-      python ${SITE_PACKAGES_PATH}/tf-model-analysis/setup.py install; \
-      pip install -e ${SITE_PACKAGES_PATH}/tf-model-analysis; \
-    fi;
-
-# Otherwise, we will install them from the released pip packages.
-RUN if [ ${use_github_version} = 0 ]; then \
-      pip install tfx; \
+      # Install from GitHub. Install TFX, tf.Transform and \
+      # tf.ModelAnalysis all from the HEAD revision on GitHub. \
+      # Note that the order matters - we want to install tf.Transform and \
+      # tf.ModelAnalysis after TFX so they override the version associated \
+      # with TFX. \
+      pip install -e git+https://github.com/tensorflow/tfx.git#egg=tfx; \
+      pip install -e git+https://github.com/tensorflow/transform.git#egg=tensorflow_transform; \
+      pip install -e git+https://github.com/tensorflow/model-analysis.git#egg=tensorflow_model_analysis; \
+    else \
+      # Install from released versions. \
+      # For TFX we want to install from GitHub, so we get the data files as \
+      # well (they are not included in the pip package). We use yolk to \
+      # find the latest version from PyPI, and then find the corresponding \
+      # tag in GitHub. \
+      LATEST_TFX_VERSION=$(yolk -V tfx | head -n 1 | cut -d' ' -f 2-); \
+      echo LATEST_TFX_VERSION=${LATEST_TFX_VERSION}; \
+      pip install -e git+https://github.com/tensorflow/tfx.git@${LATEST_TFX_VERSION}#egg=tfx; \
       pip install tensorflow-transform; \
       pip install tensorflow-model-analysis; \
     fi;
