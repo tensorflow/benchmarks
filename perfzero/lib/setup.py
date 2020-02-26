@@ -115,7 +115,11 @@ def _create_docker_image(FLAGS, project_dir, workspace_dir,
     dockerfile_path = os.path.join(project_dir, FLAGS.dockerfile_path)
   extra_pip_specs = (FLAGS.extra_pip_specs or '').replace(';', '')
   docker_base_cmd = 'docker build --no-cache --pull'
-  cmd = '{docker_base_cmd} -t {docker_tag}{tf_pip}{local_tf_pip}{extra_pip} {suffix}'.format(
+  # FLAGS.extra_docker_build_args will be a list of strings (e.g. ['a', 'b=c']).
+  # We treat the strings directly as build-args: --build-arg a --build-arg b=c
+  extra_docker_build_args = ' '.join([
+      '--build-arg %s' % arg for arg in FLAGS.extra_docker_build_args])
+  cmd = '{docker_base_cmd} -t {docker_tag}{tf_pip}{local_tf_pip}{extra_pip}{extra_docker_build_args} {suffix}'.format(
       docker_base_cmd=docker_base_cmd,
       docker_tag=FLAGS.docker_tag,
       tf_pip=(
@@ -126,6 +130,7 @@ def _create_docker_image(FLAGS, project_dir, workspace_dir,
       local_tf_pip=' --build-arg local_tensorflow_pip_spec={}'.format(
           local_tensorflow_pip_spec),
       extra_pip=' --build-arg extra_pip_specs=\'{}\''.format(extra_pip_specs),
+      extra_docker_build_args=' ' + extra_docker_build_args,
       suffix=(
           '-f {} {}'.format(dockerfile_path, docker_context)
           if docker_context else '- < {}'.format(dockerfile_path))
