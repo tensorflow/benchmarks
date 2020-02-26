@@ -117,8 +117,9 @@ def _create_docker_image(FLAGS, project_dir, workspace_dir,
   docker_base_cmd = 'docker build --no-cache --pull'
   # FLAGS.extra_docker_build_args will be a list of strings (e.g. ['a', 'b=c']).
   # We treat the strings directly as build-args: --build-arg a --build-arg b=c
+  # Empty strings are ignored.
   extra_docker_build_args = ' '.join([
-      '--build-arg %s' % arg for arg in FLAGS.extra_docker_build_args])
+      '--build-arg %s' % arg for arg in FLAGS.extra_docker_build_args if arg])
   cmd = '{docker_base_cmd} -t {docker_tag}{tf_pip}{local_tf_pip}{extra_pip}{extra_docker_build_args} {suffix}'.format(
       docker_base_cmd=docker_base_cmd,
       docker_tag=FLAGS.docker_tag,
