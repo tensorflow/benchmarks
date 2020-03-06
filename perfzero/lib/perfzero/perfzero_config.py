@@ -257,6 +257,14 @@ def add_benchmark_parser_arguments(parser):
       help='''A json dictionary of cloud tpu parameters. The format must look like the following:
       {"name": "my-tpu-name", project": "my-gcp-project-id", "zone": "europe-west4-a", "size": "v3-8", "version": "nightly-2.x"}
       ''')
+  parser.add_argument(
+      '--perfzero_contructor_args',
+      nargs='*',
+      default='',
+      type=str,
+      help='''A json dictionary of additional args to pass to the perfzero
+           constructor.'''
+  )
 
 
 class PerfZeroConfig(object):
