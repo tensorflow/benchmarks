@@ -258,7 +258,7 @@ def add_benchmark_parser_arguments(parser):
       {"name": "my-tpu-name", project": "my-gcp-project-id", "zone": "europe-west4-a", "size": "v3-8", "version": "nightly-2.x"}
       ''')
   parser.add_argument(
-      '--perfzero_contructor_args',
+      '--perfzero_constructor_args',
       nargs='*',
       default='',
       type=str,
