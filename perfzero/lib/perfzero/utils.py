@@ -445,12 +445,17 @@ def print_thread_stacktrace():
     traceback.print_stack(frame)
 
 
-def instantiate_benchmark_class(benchmark_class, output_dir, root_data_dir, tpu):
+def instantiate_benchmark_class(
+    benchmark_class, output_dir, root_data_dir, tpu, benchmark_args):
   """Return initialized benchmark class."""
   module_import_path, class_name = benchmark_class.rsplit('.', 1)
   module = importlib.import_module(module_import_path)
   class_ = getattr(module, class_name)
-  instance = class_(output_dir=output_dir, root_data_dir=root_data_dir, tpu=tpu)
+  instance = class_(
+      output_dir=output_dir,
+      root_data_dir=root_data_dir,
+      tpu=tpu,
+      **benchmark_args)
 
   return instance
 
