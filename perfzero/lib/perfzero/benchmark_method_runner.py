@@ -88,8 +88,8 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
       tpu = config.tpu_parameters.get('name')
     else:
       tpu = None
-    if config.perfzero_contructor_args:
-      constructor_args = json.loads(config.perfzero_contructor_args)
+    if config.perfzero_constructor_args:
+      constructor_args = json.loads(config.perfzero_constructor_args)
     else:
       constructor_args = {}
     class_instance = utils.instantiate_benchmark_class(
