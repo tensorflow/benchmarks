@@ -89,15 +89,15 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
     else:
       tpu = None
     if config.perfzero_contructor_args:
-      benchmark_args = json.loads(config.perfzero_contructor_args)
+      constructor_args = json.loads(config.perfzero_contructor_args)
     else:
-      benchmark_args = {}
+      constructor_args = {}
     class_instance = utils.instantiate_benchmark_class(
         benchmark_class=benchmark_class,
         output_dir=model_output_dir,
         root_data_dir=config.root_data_dir,
         tpu=tpu,
-        benchmark_args = benchmark_args)
+        constructor_args=constructor_args)
     # tf.test.Benchmark.report_benchmark() writes results to a file with
     # path benchmark_result_file_path_prefix + benchmark_method
     benchmark_result_file_path_prefix = os.path.join(output_dir, 'proto_')
