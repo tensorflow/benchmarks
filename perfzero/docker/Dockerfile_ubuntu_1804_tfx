@@ -106,9 +106,20 @@ RUN if [ ${use_github_version} = 1 ]; then \
       # Note that the order matters - we want to install tf.Transform and \
       # tf.ModelAnalysis after TFX so they override the version associated \
       # with TFX. \
-      pip install -e git+https://github.com/tensorflow/tfx.git#egg=tfx; \
-      pip install -e git+https://github.com/tensorflow/transform.git#egg=tensorflow_transform; \
-      pip install -e git+https://github.com/tensorflow/model-analysis.git#egg=tensorflow_model_analysis; \
+      TFX_HEAD_COMMIT_ID=$(git ls-remote https://github.com/tensorflow/tfx refs/heads/master | cut -f1); \
+      echo TFX_HEAD_COMMIT_ID=${TFX_HEAD_COMMIT_ID}; \
+      pip install -e git+https://github.com/tensorflow/tfx.git@${TFX_HEAD_COMMIT_ID}#egg=tfx; \
+      echo "GIT_COMMIT_ID='${TFX_HEAD_COMMIT_ID}'" >> $(python3 -c 'import tfx; print(tfx.__path__[0])')/__init__.py; \
+      \
+      TFT_HEAD_COMMIT_ID=$(git ls-remote https://github.com/tensorflow/transform refs/heads/master | cut -f1); \
+      echo TFT_HEAD_COMMIT_ID=${TFT_HEAD_COMMIT_ID}; \
+      pip install -e git+https://github.com/tensorflow/transform.git@${TFT_HEAD_COMMIT_ID}#egg=tensorflow_transform; \
+      echo "GIT_COMMIT_ID='${TFT_HEAD_COMMIT_ID}'" >> $(python3 -c 'import tensorflow_transform; print(tensorflow_transform.__path__[0])')/__init__.py; \
+      \
+      TFMA_HEAD_COMMIT_ID=$(git ls-remote https://github.com/tensorflow/model-analysis refs/heads/master | cut -f1); \
+      echo TFMA_HEAD_COMMIT_ID=${TFMA_HEAD_COMMIT_ID}; \
+      pip install -e git+https://github.com/tensorflow/model-analysis.git@${TFMA_HEAD_COMMIT_ID}#egg=tensorflow_model_analysis; \
+      echo "GIT_COMMIT_ID='${TFMA_HEAD_COMMIT_ID}'" >> $(python3 -c 'import tensorflow_model_analysis; print(tensorflow_model_analysis.__path__[0])')/__init__.py; \
     else \
       # Install from released versions. \
       # For TFX we want to install from GitHub, so we get the data files as \
