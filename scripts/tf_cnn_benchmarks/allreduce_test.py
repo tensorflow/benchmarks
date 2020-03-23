@@ -60,10 +60,10 @@ class AllReduceTest(tf.test.TestCase):
     g6 = allreduce.collective_group_key(d6)
     self.assertEqual(g0, g1)
     self.assertEqual(g0, g2)
-    self.assertTrue(g0 != g3)
+    self.assertNotEqual(g0, g3)
     self.assertEqual(g3, g4)
     self.assertEqual(g5, g6)
-    self.assertTrue(g4 != g5)
+    self.assertNotEqual(g4, g5)
 
   def testExtractRanges(self):
     x = []
@@ -155,7 +155,7 @@ class AllReduceTest(tf.test.TestCase):
                       0, 1, 2, 3, 4, 5, 6, 7, 8], dtype=tf.float32)
     packed_gv = [tc, 'packing_var_placeholder']
     gv = allreduce.unpack_grad_tuple(packed_gv, packing['0:0'])
-    self.assertEqual(4, len(gv))
+    self.assertLen(gv, 4)
     self.assertEqual('v0', gv[0][1])
     self.assertEqual('v1', gv[1][1])
     self.assertEqual('v2', gv[2][1])
@@ -184,16 +184,16 @@ class AllReduceTest(tf.test.TestCase):
         tower_grads, max_bytes=12,
         max_group=10)
     self.assertEqual(tower_grads, new_tower_grads)
-    self.assertTrue(packing is None)
+    self.assertIs(packing, None)
 
     # 2) Set the size limit so only the first two tensors get concatenated
     new_tower_grads, packing = allreduce.pack_small_tensors(
         tower_grads, max_bytes=16,  # 16 bytes == 4 elements
         max_group=10)
-    self.assertEqual(3, len(new_tower_grads))
-    self.assertEqual(4, len(tower_grads[0]))
+    self.assertLen(new_tower_grads, 3)
+    self.assertLen(tower_grads[0], 4)
     first_tower = new_tower_grads[0]
-    self.assertEqual(3, len(first_tower))
+    self.assertLen(first_tower, 3)
     self.assertEqual(1, first_tower[0][0].shape.ndims)
     self.assertEqual(8, first_tower[0][0].shape.dims[0])
     self.assertEqual(packing,
@@ -217,9 +217,9 @@ class AllReduceTest(tf.test.TestCase):
     new_tower_grads, packing = allreduce.pack_small_tensors(
         tower_grads, max_bytes=256,   # bytes = 64 elements
         max_group=10)
-    self.assertEqual(3, len(new_tower_grads))
-    self.assertEqual(4, len(tower_grads[0]))
-    self.assertEqual(1, len(new_tower_grads[0]))
+    self.assertLen(new_tower_grads, 3)
+    self.assertLen(tower_grads[0], 4)
+    self.assertLen(new_tower_grads[0], 1)
     first_tower = new_tower_grads[0]
     self.assertEqual(1, first_tower[0][0].shape.ndims)
     self.assertEqual(26, first_tower[0][0].shape.dims[0])
@@ -275,9 +275,9 @@ class AllReduceTest(tf.test.TestCase):
                    (t1, 'v_%d_2' % d), (t3, 'v_%d_5' %d)]
       tower_grads.append(one_tower)
     new_tower_grads = allreduce.unpack_small_tensors(tower_grads, packing)
-    self.assertEqual(2, len(new_tower_grads))
+    self.assertLen(new_tower_grads, 2)
     for d, tg in enumerate(new_tower_grads):
-      self.assertEqual(6, len(tg))
+      self.assertLen(tg, 6)
       self.assertEqual('v_%d_0' % d, tg[0][1])
       self.assertEqual('v_%d_1' % d, tg[1][1])
       self.assertEqual('v_%d_2' % d, tg[2][1])
