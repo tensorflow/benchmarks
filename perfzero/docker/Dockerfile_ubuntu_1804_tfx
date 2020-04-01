@@ -128,7 +128,9 @@ RUN if [ ${use_github_version} = 1 ]; then \
       # tag in GitHub. \
       LATEST_TFX_VERSION=$(yolk -V tfx | head -n 1 | cut -d' ' -f 2-); \
       echo LATEST_TFX_VERSION=${LATEST_TFX_VERSION}; \
-      pip install -e git+https://github.com/tensorflow/tfx.git@${LATEST_TFX_VERSION}#egg=tfx; \
+      # Note that the GitHub tag has an 'r' prefix, so version 0.21.0 has \
+      # tag 'r0.21.2' \
+      pip install -e git+https://github.com/tensorflow/tfx.git@r${LATEST_TFX_VERSION}#egg=tfx; \
       pip install tensorflow-transform; \
       pip install tensorflow-model-analysis; \
     fi;
