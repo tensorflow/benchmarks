@@ -81,7 +81,7 @@ RUN pip3 install --upgrade pip
 RUN pip install wheel
 RUN pip install --upgrade setuptools google-api-python-client pyyaml google-cloud google-cloud-bigquery mock
 RUN pip install absl-py
-RUN pip install --upgrade --force-reinstall ${tensorflow_pip_spec} ${extra_pip_specs}
+RUN if [ ! -z "${extra_pip_specs}" ]; then pip install --upgrade --force-reinstall ${extra_pip_specs}; fi
 RUN pip install tfds-nightly
 RUN pip install -U scikit-learn
 
@@ -132,5 +132,10 @@ RUN if [ ${use_github_version} = 1 ]; then \
       pip install tensorflow-transform; \
       pip install tensorflow-model-analysis; \
     fi;
+
+# Uninstall the TensorFlow version that TFX / the TFX components installed, and
+# force install the version requested.
+RUN pip uninstall -y tensorflow
+RUN pip install --upgrade --force-reinstall ${tensorflow_pip_spec}
 
 RUN pip freeze
