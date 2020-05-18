@@ -159,7 +159,7 @@ python3 /workspace/perfzero/lib/benchmark.py \
 
 Here are the instructions that developers of benchmark method needs to follow in
 order to run benchmark method in PerfZero. See
-[estimator_benchmark.py](https://github.com/tensorflow/models/blob/master/official/resnet/estimator_benchmark.py)
+[estimator_benchmark.py](https://github.com/tensorflow/models/blob/master/official/r1/resnet/estimator_benchmark.py)
 for example test code that supports PerfZero.
 
 1) The benchmark class should extend the TensorFlow python class
