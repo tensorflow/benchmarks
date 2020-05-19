@@ -1471,6 +1471,8 @@ class BenchmarkCNN(object):
     if use_controller and not params.controller_host:
       raise ValueError('When variable_update==distributed_all_reduce '
                        'controller_host must also be specified.')
+    self.single_session = (
+        self.params.variable_update == 'distributed_all_reduce')
     # collective_all_reduce doesn't need a controller or ps
     self.distributed_collective = (
         self.params.variable_update == 'collective_all_reduce' and
@@ -2101,12 +2103,10 @@ class BenchmarkCNN(object):
       A namedtuple containing the ops/tensors that required by
       _benchmark_graph().
     """
-    if self.params.variable_update == 'distributed_all_reduce':
-      self.single_session = True
+    if self.single_session:
       (input_producer_op, enqueue_ops, fetches) = (
           self._build_model_single_session())
     else:
-      self.single_session = False
       (input_producer_op, enqueue_ops, fetches) = self._build_model()
     fetches_list = nest.flatten(list(fetches.values()))
     main_fetch_group = tf.group(*fetches_list, name='main_fetch_group')
@@ -2903,7 +2903,10 @@ class BenchmarkCNN(object):
         key = name[len(constants.UNREDUCED_ACCURACY_OP_PREFIX):]
         fetches[key] = tf.concat(ops, 0)
       else:
-        fetches[name] = tf.reduce_sum(ops) / self.batch_size
+        fetches[name] = (
+            tf.reduce_sum(ops) /
+            (self.batch_size *
+             (self.num_workers if self.single_session else 1)))
         if self.task_index == 0 and self.params.summary_verbosity >= 1:
           tf.summary.scalar(name, fetches[name])
 
