@@ -840,6 +840,7 @@ def benchmark_one_step(sess,
                        partitioned_graph_file_prefix,
                        profiler,
                        image_producer,
+                       is_chief,
                        params,
                        summary_op=None,
                        show_images_per_sec=True,
@@ -903,7 +904,7 @@ def benchmark_one_step(sess,
   if need_options_and_metadata:
     if should_profile:
       profiler.add_step(step, run_metadata)
-    if trace_filename and step == -2:
+    if trace_filename and step == -2 and is_chief:
       log_fn('Dumping trace to %s' % trace_filename)
       trace_dir = os.path.dirname(trace_filename)
       if not gfile.Exists(trace_dir):
@@ -914,7 +915,7 @@ def benchmark_one_step(sess,
           trace_file.write(trace.generate_chrome_trace_format(show_memory=True))
         else:
           trace_file.write(str(run_metadata.step_stats))
-    if partitioned_graph_file_prefix and step == -2:
+    if partitioned_graph_file_prefix and step == -2 and is_chief:
       path, filename = os.path.split(partitioned_graph_file_prefix)
       if '.' in filename:
         base_filename, ext = filename.rsplit('.', 1)
@@ -2425,7 +2426,7 @@ class BenchmarkCNN(object):
           self.batch_size * (self.num_workers
                              if self.single_session else 1), step_train_times,
           self.trace_filename, self.params.partitioned_graph_file_prefix,
-          profiler, image_producer, self.params, fetch_summary,
+          profiler, image_producer, is_chief, self.params, fetch_summary,
           benchmark_logger=self.benchmark_logger,
           collective_graph_key=collective_graph_key)
       if summary_str is not None and is_chief:
