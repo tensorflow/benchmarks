@@ -99,10 +99,10 @@ with TensorFlow 2.0 nightly build. For info on the args read the
 
 ```bash
 python3 /workspace/perfzero/lib/benchmark.py \
---git_repos="https://github.com/tensorflow/models.git" \
+--git_repos="https://github.com/tensorflow/models.git;tf_2_1_reference" \
 --python_path=models \
 --data_downloads="gs://tf-perf-imagenet-uswest1/tensorflow/cifar10_data/cifar-10-batches-bin" \
---benchmark_methods=official.resnet.keras.keras_cifar_benchmark.Resnet56KerasBenchmarkReal.benchmark_1_gpu_no_dist_strat
+--benchmark_methods=official.r1.resnet.keras.keras_cifar_benchmark.Resnet56KerasBenchmarkReal.benchmark_1_gpu_no_dist_strat
 ```
 
 For all options that can be used when executing a test checkout the public
