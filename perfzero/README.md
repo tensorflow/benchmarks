@@ -102,7 +102,7 @@ python3 /workspace/perfzero/lib/benchmark.py \
 --git_repos="https://github.com/tensorflow/models.git" \
 --python_path=models \
 --data_downloads="gs://tf-perf-imagenet-uswest1/tensorflow/cifar10_data/cifar-10-batches-bin" \
---benchmark_methods=official.resnet.keras.keras_cifar_benchmark.Resnet56KerasBenchmarkReal.benchmark_1_gpu_no_dist_strat
+--benchmark_methods=official.benchmark.keras_cifar_benchmark.Resnet56KerasBenchmarkReal.benchmark_1_gpu_no_dist_strat
 ```
 
 For all options that can be used when executing a test checkout the public
@@ -130,7 +130,7 @@ python3 /workspace/perfzero/lib/benchmark.py \
 --git_repos="https://github.com/tensorflow/models.git" \
 --python_path=models \
 --gcloud_key_file_url="" \
---benchmark_methods=official.resnet.keras.keras_cifar_benchmark.Resnet56KerasBenchmarkSynth.benchmark_1_gpu_no_dist_strat
+--benchmark_methods=official.benchmark.keras_cifar_benchmark.Resnet56KerasBenchmarkSynth.benchmark_1_gpu_no_dist_strat
 ```
 
 ## PerfZero without docker
@@ -152,7 +152,7 @@ python3 /workspace/perfzero/lib/benchmark.py \
 --git_repos="https://github.com/tensorflow/models.git" \
 --python_path=models \
 --data_downloads="gs://tf-perf-imagenet-uswest1/tensorflow/cifar10_data/cifar-10-batches-bin" \
---benchmark_methods=official.resnet.estimator_benchmark.Resnet50EstimatorBenchmarkReal.benchmark_graph_1_gpu
+--benchmark_methods=official.r1.resnet.estimator_benchmark.Resnet50EstimatorBenchmarkReal.benchmark_graph_1_gpu
 ```
 
 # Creating tests
@@ -243,7 +243,7 @@ python3 /workspace/benchmarks/perfzero/lib/benchmark.py \
 --gcloud_key_file_url="" \
 --git_repos="https://github.com/tensorflow/models.git" \
 --python_path=models \
---benchmark_methods=official.resnet.estimator_benchmark.Resnet50EstimatorBenchmarkSynth.benchmark_graph_1_gpu \
+--benchmark_methods=official.r1.resnet.estimator_benchmark.Resnet50EstimatorBenchmarkSynth.benchmark_graph_1_gpu \
 --root_data_dir=$ROOT_DATA_DIR
 ```
 
