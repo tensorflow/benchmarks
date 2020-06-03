@@ -25,6 +25,8 @@ import threading
 import traceback
 import requests
 
+import perfzero.tpu_utils as tpu_utils
+
 
 def create_empty_file(parent_directory, file_basename):
   """Creates an empty file with a given basename in a parent directory.
@@ -384,6 +386,7 @@ def setup_tpu(parameters):
     exit_code, output = run_command(command)
     if exit_code != 0:
       logging.error('Error in setup with output: %s', output)
+    logging.info('Output from setting up tpu: %s', output)
     return exit_code != 0
   except Exception:
     logging.error('Unable to setup TPU')
