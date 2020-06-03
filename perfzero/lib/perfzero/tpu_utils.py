@@ -1,7 +1,7 @@
 """Utility to manage the tpu version before starting the benchmark."""
 
 import json
-import logging
+from absl import logging
 
 from six.moves.urllib import request
 
@@ -35,6 +35,7 @@ def _get_content(url):
 
 def get_tpu_version(tpu_address):
   """Returns the current software version on tpu."""
+  logging.info('Trying to connect to tpu %s', tpu_address)
   tpu_client = client.Client(tpu=tpu_address)
   tpu_client.wait_for_healthy()
   runtime_version = tpu_client.runtime_version()
@@ -46,3 +47,6 @@ def get_tpu_version(tpu_address):
   else:
     logging.error('No tpu endpoint info')
     return None
+  
+def configure_tpu(tpu_params):
+  get_tpu_version(tpu_params.get('name'))
