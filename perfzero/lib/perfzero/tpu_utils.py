@@ -1,11 +1,11 @@
 """Utility to manage the tpu version before starting the benchmark."""
 
+import json
+
 from absl import app
 from absl import flags
 from absl import logging
-import json
 from six.moves.urllib import request
-
 
 try:
   from cloud_tpu_client import client  # pylint: disable=g-import-not-at-top
@@ -23,11 +23,14 @@ FLAGS = flags.FLAGS
 
 
 def _as_text(s):
+  """Converts a byte/string into string."""
   if isinstance(s, bytes):
     return s.decode('utf-8')
   return s
-  
+
+
 def _get_content(url):
+  """Opens the url and loads the response into json."""
   req = request.Request(url, data=b'')
   resp = request.urlopen(req)
   resp_text = _as_text(resp.read())
@@ -38,6 +41,7 @@ def _get_content(url):
 
 
 def get_tpu_version(tpu_address):
+  """Returns the current software version on tpu."""
   tpu_client = client.Client(tpu=tpu_address)
   tpu_client.wait_for_healthy()
   runtime_version = tpu_client.runtime_version()
@@ -49,7 +53,7 @@ def get_tpu_version(tpu_address):
   else:
     logging.error('No tpu endpoint info')
     return None
-    
+
 
 def main(unused_argv):
   tpu_address = FLAGS.started_tpu_address
