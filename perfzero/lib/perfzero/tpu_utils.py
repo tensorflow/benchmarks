@@ -39,6 +39,10 @@ def get_tpu_version(tpu_address):
   tpu_client = client.Client(tpu=tpu_address)
   tpu_client.wait_for_healthy()
   runtime_version = tpu_client.runtime_version()
+  logging.info('runtime_version returned: %s', runtime_version)
+  local_ip = tpu_client.get_local_ip()
+  logging.info('local_ip: %s', local_ip)
+  
   workers = tpu_client.network_endpoints()
   if workers:
     ip_addr = workers[0]['ipAddress']
