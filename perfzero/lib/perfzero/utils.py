@@ -25,9 +25,6 @@ import threading
 import traceback
 import requests
 
-import perfzero.tpu_utils as tpu_utils
-
-
 def create_empty_file(parent_directory, file_basename):
   """Creates an empty file with a given basename in a parent directory.
 
