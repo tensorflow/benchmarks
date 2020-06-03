@@ -31,6 +31,7 @@ def _as_text(s):
 
 def _get_content(url):
   """Opens the url and loads the response into json."""
+  logging.info('opening url %s', url)
   req = request.Request(url, data=b'')
   resp = request.urlopen(req)
   resp_text = _as_text(resp.read())
