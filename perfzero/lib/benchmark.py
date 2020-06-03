@@ -27,6 +27,7 @@ import time
 import perfzero.benchmark_method_runner as benchmark_method_runner
 import perfzero.perfzero_config as perfzero_config
 import perfzero.utils as utils
+import perfzero.tpu_utils as tpu_runtime_utils
 
 
 class BenchmarkRunner(object):
