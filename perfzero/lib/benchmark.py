@@ -74,6 +74,7 @@ class BenchmarkRunner(object):
     if self.config.tpu_parameters is not None:
       start_time = time.time()
       utils.setup_tpu(self.config.tpu_parameters)
+      tpu_runtime_utils.configure_tpu(self.config.tpu_parameters)
       self.benchmark_execution_time['start_tpu'] = time.time() - start_time
 
     self.stream_handler = logging.StreamHandler(sys.stdout)
