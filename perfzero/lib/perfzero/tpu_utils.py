@@ -43,14 +43,18 @@ def get_tpu_version(tpu_address):
   local_ip = tpu_client.get_local_ip()
   logging.info('local_ip: %s', local_ip)
   
-  workers = tpu_client.network_endpoints()
-  if workers:
-    ip_addr = workers[0]['ipAddress']
-    url = 'http://{}:8475/requestversion'.format(ip_addr)
-    return _get_content(url)
-  else:
-    logging.error('No tpu endpoint info')
-    return None
+  url = 'http://{}:8475/requestversion'.format(local_ip)
+  return _get_content(url)
+
+  # The below line fails with 501 - not implemented
+  #workers = tpu_client.network_endpoints()
+  #if workers:
+  #  ip_addr = workers[0]['ipAddress']
+  #  url = 'http://{}:8475/requestversion'.format(ip_addr)
+  #  return _get_content(url)
+  #else:
+  #  logging.error('No tpu endpoint info')
+  #  return None
   
 def configure_tpu(tpu_params):
   get_tpu_version(tpu_params.get('name'))
