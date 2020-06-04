@@ -111,12 +111,12 @@ class BenchmarkRunner(object):
   def run_benchmark(self):
     """Run benchmark."""
     harness_info = utils.get_git_repo_info(self.project_dir)
-    site_package_info = self._setup()
-    has_exception = False
-    benchmark_success_results = {}
-    benchmark_output_dirs = {}
-
     try:
+      site_package_info = self._setup()
+      has_exception = False
+      benchmark_success_results = {}
+      benchmark_output_dirs = {}
+
       for benchmark_method in self._get_benchmark_methods():
         # Run the benchmark method in a separate process so that its memory usage
         # will not affect the execution of other benchmark method
