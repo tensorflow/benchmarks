@@ -9,9 +9,32 @@ FROM nvidia/cuda:10.0-base-ubuntu18.04 as base
 ARG tensorflow_pip_spec="tf-nightly-gpu"
 ARG local_tensorflow_pip_spec=""
 ARG extra_pip_specs=""
-# If 1, use the GitHub HEAD version for TFX, tf.Transform and tf.ModelAnalysis.
-# Otherwise, use the released PyPI packages.
-ARG use_github_version=1
+
+# Specifies the default package version to use if no corresponding commit_id
+# override is specified.
+# If "head", uses the GitHub HEAD version.
+# If "release", uses the latest released version from PyPI, REGARDLESS of
+# package-compatibility requirements (e.g. even if tfx requires
+# tensorflow-model-analysis<0.22, if tensorflow-model-analysis==0.22.0 is
+# the latest released version on PyPI, we will install that).
+# Packages include: tfx, tensorflow-transform, tensorflow-model-analysis,
+# tensorflow-data-validation, tensorflow-metadata, tfx-bsl
+ARG default_package_version="head"
+
+# Specifies the package version to use for the corresponding packages.
+# If empty, uses the default specified by default_package_version.
+# If "head", uses the GitHub HEAD version.
+# If "release", uses the latest released version from PyPI, REGARDLESS of
+# package-compatibility requirements.
+# If "github_commit:<commit id>", uses the given commit ID from GitHub.
+# If "github_tag:<tag>" uses the given tag from GitHub.
+# If "pypi:<version string>", uses the given package version from PyPI.
+ARG tfx_package_version=""
+ARG tensorflow_transform_package_version=""
+ARG tensorflow_model_analysis_package_version=""
+ARG tensorflow_data_validation_package_version=""
+ARG tensorflow_metadata_package_version=""
+ARG tfx_bsl_version=""
 
 # setup.py passes the base path of local .whl file is chosen for the docker image.
 # Otherwise passes an empty existing file from the context.
@@ -99,41 +122,71 @@ RUN PROTOC_ZIP=protoc-3.7.1-linux-x86_64.zip; \
     unzip -o $PROTOC_ZIP -d /usr/local 'include/*'; \
     rm -f $PROTOC_ZIP;
 
-# Install TFX, tf.Transform and tf.ModelAnalysis.
-RUN if [ ${use_github_version} = 1 ]; then \
-      # Install from GitHub. Install TFX, tf.Transform and \
-      # tf.ModelAnalysis all from the HEAD revision on GitHub. \
-      # Note that the order matters - we want to install tf.Transform and \
-      # tf.ModelAnalysis after TFX so they override the version associated \
-      # with TFX. \
-      TFX_HEAD_COMMIT_ID=$(git ls-remote https://github.com/tensorflow/tfx refs/heads/master | cut -f1); \
-      echo TFX_HEAD_COMMIT_ID=${TFX_HEAD_COMMIT_ID}; \
-      pip install -e git+https://github.com/tensorflow/tfx.git@${TFX_HEAD_COMMIT_ID}#egg=tfx; \
-      echo "GIT_COMMIT_ID='${TFX_HEAD_COMMIT_ID}'" >> $(python3 -c 'import tfx; print(tfx.__path__[0])')/__init__.py; \
-      \
-      TFT_HEAD_COMMIT_ID=$(git ls-remote https://github.com/tensorflow/transform refs/heads/master | cut -f1); \
-      echo TFT_HEAD_COMMIT_ID=${TFT_HEAD_COMMIT_ID}; \
-      pip install -e git+https://github.com/tensorflow/transform.git@${TFT_HEAD_COMMIT_ID}#egg=tensorflow_transform; \
-      echo "GIT_COMMIT_ID='${TFT_HEAD_COMMIT_ID}'" >> $(python3 -c 'import tensorflow_transform; print(tensorflow_transform.__path__[0])')/__init__.py; \
-      \
-      TFMA_HEAD_COMMIT_ID=$(git ls-remote https://github.com/tensorflow/model-analysis refs/heads/master | cut -f1); \
-      echo TFMA_HEAD_COMMIT_ID=${TFMA_HEAD_COMMIT_ID}; \
-      pip install -e git+https://github.com/tensorflow/model-analysis.git@${TFMA_HEAD_COMMIT_ID}#egg=tensorflow_model_analysis; \
-      echo "GIT_COMMIT_ID='${TFMA_HEAD_COMMIT_ID}'" >> $(python3 -c 'import tensorflow_model_analysis; print(tensorflow_model_analysis.__path__[0])')/__init__.py; \
+SHELL ["/bin/bash", "-c"]
+RUN \
+  function install_package { \
+    # e.g. "head" or "release" \
+    default_version="$1"; \
+    # e.g "tensorflow-model-analysis" \
+    package_name="$2"; \
+    # e.g "model-analysis" \
+    package_repo_name="$3"; \
+    # e.g. "pypi:0.21.4" or "github:[commit hash]"
+    package_version="$4"; \
+    \
+    # e.g. "tensorflow_model_analysis" \
+    package_name_underscores=${package_name//-/_}; \
+    if [ "$package_version" == "" ]; then \
+      package_version="$default_version"; \
+    fi; \
+    \
+    commit_id=""; \
+    pypi_version=""; \
+    if [ "$package_version" == "head" ]; then \
+      commit_id=$(git ls-remote https://github.com/tensorflow/${package_repo_name} refs/heads/master | cut -f1); \
+      echo ${package_name}: latest commit from GitHub: ${commit_id}; \
+    elif [ "$package_version" == "release" ]; then \
+      pypi_version=$(yolk -V $package_name | head -n 1 | cut -d' ' -f 2-); \
+      echo ${package_name}: latest version from PyPI: ${pypi_version}; \
+    elif [ "${package_version:0:5}" == "pypi:" ]; then \
+      pypi_version="${package_version:5}"; \
+      echo ${package_name}: using specified PyPI version: ${pypi_version}; \
+    elif [ "${package_version:0:7}" == "github:" ]; then \
+      commit_id="${package_version:7}"; \
+      echo ${package_name}: using specified GitHub commit: ${commit_id}; \
     else \
-      # Install from released versions. \
-      # For TFX we want to install from GitHub, so we get the data files as \
-      # well (they are not included in the pip package). We use yolk to \
-      # find the latest version from PyPI, and then find the corresponding \
-      # tag in GitHub. \
-      LATEST_TFX_VERSION=$(yolk -V tfx | head -n 1 | cut -d' ' -f 2-); \
-      echo LATEST_TFX_VERSION=${LATEST_TFX_VERSION}; \
-      # Note that the GitHub tag has an 'r' prefix, so version 0.21.0 has \
-      # tag 'r0.21.2' \
-      pip install -e git+https://github.com/tensorflow/tfx.git@r${LATEST_TFX_VERSION}#egg=tfx; \
-      pip install tensorflow-transform; \
-      pip install tensorflow-model-analysis; \
-    fi;
+      echo Unknown package version for ${package_name}: ${package_version}; \
+      exit 1; \
+    fi; \
+    \
+    if [ "$commit_id" != "" ]; then \
+      pip install -e git+https://github.com/tensorflow/${package_repo_name}.git@${commit_id}#egg=${package_name_underscores}; \
+      echo "GIT_COMMIT_ID='${commit_id}'" >> $(python3 -c "import ${package_name_underscores}; print(${package_name_underscores}.__path__[0])")/__init__.py; \
+      echo Installed ${package_name} from GitHub commit ${commit_id}; \
+    elif [ "$pypi_version" != "" ]; then \
+      if [ "$package_name" == "tfx" ]; then \
+	# Special handling for TFX - we want to install from GitHub so we get \
+	# the data files as well (they are not included in the pip package). \
+	# Install from the corresponding tag in GitHub. \
+	echo Special handling for tfx: will install tfx from GitHub tag for version ${pypi_version}; \
+	pip install -e git+https://github.com/tensorflow/tfx.git@r${pypi_version}#egg=tfx; \
+	echo Installed tfx from GitHub tag for version ${pypi_version}; \
+      else \
+	pip install ${package_name}==${pypi_version}; \
+	echo Installed ${package_name} from PyPI version ${pypi_version}; \
+      fi; \
+    else \
+      echo Neither commit_id nor pypi_version was set for ${package_name}; \
+      exit 1; \
+    fi; \
+  }; \
+  \
+  install_package "${default_package_version}" "tfx" "tfx" "${tfx_package_version}"; \
+  install_package "${default_package_version}" "tensorflow-transform" "transform" "${tensorflow_transform_package_version}"; \
+  install_package "${default_package_version}" "tensorflow-model-analysis" "model-analysis" "${tensorflow_model_analysis_package_version}"; \
+  install_package "${default_package_version}" "tensorflow-data-validation" "data-validation" "${tensorflow_data_validation_package_version}"; \
+  install_package "${default_package_version}" "tensorflow-metadata" "metadata" "${tensorflow_metadata_package_version}"; \
+  install_package "${default_package_version}" "tfx-bsl" "tfx-bsl" "${tfx_bsl_package_version}";
 
 # Uninstall the TensorFlow version that TFX / the TFX components installed, and
 # force install the version requested.
