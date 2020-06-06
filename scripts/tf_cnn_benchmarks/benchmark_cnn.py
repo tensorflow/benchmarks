@@ -922,7 +922,7 @@ def benchmark_one_step(sess,
         ext = '.' + ext
       else:
         base_filename, ext = filename, ''
-      as_text = filename.endswith('txt')
+      as_text = filename.endswith('txt') or filename.endswith('pbtxt')
       for graph_def in run_metadata.partition_graphs:
         device = graph_def.node[0].device.replace('/', '_').replace(':', '_')
         graph_filename = '%s%s%s' % (base_filename, device, ext)
