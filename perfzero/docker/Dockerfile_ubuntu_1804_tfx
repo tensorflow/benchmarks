@@ -122,6 +122,14 @@ RUN PROTOC_ZIP=protoc-3.7.1-linux-x86_64.zip; \
     unzip -o $PROTOC_ZIP -d /usr/local 'include/*'; \
     rm -f $PROTOC_ZIP;
 
+# Install Bazel
+RUN curl https://bazel.build/bazel-release.pub.gpg | apt-key add -
+RUN echo "deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8" | tee /etc/apt/sources.list.d/bazel.list
+RUN apt update
+RUN apt install bazel
+# Create symlink to "python3" binary under the name "python" so Bazel doesn't complain about "python" not being found
+RUN ln -s $(which python3) /usr/bin/python
+
 SHELL ["/bin/bash", "-c"]
 RUN \
   function install_package { \
@@ -131,8 +139,11 @@ RUN \
     package_name="$2"; \
     # e.g "model-analysis" \
     package_repo_name="$3"; \
-    # e.g. "pypi:0.21.4" or "github:[commit hash]"
-    package_version="$4"; \
+    # Whether this package needs to be built using Bazel if installed from \
+    # GitHub. Should be 0 or 1. \
+    package_needs_bazel_build=$4; \
+    # e.g. "head" or "release" or "pypi:0.21.4" or "github:[commit hash]" \
+    package_version="$5"; \
     \
     # e.g. "tensorflow_model_analysis" \
     package_name_underscores=${package_name//-/_}; \
@@ -160,9 +171,26 @@ RUN \
     fi; \
     \
     if [ "$commit_id" != "" ]; then \
-      pip install -e git+https://github.com/tensorflow/${package_repo_name}.git@${commit_id}#egg=${package_name_underscores}; \
-      echo "GIT_COMMIT_ID='${commit_id}'" >> $(python3 -c "import ${package_name_underscores}; print(${package_name_underscores}.__path__[0])")/__init__.py; \
-      echo Installed ${package_name} from GitHub commit ${commit_id}; \
+      if [ $package_needs_bazel_build == 0 ]; then \
+        # Package doesn't need to be built using Bazel - install directly from GitHub. \
+        pip install -e git+https://github.com/tensorflow/${package_repo_name}.git@${commit_id}#egg=${package_name_underscores}; \
+        echo Installed ${package_name} from GitHub commit ${commit_id}; \
+      else \
+        # Package needs to be built using Bazel. Clone from GitHub, then build and install. \
+        git clone https://github.com/tensorflow/${package_repo_name}.git; \
+        pushd ${package_repo_name}; \
+        git checkout @${commit_id}; \
+        # Run configure.sh if it exists (e.g. for tfx-bsl). \
+        if [ -f "./configure.sh" ]; then \
+          ./configure.sh; \
+        fi; \
+        bazel run -c opt --cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0 ${package_name_underscores}:build_pip_package; \
+        pip install dist/*.whl; \
+        popd; \
+        echo Built and installed ${package_name} from GitHub commit ${commit_id}; \	
+      fi; \
+      # Write GIT_COMMIT_ID attribute to the installed package. \
+      echo "GIT_COMMIT_ID='${commit_id}'" >> $(python3 -c "import ${package_name_underscores}; print(${package_name_underscores}.__path__[0])")/__init__.py; \      
     elif [ "$pypi_version" != "" ]; then \
       if [ "$package_name" == "tfx" ]; then \
 	# Special handling for TFX - we want to install from GitHub so we get \
@@ -181,12 +209,12 @@ RUN \
     fi; \
   }; \
   \
-  install_package "${default_package_version}" "tfx" "tfx" "${tfx_package_version}"; \
-  install_package "${default_package_version}" "tensorflow-transform" "transform" "${tensorflow_transform_package_version}"; \
-  install_package "${default_package_version}" "tensorflow-model-analysis" "model-analysis" "${tensorflow_model_analysis_package_version}"; \
-  install_package "${default_package_version}" "tensorflow-data-validation" "data-validation" "${tensorflow_data_validation_package_version}"; \
-  install_package "${default_package_version}" "tensorflow-metadata" "metadata" "${tensorflow_metadata_package_version}"; \
-  install_package "${default_package_version}" "tfx-bsl" "tfx-bsl" "${tfx_bsl_package_version}";
+  install_package "${default_package_version}" "tfx" "tfx" 0 "${tfx_package_version}"; \
+  install_package "${default_package_version}" "tensorflow-transform" "transform" 0 "${tensorflow_transform_package_version}"; \
+  install_package "${default_package_version}" "tensorflow-model-analysis" "model-analysis" 0 "${tensorflow_model_analysis_package_version}"; \
+  install_package "${default_package_version}" "tensorflow-data-validation" "data-validation" 1 "${tensorflow_data_validation_package_version}"; \
+  install_package "${default_package_version}" "tensorflow-metadata" "metadata" 1 "${tensorflow_metadata_package_version}"; \
+  install_package "${default_package_version}" "tfx-bsl" "tfx-bsl" 1 "${tfx_bsl_package_version}";
 
 # Uninstall the TensorFlow version that TFX / the TFX components installed, and
 # force install the version requested.
