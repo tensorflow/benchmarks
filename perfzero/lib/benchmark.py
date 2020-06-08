@@ -74,7 +74,7 @@ class BenchmarkRunner(object):
     if self.config.tpu_parameters is not None:
       start_time = time.time()
       utils.setup_tpu(self.config.tpu_parameters)
-      #tpu_runtime_utils.configure_tpu(self.config.tpu_parameters)
+      tpu_runtime_utils.configure_tpu(self.config.tpu_parameters)
       site_package_info['tpu_version'] = {
         'url': 'tpu_vm',
         'branch': 'tpu',
