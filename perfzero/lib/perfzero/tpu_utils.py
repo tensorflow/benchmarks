@@ -32,7 +32,6 @@ def _get_content(url):
   logging.info('json_data = %s', json_data)
   return json_data
 
-
 def get_tpu_version(tpu_address):
   """Returns the current software version on tpu."""
   logging.info('Trying to connect to tpu %s', tpu_address)
@@ -43,18 +42,19 @@ def get_tpu_version(tpu_address):
   local_ip = tpu_client.get_local_ip()
   logging.info('local_ip: %s', local_ip)
   
-  url = 'http://{}:8475/requestversion'.format(local_ip)
-  return _get_content(url)
+  #url = 'http://{}:8475/requestversion'.format(local_ip)
+  #return _get_content(url)
 
   # The below line fails with 501 - not implemented
-  #workers = tpu_client.network_endpoints()
-  #if workers:
-  #  ip_addr = workers[0]['ipAddress']
-  #  url = 'http://{}:8475/requestversion'.format(ip_addr)
-  #  return _get_content(url)
-  #else:
-  #  logging.error('No tpu endpoint info')
-  #  return None
+  workers = tpu_client.network_endpoints()
+  if workers:
+    ip_addr = workers[0]['ipAddress']
+    url = 'http://{}:8475/requestversion'.format(ip_addr)
+    return _get_content(url)
+  else:
+    logging.error('No tpu endpoint info')
+    return None
+  
   
 def configure_tpu(tpu_params):
   get_tpu_version(tpu_params.get('name'))
