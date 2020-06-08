@@ -116,9 +116,10 @@ class BenchmarkRunner(object):
   def run_benchmark(self):
     """Run benchmark."""
     harness_info = utils.get_git_repo_info(self.project_dir)
+    has_exception = False
+    
     try:
       site_package_info = self._setup()
-      has_exception = False
       benchmark_success_results = {}
       benchmark_output_dirs = {}
 
