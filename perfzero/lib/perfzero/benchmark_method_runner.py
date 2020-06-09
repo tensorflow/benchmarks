@@ -152,7 +152,8 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
       harness_info,
       site_package_info,
       process_info,
-      method_has_exception)
+      method_has_exception,
+      is_tpu_benchmark = (config.tpu_parameters != None))
   report_utils.upload_execution_summary(
       config.bigquery_project_name,
       config.bigquery_dataset_table_name,

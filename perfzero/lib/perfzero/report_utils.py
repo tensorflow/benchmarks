@@ -172,7 +172,8 @@ def build_execution_summary(execution_timestamp, execution_id,
                             ml_framework_build_label, execution_label,
                             platform_name, system_name, output_gcs_url,
                             benchmark_result, env_vars, flags, harness_info,
-                            site_package_info, process_info, has_exception):
+                            site_package_info, process_info, has_exception,
+                            is_tpu_benchmark):
   """Builds summary of the execution."""
   # Avoids module not found during setup phase when tf is not installed yet.
   # pylint: disable=C6204
@@ -209,11 +210,12 @@ def build_execution_summary(execution_timestamp, execution_id,
     system_info['platform_name'] = platform_name
   if system_name:
     system_info['system_name'] = system_name
-  gpu_info = utils.get_gpu_info()
-  if gpu_info:
-    system_info['accelerator_driver_version'] = gpu_info['gpu_driver_version']
-    system_info['accelerator_model'] = gpu_info['gpu_model']
-    system_info['accelerator_count'] = gpu_info['gpu_count']
+  if not is_tpu_benchmark:
+    gpu_info = utils.get_gpu_info()
+    if gpu_info:
+      system_info['accelerator_driver_version'] = gpu_info['gpu_driver_version']
+      system_info['accelerator_model'] = gpu_info['gpu_model']
+      system_info['accelerator_count'] = gpu_info['gpu_count']
   system_info['cpu_model'] = utils.get_cpu_name()
   system_info['physical_cpu_count'] = psutil.cpu_count(logical=False)
   system_info['logical_cpu_count'] = psutil.cpu_count(logical=True)
