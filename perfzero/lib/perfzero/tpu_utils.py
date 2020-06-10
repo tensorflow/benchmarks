@@ -24,10 +24,10 @@ def _as_text(s):
 def _get_content(url):
   """Opens the url and loads the response into json."""
   logging.info('opening url %s', url)
-  req = request.Request(url, data=b'')
+  req = request.Request(url)
   resp = request.urlopen(req)
   resp_text = _as_text(resp.read())
-  logging.info('resp_text = %s', resp_text)
+  logging.info('response text = %s', resp_text)
   json_data = json.loads(resp_text)
   logging.info('json_data = %s', json_data)
   return json_data
