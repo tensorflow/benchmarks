@@ -27,7 +27,7 @@ import time
 import perfzero.benchmark_method_runner as benchmark_method_runner
 import perfzero.perfzero_config as perfzero_config
 import perfzero.utils as utils
-import perfzero.tpu_utils as tpu_runtime_utils
+import perfzero.tpu_runtime_utils as tpu_runtime_utils
 
 
 class BenchmarkRunner(object):
@@ -74,12 +74,8 @@ class BenchmarkRunner(object):
     if self.config.tpu_parameters is not None:
       start_time = time.time()
       utils.setup_tpu(self.config.tpu_parameters)
-      tpu_runtime_utils.configure_tpu(self.config.tpu_parameters)
-      site_package_info['tpu_version'] = {
-        'url': 'tpu_vm',
-        'branch': 'tpu',
-        'hash': 'tpu-version-id'
-      }
+      tpu_info = tpu_runtime_utils.configure_tpu(self.config.tpu_parameters)
+      site_package_info['tpu_version'] = tpu_info
       self.benchmark_execution_time['start_tpu'] = time.time() - start_time
 
     self.stream_handler = logging.StreamHandler(sys.stdout)
