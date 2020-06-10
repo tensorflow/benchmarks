@@ -27,6 +27,7 @@ import time
 import perfzero.benchmark_method_runner as benchmark_method_runner
 import perfzero.perfzero_config as perfzero_config
 import perfzero.utils as utils
+import perfzero.tpu_runtime_utils as tpu_runtime_utils
 
 
 class BenchmarkRunner(object):
@@ -73,6 +74,8 @@ class BenchmarkRunner(object):
     if self.config.tpu_parameters is not None:
       start_time = time.time()
       utils.setup_tpu(self.config.tpu_parameters)
+      tpu_info = tpu_runtime_utils.configure_tpu(self.config.tpu_parameters)
+      site_package_info['tpu_version'] = tpu_info
       self.benchmark_execution_time['start_tpu'] = time.time() - start_time
 
     self.stream_handler = logging.StreamHandler(sys.stdout)
@@ -109,12 +112,13 @@ class BenchmarkRunner(object):
   def run_benchmark(self):
     """Run benchmark."""
     harness_info = utils.get_git_repo_info(self.project_dir)
-    site_package_info = self._setup()
     has_exception = False
-    benchmark_success_results = {}
-    benchmark_output_dirs = {}
-
+    
     try:
+      site_package_info = self._setup()
+      benchmark_success_results = {}
+      benchmark_output_dirs = {}
+
       for benchmark_method in self._get_benchmark_methods():
         # Run the benchmark method in a separate process so that its memory usage
         # will not affect the execution of other benchmark method

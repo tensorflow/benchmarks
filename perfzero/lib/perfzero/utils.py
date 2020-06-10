@@ -25,7 +25,6 @@ import threading
 import traceback
 import requests
 
-
 def create_empty_file(parent_directory, file_basename):
   """Creates an empty file with a given basename in a parent directory.
 
