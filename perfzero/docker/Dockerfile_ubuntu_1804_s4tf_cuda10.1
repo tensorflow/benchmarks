@@ -129,4 +129,5 @@ RUN if ! curl -fSsL --retry 5 $swift_tf_url -o swift.tar.gz; \
 RUN mkdir usr \
     && tar -xzf swift.tar.gz --directory=usr --strip-components=1 \
     && rm swift.tar.gzENV PATH="/swift-tensorflow-toolchain/usr/bin:${PATH}"
+ENV PATH="/swift-tensorflow-toolchain/usr/bin:${PATH}"
 ENV LD_LIBRARY_PATH="/swift-tensorflow-toolchain/usr/lib/swift/linux/:${LD_LIBRARY_PATH}"
