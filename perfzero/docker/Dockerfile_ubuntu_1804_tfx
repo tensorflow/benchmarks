@@ -174,6 +174,7 @@ RUN \
       if [ $package_needs_bazel_build == 0 ]; then \
         # Package doesn't need to be built using Bazel - install directly from GitHub. \
         pip install -e git+https://github.com/tensorflow/${package_repo_name}.git@${commit_id}#egg=${package_name_underscores}; \
+	install_commands+=("pip install --force --no-deps -e git+https://github.com/tensorflow/${package_repo_name}.git@${commit_id}#egg=${package_name_underscores}"); \
         echo Installed ${package_name} from GitHub commit ${commit_id}; \
       else \
         # Package needs to be built using Bazel. Clone from GitHub, then build and install. \
@@ -186,21 +187,26 @@ RUN \
         fi; \
         bazel run -c opt --cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0 ${package_name_underscores}:build_pip_package; \
         pip install dist/*.whl; \
+	install_commands+=("pip install --force --no-deps ${PWD}/dist/*.whl"); \
         popd; \
         echo Built and installed ${package_name} from GitHub commit ${commit_id}; \	
       fi; \
       # Write GIT_COMMIT_ID attribute to the installed package. \
-      echo "GIT_COMMIT_ID='${commit_id}'" >> $(python3 -c "import ${package_name_underscores}; print(${package_name_underscores}.__path__[0])")/__init__.py; \      
+      package_path=$(python3 -c "import ${package_name_underscores}; print(${package_name_underscores}.__path__[0])"); \
+      echo "GIT_COMMIT_ID='${commit_id}'" >> ${package_path}/__init__.py; \
+      install_commands+=("echo \"GIT_COMMIT_ID='${commit_id}'\" >> ${package_path}/__init__.py;"); \
     elif [ "$pypi_version" != "" ]; then \
       if [ "$package_name" == "tfx" ]; then \
 	# Special handling for TFX - we want to install from GitHub so we get \
 	# the data files as well (they are not included in the pip package). \
 	# Install from the corresponding tag in GitHub. \
 	echo Special handling for tfx: will install tfx from GitHub tag for version ${pypi_version}; \
-	pip install -e git+https://github.com/tensorflow/tfx.git@r${pypi_version}#egg=tfx; \
+  	pip install -e git+https://github.com/tensorflow/tfx.git@r${pypi_version}#egg=tfx; \
+	install_commands+=("pip install --force --no-deps -e git+https://github.com/tensorflow/tfx.git@r${pypi_version}#egg=tfx"); \
 	echo Installed tfx from GitHub tag for version ${pypi_version}; \
       else \
 	pip install ${package_name}==${pypi_version}; \
+	install_commands+=("pip install --force --no-deps ${package_name}==${pypi_version}"); \
 	echo Installed ${package_name} from PyPI version ${pypi_version}; \
       fi; \
     else \
@@ -209,12 +215,30 @@ RUN \
     fi; \
   }; \
   \
+  # Array of commands to run post-installation. This is for forcing \
+  # installation of packages without regard to the requirements of other \
+  # packages. \
+  # The first round of installations installs the packages and their \
+  # requirements. This may result in some packages being re-installed at \
+  # versions other than the requested versions due to requirements from \
+  # other packages. \
+  # The second round of installations via install_commands \
+  # forces installations of the packages at the desired versions, ignoring \
+  # any dependencies of these packages or other packages. Note that if there \
+  # are incompatible package dependencies (e.g. tfx depends on \
+  # apache-beam==2.21 and tensorflow-transform depends on apache-beam==2.22 \
+  # then either could be installed depending on the installation order). \
+  install_commands=(); \  
   install_package "${default_package_version}" "tfx" "tfx" 0 "${tfx_package_version}"; \
   install_package "${default_package_version}" "tensorflow-transform" "transform" 0 "${tensorflow_transform_package_version}"; \
   install_package "${default_package_version}" "tensorflow-model-analysis" "model-analysis" 0 "${tensorflow_model_analysis_package_version}"; \
   install_package "${default_package_version}" "tensorflow-data-validation" "data-validation" 1 "${tensorflow_data_validation_package_version}"; \
   install_package "${default_package_version}" "tensorflow-metadata" "metadata" 1 "${tensorflow_metadata_package_version}"; \
-  install_package "${default_package_version}" "tfx-bsl" "tfx-bsl" 1 "${tfx_bsl_package_version}";
+  install_package "${default_package_version}" "tfx-bsl" "tfx-bsl" 1 "${tfx_bsl_package_version}"; \
+  for cmd in "${install_commands[@]}"; do \
+    echo Running "${cmd}"; \
+    eval $cmd; \
+  done;
 
 # Uninstall the TensorFlow version that TFX / the TFX components installed, and
 # force install the version requested.
