@@ -29,10 +29,10 @@ import perfzero.utils as utils
 
 
 def run(benchmark_method, harness_info, site_package_info,
-        root_output_dir, config, queue):
+        root_output_dir, config, queue, trial_id):
   try:
     _run_internal(benchmark_method, harness_info, site_package_info,
-                  root_output_dir, config, queue)
+                  root_output_dir, config, queue, trial_id)
   except Exception:  # pylint: disable=broad-except
     logging.error('Benchmark execution for %s failed due to error:\n %s',
                   benchmark_method, traceback.format_exc())
@@ -46,7 +46,7 @@ def _set_file_contents(content_str, output_filename):
 
 
 def _run_internal(benchmark_method, harness_info, site_package_info,
-                  root_output_dir, config, queue):
+                  root_output_dir, config, queue, trial_id):
   """Run benchmark method and put result to the queue.
 
   Args:
@@ -55,7 +55,8 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
     site_package_info: Description of the site-package used in the benchmark
     root_output_dir: Directory under which to put the benchmark output
     config: An instance of perfzero_config
-    queue: An interprocess queue to transfer benchmark result to the caller
+    queue: An interprocess queue to transfer benchmark result to the caller.
+    trial_id: An integer trial id to annotate in the benchmark result.
   """
   start_timestamp = time.time()
   execution_timestamp = start_timestamp
@@ -153,6 +154,7 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
       site_package_info,
       process_info,
       method_has_exception,
+      trial_id=trial_id,
       is_tpu_benchmark = (config.tpu_parameters != None))
   report_utils.upload_execution_summary(
       config.bigquery_project_name,
