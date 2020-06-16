@@ -138,7 +138,7 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
 
   upload_timestamp = time.time()
   benchmark_result = report_utils.build_benchmark_result(
-      raw_benchmark_result, method_has_exception)
+      raw_benchmark_result, method_has_exception, trial_id)
   execution_summary = report_utils.build_execution_summary(
       execution_timestamp,
       execution_id,
@@ -154,7 +154,6 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
       site_package_info,
       process_info,
       method_has_exception,
-      trial_id=trial_id,
       is_tpu_benchmark = (config.tpu_parameters != None))
   report_utils.upload_execution_summary(
       config.bigquery_project_name,
