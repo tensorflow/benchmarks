@@ -110,7 +110,7 @@ class BenchmarkRunner(object):
     return benchmark_methods
 
   def _run_benchmarks_trial(self, harness_info, site_package_info,
-                            benchmark_methods):
+                            benchmark_methods, trial_id):
     """Runs a single trial of all benchmark methods."""
     # Run the benchmark method in a separate process so that its memory usage
     # will not affect the execution of other benchmark method
@@ -126,7 +126,7 @@ class BenchmarkRunner(object):
                                               harness_info,
                                               site_package_info,
                                               self.root_output_dir,
-                                              self.config, queue))
+                                              self.config, queue, trial_id))
       process.start()
       process.join()
       method_has_exception, method_execution_time, succeeded, output_dir = queue.get()  # pylint: disable=line-too-long
@@ -154,7 +154,7 @@ class BenchmarkRunner(object):
         print('Running trial {} / {}'.format(trial_id, num_trials))
         (trial_has_exception, trial_success_results,
          trial_output_dirs, trial_execution_time) = self._run_benchmarks_trial(
-             harness_info, site_package_info, benchmark_methods)
+             harness_info, site_package_info, benchmark_methods, trial_id)
 
         trial_key = 'trial_{}'.format(trial_id)
         has_exception |= trial_has_exception
