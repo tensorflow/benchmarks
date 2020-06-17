@@ -99,7 +99,6 @@ def add_setup_parser_arguments(parser):
       )
 
 
-
 def add_benchmark_parser_arguments(parser):
   """Add arguments to the parser used by the benchmark.py."""
   parser.add_argument(
@@ -122,6 +121,12 @@ def add_benchmark_parser_arguments(parser):
       branch and hash can be skipped if user wants to use the head of the master branch,
       which shortens the format to url_1,url_2,...
       ''')
+  parser.add_argument(
+      '--benchmark_num_trials',
+      default=1,
+      type=int,
+      help='''Configures number of times to run each benchmark method
+      after setup completion.''')
   parser.add_argument(
       '--benchmark_methods',
       action='append',
@@ -297,6 +302,7 @@ class PerfZeroConfig(object):
       self.execution_id = flags.execution_id
       self.result_upload_methods = flags.result_upload_methods
       self.perfzero_constructor_args = flags.perfzero_constructor_args
+      self.benchmark_num_trials = flags.benchmark_num_trials
       if flags.tpu_parameters:
         self.tpu_parameters = json.loads(flags.tpu_parameters)
       else:
@@ -328,7 +334,7 @@ class PerfZeroConfig(object):
       if value is not None:
         not_none_flags[key] = value
     return not_none_flags
-
+  
   def get_git_repos(self, site_packages_dir):
     """Parse git repository string."""
     git_repos = []

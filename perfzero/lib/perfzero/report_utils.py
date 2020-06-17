@@ -134,7 +134,7 @@ def upload_execution_summary(bigquery_project_name, bigquery_dataset_table_name,
         bigquery_project_name)
 
 
-def build_benchmark_result(raw_benchmark_result, has_exception):
+def build_benchmark_result(raw_benchmark_result, has_exception, trial_id):
   """Converts test_log.proto format to PerfZero format."""
   benchmark_result = {}
   benchmark_result['name'] = raw_benchmark_result['name']
@@ -164,6 +164,7 @@ def build_benchmark_result(raw_benchmark_result, has_exception):
   benchmark_result['succeeded'] = succeeded
   benchmark_result['extras'] = extras
   benchmark_result['metrics'] = metrics
+  benchmark_result['trial_id'] = trial_id
 
   return benchmark_result
 

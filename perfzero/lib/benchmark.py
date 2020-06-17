@@ -26,8 +26,8 @@ import time
 
 import perfzero.benchmark_method_runner as benchmark_method_runner
 import perfzero.perfzero_config as perfzero_config
-import perfzero.utils as utils
 import perfzero.tpu_runtime_utils as tpu_runtime_utils
+import perfzero.utils as utils
 
 
 class BenchmarkRunner(object):
@@ -77,7 +77,7 @@ class BenchmarkRunner(object):
       tpu_info = tpu_runtime_utils.configure_tpu(self.config.tpu_parameters)
       site_package_info['tpu_version'] = tpu_info
       self.benchmark_execution_time['start_tpu'] = time.time() - start_time
-
+      
     self.stream_handler = logging.StreamHandler(sys.stdout)
     self.stream_handler.setFormatter(
         logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
@@ -109,34 +109,58 @@ class BenchmarkRunner(object):
                  benchmark_methods)
     return benchmark_methods
 
+  def _run_benchmarks_trial(self, harness_info, site_package_info,
+                            benchmark_methods, trial_id):
+    """Runs a single trial of all benchmark methods."""
+    # Run the benchmark method in a separate process so that its memory usage
+    # will not affect the execution of other benchmark method
+    # This is a walkaround before we fix all memory leak issues in TensorFlow
+    has_exception = False
+    benchmark_success_results = {}
+    benchmark_output_dirs = {}
+    benchmark_execution_time = {}
+    for benchmark_method in benchmark_methods:
+      queue = multiprocessing.Queue()
+      process = multiprocessing.Process(target=benchmark_method_runner.run,
+                                        args=(benchmark_method,
+                                              harness_info,
+                                              site_package_info,
+                                              self.root_output_dir,
+                                              self.config, queue, trial_id))
+      process.start()
+      process.join()
+      method_has_exception, method_execution_time, succeeded, output_dir = queue.get()  # pylint: disable=line-too-long
+      has_exception |= method_has_exception
+      benchmark_execution_time[benchmark_method] = method_execution_time
+      benchmark_success_results[benchmark_method] = succeeded
+      benchmark_output_dirs[benchmark_method] = output_dir
+    return (has_exception, benchmark_success_results,
+            benchmark_output_dirs, benchmark_execution_time)
+
   def run_benchmark(self):
     """Run benchmark."""
     harness_info = utils.get_git_repo_info(self.project_dir)
     has_exception = False
-    
+    benchmark_success_results = {}
+    benchmark_output_dirs = {}
+    num_trials = self.config.benchmark_num_trials
+
     try:
       site_package_info = self._setup()
-      benchmark_success_results = {}
-      benchmark_output_dirs = {}
+      benchmark_methods = self._get_benchmark_methods()
 
-      for benchmark_method in self._get_benchmark_methods():
-        # Run the benchmark method in a separate process so that its memory usage
-        # will not affect the execution of other benchmark method
-        # This is a walkaround before we fix all memory leak issues in TensorFlow
-        queue = multiprocessing.Queue()
-        process = multiprocessing.Process(target=benchmark_method_runner.run,
-                                          args=(benchmark_method,
-                                                harness_info,
-                                                site_package_info,
-                                                self.root_output_dir,
-                                                self.config, queue))
-        process.start()
-        process.join()
-        method_has_exception, method_execution_time, succeeded, output_dir = queue.get()  # pylint: disable=line-too-long
-        has_exception |= method_has_exception
-        self.benchmark_execution_time[benchmark_method] = method_execution_time
-        benchmark_success_results[benchmark_method] = succeeded
-        benchmark_output_dirs[benchmark_method] = output_dir
+      print('Setup complete. Running {} trials'.format(num_trials))
+      for trial_id in range(1, num_trials + 1):
+        print('Running trial {} / {}'.format(trial_id, num_trials))
+        (trial_has_exception, trial_success_results,
+         trial_output_dirs, trial_execution_time) = self._run_benchmarks_trial(
+             harness_info, site_package_info, benchmark_methods, trial_id)
+
+        trial_key = 'trial_{}'.format(trial_id)
+        has_exception |= trial_has_exception
+        self.benchmark_execution_time[trial_key] = trial_execution_time
+        benchmark_success_results[trial_key] = trial_success_results
+        benchmark_output_dirs[trial_key] = trial_output_dirs
     finally:
       if self.config.tpu_parameters is not None:
         has_exception |= utils.cleanup_tpu(self.config.tpu_parameters)
