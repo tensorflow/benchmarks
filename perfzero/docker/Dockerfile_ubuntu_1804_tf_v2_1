@@ -87,6 +87,8 @@ RUN pip install absl-py
 RUN pip install --upgrade --force-reinstall ${tensorflow_pip_spec} ${extra_pip_specs}
 RUN pip install tfds-nightly
 RUN pip install -U scikit-learn
+# Install dependnecies needed for tf.distribute test utils
+RUN pip install dill tblib portpicker
 
 RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/requirements.txt > /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt
