@@ -74,7 +74,7 @@ RUN apt-get install -y --no-install-recommends \
 RUN pip3 install --upgrade pip
 # setuptools upgraded to fix install requirements from model garden.
 RUN pip install wheel
-RUN pip install --upgrade setuptools google-api-python-client pyyaml google-cloud google-cloud-bigquery mock
+RUN pip install --upgrade setuptools google-api-python-client pyyaml google-cloud google-cloud-bigquery google-cloud-datastore mock
 RUN pip install absl-py
 RUN pip install --upgrade --force-reinstall ${tensorflow_pip_spec} ${extra_pip_specs}
 RUN pip install tfds-nightly
