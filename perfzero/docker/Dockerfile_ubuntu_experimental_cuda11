@@ -26,13 +26,10 @@ COPY ${local_tensorflow_pip_spec} /${local_tensorflow_pip_spec}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
-        cuda-command-line-tools-10-1 \
-        cuda-cufft-10-1 \
-        cuda-curand-10-1 \
-        cuda-cusolver-10-1 \
-        cuda-cusparse-10-1 \
-        libcudnn7=7.6.4.38-1+cuda10.1  \
-        libcudnn7-dev=7.6.4.38-1+cuda10.1  \
+        cuda-tools-11-0 \
+        cuda-toolkit-11-0 \
+        libcudnn8=8.0.0.180-1+cuda11.0  \
+        libcudnn8-dev=8.0.0.180-1+cuda11.0  \
         libfreetype6-dev \
         libhdf5-serial-dev \
         libzmq3-dev \
@@ -50,7 +47,7 @@ RUN apt-get update && \
     && apt-get clean
 
 # For CUDA profiling, TensorFlow requires CUPTI.
-ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda-11.0/lib64:$LD_LIBRARY_PATH
 
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
