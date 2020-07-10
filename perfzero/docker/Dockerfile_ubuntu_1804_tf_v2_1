@@ -93,4 +93,6 @@ RUN pip install dill tblib portpicker
 RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/requirements.txt > /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt
 
+RUN pip install tensorflow-estimator
+
 RUN pip freeze
