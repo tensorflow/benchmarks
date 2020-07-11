@@ -87,6 +87,6 @@ RUN pip install -U scikit-learn
 RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/requirements.txt > /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt
 
-RUN pip install tensorflow-estimator
+RUN pip install tf-estimator-nightly
 
 RUN pip freeze
