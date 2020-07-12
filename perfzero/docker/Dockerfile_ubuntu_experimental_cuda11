@@ -93,4 +93,6 @@ RUN pip install tf-estimator-nightly
 
 RUN nvcc --version
 
+RUN ls -lt /usr/bin/nvidia-smi
+
 RUN pip freeze
