@@ -261,6 +261,8 @@ def add_benchmark_parser_arguments(parser):
       type=str,
       help='''A json dictionary of cloud tpu parameters. The format must look like the following:
       {"name": "my-tpu-name", project": "my-gcp-project-id", "zone": "europe-west4-a", "size": "v3-8", "version": "nightly-2.x"}
+      It can have an optional key value pair "version_id" -> "nightly version" to change the tpu version id.
+      Example "version_id": "2.4.0-dev20200728".
       ''')
   parser.add_argument(
       '--perfzero_constructor_args',

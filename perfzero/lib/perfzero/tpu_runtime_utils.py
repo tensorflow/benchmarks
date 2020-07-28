@@ -31,38 +31,59 @@ def _get_content(url):
   return json.loads(resp_text)
 
 
-def _get_version_info(url):
+def _get_version_info(url, version_label):
   """Constructs a version info from the response."""
   json_data = _get_content(url)
   logging.info('json_data = %s', json_data)
+  if 'currentVersion' in json_data:
+    commit_id = json_data['currentVersion']
+  elif 'buildLabel' in json_data:
+    commit_id = json_data['buildLabel']
+  else:
+    commit_id = ''
+    
   info = {
       'url': '',
-      'hash': json_data.get('buildLabel', ''),
-      'branch': '',
+      'hash': commit_id,
+      'branch': version_label,
       'piper_id': json_data.get('piperOriginRevId', '')
   }
   return info
 
 
-def get_tpu_version(tpu_address):
-  """Returns the current software version on tpu."""
-  logging.info('Trying to connect to tpu %s', tpu_address)
-  tpu_client = client.Client(tpu=tpu_address)
+
+def _configure_tpu_version(tpu_name, version_label, new_version_id):
+  """Returns the current tpu version after resetting to an optional version."""
+  # The tpu_name is arbitrary / user chosen unique string for this tpu.
+  logging.info('Trying to connect to tpu %s', tpu_name)
+  tpu_client = client.Client(tpu=tpu_name)
   tpu_client.wait_for_healthy()
+
+  if new_version_id:
+    logging.info('Trying to reset tpu version to %s', new_version_id)
+    tpu_client.configure_tpu_version(version=new_version_id)
+    tpu_client.wait_for_healthy()
+    logging.info('TPU healthy after version reset.')
+  else:
+    logging.info('Using the default tpu version id.')
+
   workers = tpu_client.network_endpoints()
   if workers:
     ip_addr = workers[0]['ipAddress']
     url = 'http://{}:8475/requestversion'.format(ip_addr)
-    return _get_version_info(url)
+    return _get_version_info(url, version_label)
   else:
     logging.error('No tpu endpoint info')
     return {
         'url': '',
         'hash': '',
-        'branch': '',
+        'branch': version_label,
         'piper_id': '',
     }
 
 
 def configure_tpu(tpu_params):
-  return get_tpu_version(tpu_params.get('name'))
+  return _configure_tpu_version(
+      tpu_params.get('name'),
+      version_label=tpu_params.get('version'),
+      new_version_id=tpu_params.get('version_id'))
