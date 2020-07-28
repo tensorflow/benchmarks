@@ -31,21 +31,21 @@ def _get_content(url):
   return json.loads(resp_text)
 
 
-def _get_version_info(url):
+def _get_version_info(url, version_label):
   """Constructs a version info from the response."""
   json_data = _get_content(url)
   logging.info('json_data = %s', json_data)
   info = {
       'url': '',
       'hash': json_data.get('buildLabel', ''),
-      'branch': '',
+      'branch': version_label,
       'piper_id': json_data.get('piperOriginRevId', '')
   }
   return info
 
 
 
-def _configure_tpu_version(tpu_name, new_version_id):
+def _configure_tpu_version(tpu_name, version_label, new_version_id):
   """Returns the current tpu version after resetting to an optional version."""
   # The tpu_name is arbitrary / user chosen unique string for this tpu.
   logging.info('Trying to connect to tpu %s', tpu_name)
@@ -64,17 +64,19 @@ def _configure_tpu_version(tpu_name, new_version_id):
   if workers:
     ip_addr = workers[0]['ipAddress']
     url = 'http://{}:8475/requestversion'.format(ip_addr)
-    return _get_version_info(url)
+    return _get_version_info(url, version_label)
   else:
     logging.error('No tpu endpoint info')
     return {
         'url': '',
         'hash': '',
-        'branch': '',
+        'branch': version_label,
         'piper_id': '',
     }
 
 
 def configure_tpu(tpu_params):
   return _configure_tpu_version(
-      tpu_params.get('name'), tpu_params.get('version_id'))
+      tpu_params.get('name'),
+      version_label=tpu_params.get('version'),
+      new_version_id=tpu_params.get('version_id'))
