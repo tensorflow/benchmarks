@@ -44,11 +44,22 @@ def _get_version_info(url):
   return info
 
 
-def get_tpu_version(tpu_address):
-  """Returns the current software version on tpu."""
-  logging.info('Trying to connect to tpu %s', tpu_address)
-  tpu_client = client.Client(tpu=tpu_address)
+
+def _configure_tpu_version(tpu_name, new_version_id):
+  """Returns the current tpu version after resetting to an optional version."""
+  # The tpu_name is arbitrary / user chosen unique string for this tpu.
+  logging.info('Trying to connect to tpu %s', tpu_name)
+  tpu_client = client.Client(tpu=tpu_name)
   tpu_client.wait_for_healthy()
+
+  if new_version_id:
+    logging.info('Trying to reset tpu version to %s', new_version_id)
+    tpu_client.configure_tpu_version(version=new_version_id)
+    tpu_client.wait_for_healthy()
+    logging.info('TPU healthy after version reset.')
+  else:
+    logging.info('Using the default tpu version id.')
+
   workers = tpu_client.network_endpoints()
   if workers:
     ip_addr = workers[0]['ipAddress']
@@ -65,4 +76,5 @@ def get_tpu_version(tpu_address):
 
 
 def configure_tpu(tpu_params):
-  return get_tpu_version(tpu_params.get('name'))
+  return _configure_tpu_version(
+      tpu_params.get('name'), tpu_params.get('version_id'))
