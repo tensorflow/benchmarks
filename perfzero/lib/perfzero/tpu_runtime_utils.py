@@ -35,9 +35,16 @@ def _get_version_info(url, version_label):
   """Constructs a version info from the response."""
   json_data = _get_content(url)
   logging.info('json_data = %s', json_data)
+  if 'currentVersion' in json_data:
+    commit_id = json_data['currentVersion']
+  elif 'buildLabel' in json_data:
+    commit_id = json_data['buildLabel']
+  else:
+    commit_id = ''
+    
   info = {
       'url': '',
-      'hash': json_data.get('buildLabel', ''),
+      'hash': commit_id,
       'branch': version_label,
       'piper_id': json_data.get('piperOriginRevId', '')
   }
