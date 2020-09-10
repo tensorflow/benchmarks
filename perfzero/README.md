@@ -99,7 +99,7 @@ with TensorFlow 2.0 nightly build. For info on the args read the
 
 ```bash
 python3 /workspace/perfzero/lib/benchmark.py \
---git_repos="https://github.com/tensorflow/models.git" \
+--git_repos="https://github.com/tensorflow/models.git;benchmark" \
 --python_path=models \
 --data_downloads="gs://tf-perf-imagenet-uswest1/tensorflow/cifar10_data/cifar-10-batches-bin" \
 --benchmark_methods=official.benchmark.keras_cifar_benchmark.Resnet56KerasBenchmarkReal.benchmark_1_gpu_no_dist_strat
@@ -127,7 +127,7 @@ A quick test that does not require accessing GCS for data is:
 
 ```bash
 python3 /workspace/perfzero/lib/benchmark.py \
---git_repos="https://github.com/tensorflow/models.git" \
+--git_repos="https://github.com/tensorflow/models.git;benchmark" \
 --python_path=models \
 --gcloud_key_file_url="" \
 --benchmark_methods=official.benchmark.keras_cifar_benchmark.Resnet56KerasBenchmarkSynth.benchmark_1_gpu_no_dist_strat
@@ -149,7 +149,7 @@ nightly build.
 
 ```bash
 python3 /workspace/perfzero/lib/benchmark.py \
---git_repos="https://github.com/tensorflow/models.git" \
+--git_repos="https://github.com/tensorflow/models.git;benchmark" \
 --python_path=models \
 --data_downloads="gs://tf-perf-imagenet-uswest1/tensorflow/cifar10_data/cifar-10-batches-bin" \
 --benchmark_methods=official.r1.resnet.estimator_benchmark.Resnet50EstimatorBenchmarkReal.benchmark_graph_1_gpu
@@ -241,7 +241,7 @@ export ROOT_DATA_DIR=/data
 nvidia-docker run -it --rm -v $(pwd):/workspace -v $ROOT_DATA_DIR:$ROOT_DATA_DIR perfzero/tensorflow \
 python3 /workspace/benchmarks/perfzero/lib/benchmark.py \
 --gcloud_key_file_url="" \
---git_repos="https://github.com/tensorflow/models.git" \
+--git_repos="https://github.com/tensorflow/models.git;benchmark" \
 --python_path=models \
 --benchmark_methods=official.r1.resnet.estimator_benchmark.Resnet50EstimatorBenchmarkSynth.benchmark_graph_1_gpu \
 --root_data_dir=$ROOT_DATA_DIR
@@ -341,7 +341,7 @@ key when the name of the key is not sufficiently self-explanary.
     "has_exception": false,
     "site_package_info": {
       "models": {
-        "branch": "master",
+        "branch": "benchmark",
         "url": "https://github.com/tensorflow/models.git",
         "hash": "f788046ca876a8820e05b0b48c1fc2e16b0955bc"
       },
