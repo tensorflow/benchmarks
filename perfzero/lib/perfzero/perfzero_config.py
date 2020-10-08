@@ -272,6 +272,12 @@ def add_benchmark_parser_arguments(parser):
       help='''A json dictionary of additional args to pass to the perfzero
            constructor.'''
   )
+  parser.add_argument(
+    '--benchmark_class_type',
+     default=None,
+     type=str,
+     help='''The benchmark class type. If none, assumed perfzero_benchmark. Set to "tf_benchmark"
+           for tf.test.Benchmark benchmarks.''')
 
 
 class PerfZeroConfig(object):
@@ -297,6 +303,7 @@ class PerfZeroConfig(object):
       self.bigquery_dataset_table_name = flags.bigquery_dataset_table_name
       self.python_path_str = flags.python_path
       self.workspace = flags.workspace
+      self.benchmark_class_type = flags.benchmark_class_type
       self.use_cached_site_packages = flags.use_cached_site_packages
       self.root_data_dir = flags.root_data_dir
       self.gcloud_key_file_url = flags.gcloud_key_file_url
