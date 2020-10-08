@@ -98,7 +98,8 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
         output_dir=model_output_dir,
         root_data_dir=config.root_data_dir,
         tpu=tpu,
-        constructor_args=constructor_args)
+        constructor_args=constructor_args,
+        benchmark_class_type=config.benchmark_class_type)
     # tf.test.Benchmark.report_benchmark() writes results to a file with
     # path benchmark_result_file_path_prefix + benchmark_method
     benchmark_result_file_path_prefix = os.path.join(output_dir, 'proto_')
