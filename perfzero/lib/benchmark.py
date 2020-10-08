@@ -95,11 +95,10 @@ class BenchmarkRunner(object):
         index = benchmark_method_pattern.find(filter_prefix)
         benchmark_class = benchmark_method_pattern[:index - 1]
         pattern = benchmark_method_pattern[index + len(filter_prefix):]
-        class_instance = utils.instantiate_benchmark_class(benchmark_class,
-                                                           '/dev/null',
-                                                           '',
-                                                           None,
-                                                           {})
+        class_instance = utils.instantiate_benchmark_class(
+          benchmark_class, '/dev/null', '', None, {},
+          benchmark_class_type=self.config.benchmark_class_type)
+        
         for benchmark_method_name in dir(class_instance):
           if re.match(pattern, benchmark_method_name):
             benchmark_methods.append(benchmark_class + '.' +
