@@ -445,16 +445,22 @@ def print_thread_stacktrace():
 
 
 def instantiate_benchmark_class(
-    benchmark_class, output_dir, root_data_dir, tpu, constructor_args):
+    benchmark_class, output_dir, root_data_dir, tpu, constructor_args,
+    benchmark_class_type=None):
   """Return initialized benchmark class."""
   module_import_path, class_name = benchmark_class.rsplit('.', 1)
   module = importlib.import_module(module_import_path)
   class_ = getattr(module, class_name)
-  instance = class_(
-      output_dir=output_dir,
-      root_data_dir=root_data_dir,
-      tpu=tpu,
-      **constructor_args)
+  if benchmark_class_type == 'tf_benchmark':
+    # for benchmarks inheriting from tf.test.Benchmark, instantiate them directly.
+    instance = class_(**constructor_args)
+  else:
+    # Default instantiation for perfzero_benchmark classes.
+    instance = class_(
+        output_dir=output_dir,
+        root_data_dir=root_data_dir,
+        tpu=tpu,
+        **constructor_args)
 
   return instance
 
