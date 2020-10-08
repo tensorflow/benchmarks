@@ -29,11 +29,8 @@ COPY ${local_tensorflow_pip_spec} /${local_tensorflow_pip_spec}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
-        cuda-command-line-tools-11-0 \
-        cuda-cufft-10-2 \
-        cuda-curand-10-2 \
-        cuda-cusolver-10-2 \
-        cuda-cusparse-10-2 \
+        cuda-tools-11-0 \
+        cuda-toolkit-11-0 \
         libcudnn8=8.0.4.30-1+cuda11.0  \
         libcudnn8-dev=8.0.4.30-1+cuda11.0  \
         libfreetype6-dev \
