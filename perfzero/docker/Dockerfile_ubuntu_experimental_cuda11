@@ -40,12 +40,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         lsb-core \
         curl
 
-# RUN apt-get update && \
-#    apt-get install -y --no-install-recommends libnvinfer5=5.1.5-1+cuda10.1 \
-#    libnvinfer-dev=5.1.5-1+cuda10.1 \
-#    libnvinfer6=6.0.1-1+cuda10.1 \
-#    && apt-get clean
-
 # For CUDA profiling, TensorFlow requires CUPTI.
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda-11.0/lib64:$LD_LIBRARY_PATH
 
@@ -83,6 +77,8 @@ RUN pip install absl-py
 RUN pip install --upgrade --force-reinstall ${tensorflow_pip_spec} ${extra_pip_specs}
 RUN pip install tfds-nightly
 RUN pip install -U scikit-learn
+# Install dependnecies needed for tf.distribute test utils
+RUN pip install dill tblib portpicker
 
 RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/requirements.txt > /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt
