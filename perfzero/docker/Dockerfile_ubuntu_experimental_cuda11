@@ -2,7 +2,7 @@
 #  - Installs tf-nightly-gpu (this is TF 2.3)
 #  - Installs requirements.txt for tensorflow/models
 
-FROM nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04-rc as base
+FROM nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04 as base
 ARG tensorflow_pip_spec="tf-nightly-gpu"
 ARG local_tensorflow_pip_spec=""
 ARG extra_pip_specs=""
