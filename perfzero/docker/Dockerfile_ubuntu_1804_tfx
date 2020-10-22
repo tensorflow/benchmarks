@@ -180,7 +180,7 @@ RUN \
         # Package needs to be built using Bazel. Clone from GitHub, then build and install. \
         git clone https://github.com/tensorflow/${package_repo_name}.git; \
         pushd ${package_repo_name}; \
-        git checkout @${commit_id}; \
+        git checkout ${commit_id}; \
         # Run configure.sh if it exists (e.g. for tfx-bsl). \
         if [ -f "./configure.sh" ]; then \
           ./configure.sh; \
@@ -201,8 +201,8 @@ RUN \
 	# the data files as well (they are not included in the pip package). \
 	# Install from the corresponding tag in GitHub. \
 	echo Special handling for tfx: will install tfx from GitHub tag for version ${pypi_version}; \
-  	pip install -e git+https://github.com/tensorflow/tfx.git@r${pypi_version}#egg=tfx; \
-	install_commands+=("pip install --force --no-deps -e git+https://github.com/tensorflow/tfx.git@r${pypi_version}#egg=tfx"); \
+  	pip install -e git+https://github.com/tensorflow/tfx.git@v${pypi_version}#egg=tfx; \
+	install_commands+=("pip install --force --no-deps -e git+https://github.com/tensorflow/tfx.git@v${pypi_version}#egg=tfx"); \
 	echo Installed tfx from GitHub tag for version ${pypi_version}; \
       else \
 	pip install ${package_name}==${pypi_version}; \
