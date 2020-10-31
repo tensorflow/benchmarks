@@ -27,34 +27,33 @@ import traceback
 import perfzero.utils as utils
 
 
-def _start_profiler():
-  from tensorflow.python.eager import profiler  # pylint: disable=g-import-not-at-top
+def _start_profiler(output_dir):
+  """Start profiler.
 
+  Args:
+    output_dir: log directory to place the profiler data
+  """
+  import tensorflow as tf  # pylint: disable=g-import-not-at-top
+
+  profiler_data_dir = os.path.join(output_dir, 'profiler_data')
+  utils.make_dir_if_not_exist(profiler_data_dir)
+  logging.info('Starting TensorFlow profiler and saving data to dir %s',
+                 profiler_data_dir)
   try:
-    profiler.start()
+    tf.profiler.experimental.start(profiler_data_dir)
     logging.info('Started TensorFlow profiler')
   except Exception:  # pylint: disable=broad-except
     logging.error('TensorFlow profiler failed to start due to error:\n %s',
                   traceback.format_exc())
 
 
-def _stop_and_save_profiler(output_dir):
-  """Stop profiler and save profiler data.
+def _stop_profiler():
+  """Stop profiler."""
 
-  Args:
-    output_dir: log directory to place the profiler data
-  """
-
-  from tensorflow.python.eager import profiler  # pylint: disable=g-import-not-at-top
+  import tensorflow as tf  # pylint: disable=g-import-not-at-top
 
   try:
-    profiler_data_dir = os.path.join(output_dir, 'profiler_data')
-    logging.info('Stopping TensorFlow profiler and saving data to dir %s',
-                 profiler_data_dir)
-    utils.make_dir_if_not_exist(profiler_data_dir)
-    result = profiler.stop()
-    with open(os.path.join(profiler_data_dir, 'local.trace'), 'wb') as f:
-      f.write(result)
+    tf.profiler.experimental.stop()
     logging.info('Stopped TensorFlow profiler.')
   except Exception:  # pylint: disable=broad-except
     logging.error('TensorFlow profiler failed to stop due to error:\n %s',
@@ -102,9 +101,9 @@ class TensorFlowProfiler(object):
         raise ValueError('end_time {} is no larger than begin_time {}'.format(
             end_time, begin_time))
       # 4th positional arg added to support Python2 for the short-term.
-      self.scheduler.enter(begin_time, 1, _start_profiler, ())  # pylint: disable=no-value-for-parameter
-      self.scheduler.enter(end_time, 1, _stop_and_save_profiler,
-                           argument=(self.output_dir,))
+      self.scheduler.enter(begin_time, 1, _start_profiler,
+        argument=(self.output_dir,))
+      self.scheduler.enter(end_time, 1, _stop_profiler, ())  # pylint: disable=no-value-for-parameter
       last_end_time = end_time
 
     threading.Thread(target=self.scheduler.run).start()
@@ -126,5 +125,4 @@ class TensorFlowProfiler(object):
 
     # Save the profiler data if any event is canceled
     if event_canceled:
-      _stop_and_save_profiler(self.output_dir)
-
+      _stop_profiler()

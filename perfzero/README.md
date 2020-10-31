@@ -1,19 +1,28 @@
 Table of Contents
 =================
 
-   * [Table of Contents](#table-of-contents)
-   * [Introduction](#introduction)
-   * [Executing tests](#executing-tests)
-   * [Creating tests](#creating-tests)
-   * [Deep dive into individual tools](#deep-dive-into-individual-tools)
-      * [Build docker image](#build-docker-image)
-      * [Run benchmark](#run-benchmark)
-      * [Instructions for managing Google Cloud Platform computing instance](#instructions-for-managing-google-cloud-platform-computing-instance)
-      * [Understand the benchmark execution output](#understand-the-benchmark-execution-output)
-         * [Json formatted benchmark summary](#json-formatted-benchmark-summary)
-         * [Visualize TensorFlow graph etc. using Tensorboard](#visualize-tensorflow-graph-etc-using-tensorboard)
-         * [Visualize system metric values over time](#visualize-system-metric-values-over-time)
-   * [PerfZero development](#perfzero-development)
+* [Table of Contents](#table-of-contents)
+* [Introduction](#introduction)
+* [Executing tests](#executing-tests)
+   * [PerfZero on private GCE instance.](#perfzero-on-private-gce-instance)
+      * [Step one: Create GCE Instance](#step-one-create-gce-instance)
+      * [Step two: Build docker on GCE instance](#step-two-build-docker-on-gce-instance)
+      * [Step three: Start and "enter" the docker instance](#step-three-start-and-enter-the-docker-instance)
+      * [Step four: Run tests](#step-four-run-tests)
+      * [Step five: Delete the instance when done](#step-five-delete-the-instance-when-done)
+   * [PerfZero on local workstation or any server](#perfzero-on-local-workstation-or-any-server)
+   * [PerfZero without docker](#perfzero-without-docker)
+* [Creating tests](#creating-tests)
+* [Deep dive into individual tools](#deep-dive-into-individual-tools)
+   * [Build docker image](#build-docker-image)
+   * [Run benchmark](#run-benchmark)
+   * [Instructions for managing Google Cloud Platform computing instance](#instructions-for-managing-google-cloud-platform-computing-instance)
+   * [Understand the benchmark execution output](#understand-the-benchmark-execution-output)
+      * [Json formatted benchmark summary](#json-formatted-benchmark-summary)
+      * [Profiling](#profiling)
+         * [Visualize in TensorBoard](#visualize-in-tensorboard)
+      * [Visualize system metric values over time](#visualize-system-metric-values-over-time)
+* [PerfZero development](#perfzero-development)
 
 # Introduction
 
@@ -402,18 +411,39 @@ key when the name of the key is not sufficiently self-explanary.
 }
 ```
 
-### Visualize TensorFlow graph etc. using Tensorboard
+### Profiling
 
 When the flag `--profiler_enabled_time=start_time:end_time` is specified, the
 profiler data will be collected and stored in
 `path_to_perfzero/${workspace}/output/${execution_id}/profiler_data`.
 
-Run `tensorboard --logdir=perfzero/workspace/output/${execution_id}` or `python3
--m tensorboard.main --logdir=perfzero/workspace/output/${execution_id}` to open
-Tensorboard server. If PerfZero is executed on a remote machine, run `ssh -L
-6006:127.0.0.1:6006 remote_ip` before opening `http://localhost:6006` in your
-browser to access the Tensorboard UI.
+#### Visualize in TensorBoard
 
+Firstly, install the profile plugin for TensorBoard.
+```
+pip install -U tensorboard-plugin-profile
+```
+
+Run `tensorboard --logdir=path_to_perfzero/workspace/output/${execution_id}/profiler_data` or
+`python3 -m tensorboard.main --logdir=path_to_perfzero/workspace/output/${execution_id}/profiler_data` to open
+TensorBoard server.
+
+If PerfZero is executed on a remote machine, run `ssh -L
+6006:127.0.0.1:6006 remote_ip` before opening `http://localhost:6006` in your
+browser to access the TensorBoard UI.
+
+You can also run TensorBoard inside the docker, e.g.
+`tensorboard --logdir=/workspace/perfzero/workspace/output/${execution_id}/profiler_data --bind_all`
+
+In this case, you have to start docker with port mapping, i.e. with "-p 6006:6006" flag, .e.g
+```
+nvidia-docker run -it --rm -v $(pwd):/workspace -p 6006:6006 perfzero/tensorflow
+```
+
+Normally, the pages you see will look like:
+
+![Screenshot](screenshots/profiling_overview.png "Profiling Overview")
+![Screenshot](screenshots/profiling_trace_view.png "Profiling Trace View")
 
 ### Visualize system metric values over time
 
@@ -444,7 +474,7 @@ find perfzero/lib -name *.py -exec pyformat --in_place {} \;
 find perfzero/lib -name *.py -exec gpylint3 {} \;
 ```
 
-Here is the command to generate table-of-cotents for this README. Run this
+Here is the command to generate table-of-contents for this README. Run this
 command and copy/paste it to the README.md.
 
 ```
