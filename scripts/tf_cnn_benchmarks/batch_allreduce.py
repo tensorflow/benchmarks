@@ -88,7 +88,7 @@ class BatchAllReduceAlgorithm(object):
     [[ A+C,  B+D ],  # These two tensors are on GPU 0
      [ A+C,  B+D ]]  # These two tensors are on GPU 1
 
-    Arguments:
+    Args:
       all_device_tensors: A list of list of tensors. `all_device_tensors[i][j]`
         is a tensor where `i` is the device index and `j` is the tensor index.
       num_splits: If not None, tensors will be concatenated and split into this
@@ -459,7 +459,7 @@ def _defer_tensor(tensor):
 def defer_single_device_tensors(device_tensors):
   """Defer tensors (gradients in this case) from a single device.
 
-  Arguments:
+  Args:
     device_tensors: A list of gradients tensors from a single device to defer.
 
   Returns:
@@ -532,7 +532,7 @@ class _TensorPacker(object):
   def __init__(self, num_splits, compact):
     """Initializes the _TensorPacker.
 
-    Arguments:
+    Args:
       num_splits: The number of tensors to split the concatenated tensor into.
         The batch all-reduce will consist of `num_splits` all-reduces. if None
         or zero, tensors are not split or concatenated.
