@@ -139,9 +139,10 @@ RUN \
     package_name="$2"; \
     # e.g "model-analysis" \
     package_repo_name="$3"; \
-    # Whether this package needs to be built using Bazel if installed from \
-    # GitHub. Should be 0 or 1. \
-    package_needs_bazel_build=$4; \
+    # How this package should be installed if pulled from GitHub. \
+    # "none" for no extra installation steps required \
+    # "bdist_wheel" for python setup.py bdist_wheel \
+    package_install_type=$4; \
     # e.g. "head" or "release" or "pypi:0.21.4" or "github:[commit hash]" \
     package_version="$5"; \
     \
@@ -171,43 +172,56 @@ RUN \
     fi; \
     \
     if [ "$commit_id" != "" ]; then \
-      if [ $package_needs_bazel_build == 0 ]; then \
-        # Package doesn't need to be built using Bazel - install directly from GitHub. \
+      if [ "$package_install_type" == "none" ]; then \
+        # Package doesn't need extra installation steps - install directly from GitHub. \
         pip install -e git+https://github.com/tensorflow/${package_repo_name}.git@${commit_id}#egg=${package_name_underscores}; \
-	install_commands+=("pip install --force --no-deps -e git+https://github.com/tensorflow/${package_repo_name}.git@${commit_id}#egg=${package_name_underscores}"); \
+        install_commands+=("pip install --force --no-deps -e git+https://github.com/tensorflow/${package_repo_name}.git@${commit_id}#egg=${package_name_underscores}"); \
         echo Installed ${package_name} from GitHub commit ${commit_id}; \
-      else \
-        # Package needs to be built using Bazel. Clone from GitHub, then build and install. \
+      elif [ "$package_install_type" == "bdist_wheel" ]; then \
+        # Package needs extra installation steps. Clone from GitHub, then build and install. \
         git clone https://github.com/tensorflow/${package_repo_name}.git; \
         pushd ${package_repo_name}; \
         git checkout ${commit_id}; \
-        # Run configure.sh if it exists (e.g. for tfx-bsl). \
-        if [ -f "./configure.sh" ]; then \
-          ./configure.sh; \
+        if [ "$package_name" == "tfx" ]; then \
+          echo Building TFX pip package from source; \
+          sed -i 's@packages=packages,@packages=packages, package_data={package_name: ["benchmarks/datasets/chicago_taxi/data/taxi_1M.tfrecords.gz"]},@' setup.py; \
+          package_build/initialize.sh; \
+          python package_build/ml-pipelines-sdk/setup.py bdist_wheel; \
+          python package_build/tfx/setup.py bdist_wheel; \
+        else \
+          echo Using python setup.py bdist_wheel to build package; \
+          python setup.py bdist_wheel; \
         fi; \
-        bazel run -c opt --cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0 ${package_name_underscores}:build_pip_package; \
         pip install dist/*.whl; \
-	install_commands+=("pip install --force --no-deps ${PWD}/dist/*.whl"); \
+        install_commands+=("pip install --force --no-deps ${PWD}/dist/*.whl"); \
         popd; \
         echo Built and installed ${package_name} from GitHub commit ${commit_id}; \	
       fi; \
       # Write GIT_COMMIT_ID attribute to the installed package. \
-      package_path=$(python3 -c "import ${package_name_underscores}; print(${package_name_underscores}.__path__[0])"); \
+      package_path=$(python3 -c "import ${package_name_underscores}; print(list(${package_name_underscores}.__path__)[0])"); \
       echo "GIT_COMMIT_ID='${commit_id}'" >> ${package_path}/__init__.py; \
       install_commands+=("echo \"GIT_COMMIT_ID='${commit_id}'\" >> ${package_path}/__init__.py;"); \
     elif [ "$pypi_version" != "" ]; then \
       if [ "$package_name" == "tfx" ]; then \
-	# Special handling for TFX - we want to install from GitHub so we get \
-	# the data files as well (they are not included in the pip package). \
-	# Install from the corresponding tag in GitHub. \
-	echo Special handling for tfx: will install tfx from GitHub tag for version ${pypi_version}; \
-  	pip install -e git+https://github.com/tensorflow/tfx.git@v${pypi_version}#egg=tfx; \
-	install_commands+=("pip install --force --no-deps -e git+https://github.com/tensorflow/tfx.git@v${pypi_version}#egg=tfx"); \
-	echo Installed tfx from GitHub tag for version ${pypi_version}; \
+        # Special handling for TFX - we want to install from GitHub, and get \
+        # the data files as well (they are not included in the pip package). \
+        # Install from the corresponding tag in GitHub. \
+        echo Special handling for tfx: will install tfx from GitHub tag for version ${pypi_version}; \
+        git clone --depth 1 --branch v${pypi_version} https://github.com/tensorflow/tfx.git; \
+        pushd tfx; \
+        echo Building TFX pip package from source; \
+        sed -i 's@packages=packages,@packages=packages, package_data={package_name: ["benchmarks/datasets/chicago_taxi/data/taxi_1M.tfrecords.gz"]},@' setup.py; \
+        package_build/initialize.sh; \
+        python package_build/ml-pipelines-sdk/setup.py bdist_wheel; \
+        python package_build/tfx/setup.py bdist_wheel; \
+        pip install dist/*.whl; \
+        install_commands+=("pip install --force --no-deps ${PWD}/dist/*.whl"); \
+        popd; \
+        echo Installed tfx from GitHub tag for version ${pypi_version}; \
       else \
-	pip install ${package_name}==${pypi_version}; \
-	install_commands+=("pip install --force --no-deps ${package_name}==${pypi_version}"); \
-	echo Installed ${package_name} from PyPI version ${pypi_version}; \
+        pip install ${package_name}==${pypi_version}; \
+        install_commands+=("pip install --force --no-deps ${package_name}==${pypi_version}"); \
+        echo Installed ${package_name} from PyPI version ${pypi_version}; \
       fi; \
     else \
       echo Neither commit_id nor pypi_version was set for ${package_name}; \
@@ -228,13 +242,13 @@ RUN \
   # are incompatible package dependencies (e.g. tfx depends on \
   # apache-beam==2.21 and tensorflow-transform depends on apache-beam==2.22 \
   # then either could be installed depending on the installation order). \
-  install_commands=(); \  
-  install_package "${default_package_version}" "tfx" "tfx" 0 "${tfx_package_version}"; \
-  install_package "${default_package_version}" "tensorflow-transform" "transform" 0 "${tensorflow_transform_package_version}"; \
-  install_package "${default_package_version}" "tensorflow-model-analysis" "model-analysis" 0 "${tensorflow_model_analysis_package_version}"; \
-  install_package "${default_package_version}" "tensorflow-data-validation" "data-validation" 1 "${tensorflow_data_validation_package_version}"; \
-  install_package "${default_package_version}" "tensorflow-metadata" "metadata" 1 "${tensorflow_metadata_package_version}"; \
-  install_package "${default_package_version}" "tfx-bsl" "tfx-bsl" 1 "${tfx_bsl_package_version}"; \
+  install_commands=(); \
+  install_package "${default_package_version}" "tfx" "tfx" "bdist_wheel" "${tfx_package_version}"; \
+  install_package "${default_package_version}" "tensorflow-transform" "transform" "none" "${tensorflow_transform_package_version}"; \
+  install_package "${default_package_version}" "tensorflow-model-analysis" "model-analysis" "none" "${tensorflow_model_analysis_package_version}"; \
+  install_package "${default_package_version}" "tensorflow-data-validation" "data-validation" "bdist_wheel" "${tensorflow_data_validation_package_version}"; \
+  install_package "${default_package_version}" "tensorflow-metadata" "metadata" "bdist_wheel" "${tensorflow_metadata_package_version}"; \
+  install_package "${default_package_version}" "tfx-bsl" "tfx-bsl" "bdist_wheel" "${tfx_bsl_package_version}"; \
   for cmd in "${install_commands[@]}"; do \
     echo Running "${cmd}"; \
     eval $cmd; \
