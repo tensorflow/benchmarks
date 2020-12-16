@@ -84,6 +84,7 @@ RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/req
 RUN pip install -r /tmp/requirements.txt
 
 RUN pip install tf-estimator-nightly
+RUN pip install tensorflow-text-nightly
 
 # RUN nvidia-smi
 
