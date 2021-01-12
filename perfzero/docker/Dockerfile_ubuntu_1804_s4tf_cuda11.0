@@ -8,7 +8,7 @@ FROM nvidia/cuda:11.0-base-ubuntu18.04 as base
 ARG tensorflow_pip_spec="tf-nightly-gpu"
 ARG local_tensorflow_pip_spec=""
 ARG extra_pip_specs=""
-ARG swift_tf_url=https://storage.googleapis.com/swift-tensorflow-artifacts/nightlies/latest/swift-tensorflow-DEVELOPMENT-cuda11.0-cudnn8-ubuntu18.04.tar.gz
+ARG swift_tf_url=https://storage.googleapis.com/swift-tensorflow-artifacts/nightlies/latest/swift-tensorflow-DEVELOPMENT-cuda11.0-cudnn8-stock-ubuntu18.04.tar.gz
 
 # setup.py passes the base path of local .whl file is chosen for the docker image.
 # Otherwise passes an empty existing file from the context.
