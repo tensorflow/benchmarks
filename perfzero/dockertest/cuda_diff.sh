@@ -22,11 +22,17 @@ cd benchmarks
 
 tf_spec="tf-nightly-gpu==2.5.0.dev20210212"
 
-benchmark_methods=official.benchmark.keras_cifar_benchmark.Resnet56KerasBenchmarkReal.benchmark_1_gpu_no_dist_strat
+CIFAR10_DATA="gs://tf-perf-imagenet-uswest1/tensorflow/cifar10_data/cifar-10-batches-bin"
+CIFAR10_BENCHMARKS="official.benchmark.keras_cifar_benchmark.Resnet56KerasBenchmarkReal.benchmark_1_gpu_no_dist_strat"
 
-function run_benchmark() {
+RESNET50_DATA="gs://tf-perf-imagenet-uswest1/tensorflow/imagenet"
+RESNET50_BENCHMARKS="official.benchmark.resnet_ctl_imagenet_benchmark.Resnet50CtlBenchmarkReal.benchmark_1_gpu_fp16"
+
+function run_single_benchmark() {
   docker_name=$1
   label=$2
+  data_downloads=$3
+  benchmark_methods=$4
 
   perfzero_pwd=`pwd`
 
@@ -40,7 +46,7 @@ function run_benchmark() {
     ${docker_name} \
     python3 /workspace/perfzero/lib/benchmark.py \
     --bigquery_dataset_table_name="" \
-    --data_downloads="gs://tf-perf-imagenet-uswest1/tensorflow/cifar10_data/cifar-10-batches-bin" \
+    --data_downloads="${data_downloads}" \
     --ml_framework_build_label=v2-nightly-gpu \
     --execution_label="${label}" \
     --platform_name=kokoro-gcp \
@@ -59,6 +65,14 @@ function run_benchmark() {
     --tpu_parameters=
 }
 
+function run_benchmarks() {
+  docker_name=$1
+  label=$2
+
+  run_single_benchmark ${docker_name} ${label} "${CIFAR10_DATA}" "${CIFAR10_BENCHMARKS}"
+  run_single_benchmark ${docker_name} ${label} "${RESNET50_DATA}" "${RESNET50_BENCHMARKS}"
+}
+
 function setup_docker() {
   label=$1
   dockerfile=$2
@@ -73,11 +87,17 @@ function setup_docker() {
   echo "`date` Finished setting up ${label} docker."
 }
 
+function diff_benchmarks() {
+  python3 perfzero/dockertest/diff_benchmarks.py `pwd`
+}
+
 baseline_docker="docker/Dockerfile_ubuntu_1804_tf_cuda_11"
 experiment_docker="docker/Dockerfile_ubuntu_cuda11_8_0_0_180"
 
 setup_docker "control/tensorflow" ${baseline_docker}
-run_benchmark "control/tensorflow" "control-8-0-4-30"
+run_benchmarks "control/tensorflow" "control-8-0-4-30"
 
 setup_docker "experiment/tensorflow" ${experiment_docker}
-run_benchmark "experiment/tensorflow" "experiment-8-0-0-180"
+run_benchmarks "experiment/tensorflow" "experiment-8-0-0-180"
+
+diff_benchmarks
