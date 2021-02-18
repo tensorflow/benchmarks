@@ -89,7 +89,7 @@ def _print_diff_report(performance_by_method):
       value_list = []
       for label, value in sorted(
           method_to_metric_to_perf[method][metric], key=lambda x: x[0]):
-        print('    ---- {}: {}'.format(label, value))
+        print('         {}: {}: {}'.format(metric, label, value))
         value_list.append(value)
 
       if len(value_list) == 2:
@@ -99,7 +99,7 @@ def _print_diff_report(performance_by_method):
           diff_pct = (expt_val / control_val - 1.0) * 100.0
         else:
           diff_pct = -1.0
-        print('    ---- diff: {:2.3f}%'.format(diff_pct))
+        print('             diff: {:2.2f}%'.format(diff_pct))
 
 
 def main():
