@@ -91,13 +91,13 @@ function diff_benchmarks() {
   python3 perfzero/dockertest/diff_benchmarks.py `pwd`
 }
 
-baseline_docker="docker/Dockerfile_ubuntu_1804_tf_cuda_11"
-experiment_docker="docker/Dockerfile_ubuntu_cuda11_8_0_0_180"
+baseline_docker="docker/Dockerfile_ubuntu_cuda11_8_0_0_180"
+experiment_docker="docker/Dockerfile_ubuntu_1804_tf_cuda_11"
 
 setup_docker "control/tensorflow" ${baseline_docker}
-run_benchmarks "control/tensorflow" "control-8-0-4-30"
+run_benchmarks "control/tensorflow" "control-8-0-0-180"
 
 setup_docker "experiment/tensorflow" ${experiment_docker}
-run_benchmarks "experiment/tensorflow" "experiment-8-0-0-180"
+run_benchmarks "experiment/tensorflow" "experiment-8-0-4-30"
 
 diff_benchmarks
