@@ -43,6 +43,8 @@ function run_single_benchmark() {
     -e PERFZERO_TRACKING_ID= \
     -e PERFZERO_COMMIT_LABEL= \
     -e PERFZERO_EXECUTION_BRANCH=master \
+    -e CUDNN_LOGINFO_DBG=1 \
+    -e CUDNN_LOGDEST_DBG=stderr \
     ${docker_name} \
     python3 /workspace/perfzero/lib/benchmark.py \
     --bigquery_dataset_table_name="" \
