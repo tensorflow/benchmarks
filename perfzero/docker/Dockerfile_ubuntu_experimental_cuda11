@@ -25,9 +25,6 @@ COPY ${local_tensorflow_pip_spec} /${local_tensorflow_pip_spec}
 # sudo apt-cache search cuda-cusparse
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
-        cuda-tools-11-2 \
-        cuda-toolkit-11-2 \
         libcudnn8=8.1.0.77-1+cuda11.2  \
         libcudnn8-dev=8.1.0.77-1+cuda11.2  \
         libfreetype6-dev \
