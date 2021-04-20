@@ -289,9 +289,9 @@ for instructions on how to use the generated profiler data.
 ## Instructions for managing Google Cloud Platform computing instance
 
 PerfZero aims to make it easy to run and debug TensorFlow which is usually run
-with GPU. However, most users do not have dedicated machine with the expensive
+with GPU. However, most users do not have dedicated machine with expensive
 hardware. One cost-effective solution is for users to create machine with the
-desired hardward on demand in a public cloud when they need to debug TensorFlow.
+desired hardware on demand in a public cloud when they need to debug TensorFlow.
 
 We provide a script in PerfZero to make it easy to manage computing instance in
 Google Cloud Platform. This assumes that you have access to an existing project
