@@ -8,6 +8,7 @@ set -x
 # bash perfzero/dockertest/run_single_benchmark.sh
 
 # Modify INPUT_PARAMS variables below to tweak the tf whl under test / benchmark methods / dataset paths.
+# You can comment out "build_docker" call at the end, if the docker's already built.
 
 ## INPUT PARAMS: start
 
