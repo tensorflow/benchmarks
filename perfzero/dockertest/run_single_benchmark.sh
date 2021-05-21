@@ -6,6 +6,7 @@ set -x
 # git clone https://github.com/tensorflow/benchmarks.git
 # cd benchmarks
 # bash perfzero/dockertest/run_single_benchmark.sh
+# Output log files/results will be stored at perfzero/workspace/output/
 
 # Modify INPUT_PARAMS variables below to tweak the tf whl under test / benchmark methods / dataset paths.
 # You can comment out "build_docker" call at the end, if the docker's already built.
