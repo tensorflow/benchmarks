@@ -1,6 +1,14 @@
 #!/bin/bash
 set -e
 set -x
+
+# To run this script from a GCP VM / host connected to GPUs:
+# git clone https://github.com/tensorflow/benchmarks.git
+# cd benchmarks
+# bash perfzero/dockertest/run_single_benchmark.sh
+
+# Modify INPUT_PARAMS variables below to tweak the tf whl under test / benchmark methods / dataset paths.
+
 ## INPUT PARAMS: start
 
 # Acceptable formats for TF_PIP_SPEC
@@ -8,9 +16,13 @@ set -x
 # gcs path to whls: gs://some-path-to-tf.whl
 # Local path to whl: file://some-local-path-to-tf.whl
 TF_PIP_SPEC="tf-nightly-gpu==2.6.0.dev20210521"
+
+# Path to GCS or local files containing the input datasets (if they need to be fetched into the docker).
 DATA_DOWNLOADS=""
-# comma separated list of strings.
+
+# Comma separated list of strings.
 BENCHMARK_METHODS="official.benchmark.keras_imagenet_benchmark.Resnet50KerasBenchmarkSynth.benchmark_xla_1_gpu_fp16"
+
 # If either the tf_pip_spec or data downloads reference private GCP, then we
 # need to set GCLOUD_KEY_FILE_URL to a credentials file.
 GCLOUD_KEY_FILE_URL=""
