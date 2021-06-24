@@ -5,7 +5,7 @@ set -x
 # To run this script from a GCP VM / host connected to GPUs:
 # git clone https://github.com/tensorflow/benchmarks.git
 # cd benchmarks
-# bash perfzero/dockertest/run_single_benchmark.sh
+# bash perfzero/dockertest/resnet50_synth.sh
 # Output log files/results will be stored at perfzero/workspace/output/
 
 # Modify INPUT_PARAMS variables below to tweak the tf whl under test / benchmark methods / dataset paths.
