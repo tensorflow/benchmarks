@@ -203,10 +203,10 @@ def run_graph(benchmark_op, bench_cnn, init_ops, dummy_loss_op):
     for i in range(-bench_cnn.num_warmup_batches, bench_cnn.num_batches):
       if i == 0:
         log_fn('Running all-reduce ops')
-        start = time.time()
+        start = time.perf_counter()
       if i > 0 and i % bench_cnn.params.display_every == 0:
         log_fn('Iteration: %d. Average time per step so far: %s' %
-               (i, (time.time() - start) / i))
+               (i, (time.perf_counter() - start) / i))
       # Call benchmark_one_step instead of directly calling sess.run(...), to
       # potentially get a trace file, partitioned graphs, etc.
       benchmark_cnn.benchmark_one_step(
@@ -225,7 +225,7 @@ def run_graph(benchmark_op, bench_cnn, init_ops, dummy_loss_op):
           params=bench_cnn.params,
           show_images_per_sec=False)
     log_fn('Average time per step: %s' %
-           ((time.time() - start) / bench_cnn.num_batches))
+           ((time.perf_counter() - start) / bench_cnn.num_batches))
 
 
 def run_benchmark(bench_cnn, num_iters):
