@@ -706,12 +706,12 @@ class GlobalStepWatcher(threading.Thread):
         # calls to print, which can break tests.
         tf.logging.info('Starting real work at step %s at time %s' %
                         (global_step_val, time.ctime()))
-        self.start_time = time.time()
+        self.start_time = time.perf_counter()
         self.start_step = global_step_val
       if self.finish_time == 0 and global_step_val >= self.end_at_global_step:
         tf.logging.info('Finishing real work at step %s at time %s' %
                         (global_step_val, time.ctime()))
-        self.finish_time = time.time()
+        self.finish_time = time.perf_counter()
         self.finish_step = global_step_val
 
   def done(self):
@@ -865,7 +865,7 @@ def benchmark_one_step(sess,
     run_options = None
     run_metadata = None
   summary_str = None
-  start_time = time.time()
+  start_time = time.perf_counter()
   if summary_op is None:
     results = sess.run(fetches, options=run_options, run_metadata=run_metadata)
   else:
@@ -878,7 +878,7 @@ def benchmark_one_step(sess,
     lossval = 0.
   if image_producer is not None:
     image_producer.notify_image_consumption()
-  train_time = time.time() - start_time
+  train_time = time.perf_counter() - start_time
   step_train_times.append(train_time)
   if (show_images_per_sec and step >= 0 and
       (step == 0 or (step + 1) % params.display_every == 0)):
@@ -1997,7 +1997,7 @@ class BenchmarkCNN(object):
     with self._do_eval():
       mlperf.logger.log_eval_epoch(
           mlperf.tags.EVAL_START, global_step, self.batch_size)
-      loop_start_time = start_time = time.time()
+      loop_start_time = start_time = time.perf_counter()
       # TODO(laigd): refactor the part to compute/report the accuracy. Currently
       # it only works for image models.
       top_1_accuracy_sum = 0.0
@@ -2016,14 +2016,14 @@ class BenchmarkCNN(object):
         top_1_accuracy_sum += results['top_1_accuracy']
         top_5_accuracy_sum += results['top_5_accuracy']
         if (step + 1) % self.params.display_every == 0:
-          duration = time.time() - start_time
+          duration = time.perf_counter() - start_time
           examples_per_sec = (
               self.batch_size * self.params.display_every / duration)
           log_fn('%i\t%.1f examples/sec' % (step + 1, examples_per_sec))
-          start_time = time.time()
+          start_time = time.perf_counter()
         if image_producer is not None:
           image_producer.notify_image_consumption()
-      loop_end_time = time.time()
+      loop_end_time = time.perf_counter()
       accuracy_at_1 = top_1_accuracy_sum / self.num_batches
       accuracy_at_5 = top_5_accuracy_sum / self.num_batches
       summary = tf.Summary()
@@ -2394,7 +2394,7 @@ class BenchmarkCNN(object):
     accuracy_at_1 = None
     accuracy_at_5 = None
     last_eval_step = local_step
-    loop_start_time = time.time()
+    loop_start_time = time.perf_counter()
     last_average_loss = None
     while not done_fn():
       if local_step == 0:
@@ -2413,7 +2413,7 @@ class BenchmarkCNN(object):
         assert len(step_train_times) == self.num_warmup_batches
         # reset times to ignore warm up batch
         step_train_times = []
-        loop_start_time = time.time()
+        loop_start_time = time.perf_counter()
       if (summary_writer and
           (local_step + 1) % self.params.save_summaries_steps == 0):
         fetch_summary = graph_info.summary_op
@@ -2470,7 +2470,7 @@ class BenchmarkCNN(object):
         log_fn('Stopping, as the model indicates its custom goal was reached')
         skip_final_eval = True
         break
-    loop_end_time = time.time()
+    loop_end_time = time.perf_counter()
     # Waits for the global step to be done, regardless of done_fn.
     if global_step_watcher:
       while not global_step_watcher.done():
