@@ -24,6 +24,7 @@ COPY ${local_tensorflow_pip_spec} /${local_tensorflow_pip_spec}
 # sudo apt-cache search cuda-cusolver
 # sudo apt-cache search cuda-cusparse
 
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libfreetype6-dev \
         libhdf5-serial-dev \
@@ -34,6 +35,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         unzip \
         lsb-core \
         curl
+        
+RUN add-apt-repository ppa:deadsnakes/ppa
 
 # For CUDA profiling, TensorFlow requires CUPTI.
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda-11.2/lib64:$LD_LIBRARY_PATH
@@ -57,8 +60,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install / update Python and Python3
 RUN apt-get install -y --no-install-recommends \
       python3.9 \
-      python3.9-dev \
       python3.9-pip \
+      python3.9-dev \
       python3.9-setuptools \
       python3.9-venv
 
