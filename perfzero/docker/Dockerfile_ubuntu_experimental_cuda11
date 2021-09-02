@@ -77,13 +77,15 @@ RUN pip3 install --upgrade pip
 RUN pip3 install --upgrade setuptools
 
 RUN ${PIP_CMD} install wheel
-RUN ${PIP_CMD} install --upgrade google-api-python-client==1.8.0 pyyaml google-cloud google-cloud-bigquery google-cloud-datastore mock
 RUN ${PIP_CMD} install absl-py
 RUN ${PIP_CMD} install --upgrade --force-reinstall ${tensorflow_pip_spec} ${extra_pip_specs}
 RUN ${PIP_CMD} install tfds-nightly
 RUN ${PIP_CMD} install -U scikit-learn
 # Install dependnecies needed for tf.distribute test utils
 RUN ${PIP_CMD} install dill tblib portpicker
+RUN ${PIP_CMD} install --upgrade pyyaml
+RUN ${PIP_CMD} install --upgrade google-cloud google-cloud-bigquery google-cloud-datastore mock
+RUN ${PIP_CMD} install --upgrade google-api-python-client
 
 RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/requirements.txt > /tmp/requirements.txt
 RUN ${PIP_CMD} install -r /tmp/requirements.txt
