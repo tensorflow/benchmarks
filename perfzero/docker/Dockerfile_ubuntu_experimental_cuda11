@@ -51,12 +51,10 @@ RUN apt-get install -y --no-install-recommends \
       python3.9-venv \
       python3.9-distutils \
       python3.9-lib2to3
-
-RUN apt-get remove --purge python3.6
       
 # Upgrade pip, need to use pip3 and then pip after this or an error
 # is thrown for no main found.
-RUN ${PIP_CMD} install --upgrade pip
+RUN python3 -m pip install --upgrade pip
 RUN ${PIP_CMD} install --upgrade distlib
 # setuptools upgraded to fix install requirements from model garden.
 RUN ${PIP_CMD} install --upgrade setuptools
