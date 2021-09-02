@@ -28,6 +28,7 @@ COPY ${local_tensorflow_pip_spec} /${local_tensorflow_pip_spec}
 # Needed to disable prompts during installation.
 ENV DEBIAN_FRONTEND noninteractive
 
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libfreetype6-dev \
         libhdf5-serial-dev \
@@ -41,6 +42,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Python 3.9 related deps in this ppa.
 RUN add-apt-repository ppa:deadsnakes/ppa
+RUN apt-get install python3-9 
+RUN apt-get install python3-pip
+
 
 # Install / update Python and Python3
 RUN apt-get install -y --no-install-recommends \
