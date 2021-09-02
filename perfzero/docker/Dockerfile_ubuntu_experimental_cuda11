@@ -74,8 +74,10 @@ RUN apt-get install -y --no-install-recommends \
 # is thrown for no main found.
 RUN pip3 install --upgrade pip
 # setuptools upgraded to fix install requirements from model garden.
+RUN pip3 install --upgrade setuptools
+
 RUN ${PIP_CMD} install wheel
-RUN ${PIP_CMD} install --upgrade setuptools google-api-python-client==1.8.0 pyyaml google-cloud google-cloud-bigquery google-cloud-datastore mock
+RUN ${PIP_CMD} install --upgrade google-api-python-client==1.8.0 pyyaml google-cloud google-cloud-bigquery google-cloud-datastore mock
 RUN ${PIP_CMD} install absl-py
 RUN ${PIP_CMD} install --upgrade --force-reinstall ${tensorflow_pip_spec} ${extra_pip_specs}
 RUN ${PIP_CMD} install tfds-nightly
