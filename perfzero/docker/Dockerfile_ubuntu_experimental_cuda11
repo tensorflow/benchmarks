@@ -37,6 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         lsb-core \
         curl
         
+# Python 3.9 related deps in this ppa.
 RUN add-apt-repository ppa:deadsnakes/ppa
 
 # For CUDA profiling, TensorFlow requires CUPTI.
