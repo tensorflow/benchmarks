@@ -6,7 +6,7 @@ FROM nvidia/cuda:11.2.1-cudnn8-devel-ubuntu18.04 as base
 ARG tensorflow_pip_spec="tf-nightly-gpu"
 ARG local_tensorflow_pip_spec=""
 ARG extra_pip_specs=""
-ARG PIP_CMD="python 3.9 -m pip"
+ENV PIP_CMD="python 3.9 -m pip"
 
 # setup.py passes the base path of local .whl file is chosen for the docker image.
 # Otherwise passes an empty existing file from the context.
