@@ -25,6 +25,9 @@ COPY ${local_tensorflow_pip_spec} /${local_tensorflow_pip_spec}
 # sudo apt-cache search cuda-cusolver
 # sudo apt-cache search cuda-cusparse
 
+# Needed to disable prompts during installation.
+ENV DEBIAN_FRONTEND noninteractive
+
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libfreetype6-dev \
