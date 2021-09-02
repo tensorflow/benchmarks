@@ -73,6 +73,7 @@ RUN apt-get install -y --no-install-recommends \
 # Upgrade pip, need to use pip3 and then pip after this or an error
 # is thrown for no main found.
 RUN pip3 install --upgrade pip
+RUN pip3 install --upgrade distlib
 # setuptools upgraded to fix install requirements from model garden.
 RUN pip3 install --upgrade setuptools
 
@@ -85,7 +86,7 @@ RUN ${PIP_CMD} install -U scikit-learn
 RUN ${PIP_CMD} install dill tblib portpicker
 RUN ${PIP_CMD} install --upgrade pyyaml
 RUN ${PIP_CMD} install --upgrade google-cloud google-cloud-bigquery google-cloud-datastore mock
-RUN ${PIP_CMD} install --upgrade google-api-python-client
+RUN ${PIP_CMD} install --upgrade google-api-python-client==1.8.0
 
 RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/requirements.txt > /tmp/requirements.txt
 RUN ${PIP_CMD} install -r /tmp/requirements.txt
