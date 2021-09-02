@@ -28,6 +28,17 @@ COPY ${local_tensorflow_pip_spec} /${local_tensorflow_pip_spec}
 # Needed to disable prompts during installation.
 ENV DEBIAN_FRONTEND noninteractive
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libfreetype6-dev \
+        libhdf5-serial-dev \
+        libzmq3-dev \
+        libpng-dev \
+        pkg-config \
+        software-properties-common \
+        unzip \
+        lsb-core \
+        curl
+
 # Python 3.9 related deps in this ppa.
 RUN add-apt-repository ppa:deadsnakes/ppa
 
@@ -47,17 +58,6 @@ RUN pip3 install --upgrade pip
 RUN pip3 install --upgrade distlib
 # setuptools upgraded to fix install requirements from model garden.
 RUN pip3 install --upgrade setuptools
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libfreetype6-dev \
-        libhdf5-serial-dev \
-        libzmq3-dev \
-        libpng-dev \
-        pkg-config \
-        software-properties-common \
-        unzip \
-        lsb-core \
-        curl
 
 # For CUDA profiling, TensorFlow requires CUPTI.
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda-11.2/lib64:$LD_LIBRARY_PATH
