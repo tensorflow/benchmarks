@@ -22,8 +22,8 @@ import glob
 import os
 import re
 import unittest
+from unittest import mock
 
-import mock
 import numpy as np
 import tensorflow.compat.v1 as tf
 from google.protobuf import text_format
