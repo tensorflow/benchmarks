@@ -80,6 +80,7 @@ RUN pip install -r /tmp/requirements.txt
 
 RUN pip install tf-estimator-nightly
 RUN pip install tensorflow-text-nightly
+RUN pip install psutil
 
 # RUN nvidia-smi
 
