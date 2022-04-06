@@ -417,7 +417,7 @@ def setup_tpu(parameters):
         '--accelerator-type={}'.format(parameters.get('size')),
         '--tf-version={}'.format(parameters.get('version')),
     ]
-    command = './{} {}'.format(base_cmd, ' '.join(args))
+    command = '{} {}'.format(base_cmd, ' '.join(args))
     logging.info('Setting up TPU: %s', command)
     exit_code, output = run_command(command)
     if exit_code != 0:
@@ -445,7 +445,7 @@ def cleanup_tpu(parameters):
       '--project={}'.format(parameters.get('project')),
       '--zone={}'.format(parameters.get('zone')),
   ]
-  command = './{} {}'.format(base_cmd, ' '.join(args))
+  command = '{} {}'.format(base_cmd, ' '.join(args))
   logging.info('Cleaning up TPU: %s', command)
   exit_code, output = run_command(command)
   if exit_code != 0:
