@@ -162,7 +162,8 @@ class BenchmarkRunner(object):
         benchmark_output_dirs[trial_key] = trial_output_dirs
     finally:
       if self.config.tpu_parameters is not None:
-        has_exception |= utils.cleanup_tpu(self.config.tpu_parameters)
+        print('skipping cleanup')
+        #has_exception |= utils.cleanup_tpu(self.config.tpu_parameters)
 
     print('Benchmark execution time in seconds by operation:\n {}'.format(
         json.dumps(self.benchmark_execution_time, indent=2)))
