@@ -398,22 +398,6 @@ def get_gpu_info():
   return _get_amd_gpu_info() if shutil.which("rocm-smi") \
     else _get_nvidia_gpu_info()
 
-
-def _install_tpu_tool():
-  """Installs the ctpu tool to managing cloud TPUs.
-
-  Follows the instructions here:
-  https://github.com/tensorflow/tpu/tree/master/tools/ctpu
-  """
-  if not os.path.exists('ctpu'):
-    logging.info('Installing TPU tool')
-    commands = [
-        'wget https://dl.google.com/cloud_tpu/ctpu/latest/linux/ctpu',
-        'chmod a+x ctpu',
-    ]
-    run_commands(commands)
-
-
 def setup_tpu(parameters):
   """Sets up a TPU with a given set of parameters.
 
