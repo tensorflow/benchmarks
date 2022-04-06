@@ -424,18 +424,16 @@ def setup_tpu(parameters):
     True if an error occurs during setup.
   """
   try:
-    _install_tpu_tool()
-
+    base_cmd = 'gcloud compute tpus execution-groups create'
     args = [
+        '--tpu-only',
         '--name={}'.format(parameters.get('name')),
         '--project={}'.format(parameters.get('project')),
         '--zone={}'.format(parameters.get('zone')),
-        '--tpu-size={}'.format(parameters.get('size')),
+        '--accelerator-type={}'.format(parameters.get('size')),
         '--tf-version={}'.format(parameters.get('version')),
-        '--tpu-only',
-        '-noconf',
     ]
-    command = './ctpu up {}'.format(' '.join(args))
+    command = './{} {}'.format(base_cmd, ' '.join(args))
     logging.info('Setting up TPU: %s', command)
     exit_code, output = run_command(command)
     if exit_code != 0:
@@ -443,7 +441,6 @@ def setup_tpu(parameters):
     return exit_code != 0
   except Exception:
     logging.error('Unable to setup TPU')
-    run_command('rm -f ctpu')
     sys.exit(1)
 
 
@@ -456,16 +453,15 @@ def cleanup_tpu(parameters):
   Returns:
     True if an error occurs during cleanup.
   """
-  _install_tpu_tool()
+  
+  base_cmd = 'gcloud compute tpus execution-groups delete'
 
   args = [
       '--name={}'.format(parameters.get('name')),
       '--project={}'.format(parameters.get('project')),
       '--zone={}'.format(parameters.get('zone')),
-      '--tpu-only',
-      '-noconf',
   ]
-  command = './ctpu delete {}'.format(' '.join(args))
+  command = './{} {}'.format(base_cmd, ' '.join(args))
   logging.info('Cleaning up TPU: %s', command)
   exit_code, output = run_command(command)
   if exit_code != 0:
