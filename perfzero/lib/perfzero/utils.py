@@ -441,7 +441,7 @@ def cleanup_tpu(parameters):
   base_cmd = 'gcloud compute tpus execution-groups delete'
 
   args = [
-      '--name={}'.format(parameters.get('name')),
+      '{}'.format(parameters.get('name')),
       '--project={}'.format(parameters.get('project')),
       '--zone={}'.format(parameters.get('zone')),
   ]
