@@ -407,6 +407,11 @@ def setup_tpu(parameters):
   Returns:
     True if an error occurs during setup.
   """
+  # Skip creating tpu if using a prestarted tpu.
+  if parameters.get('using_prestarted_tpu') == 'true':
+    logging.info('Skip creating TPU since the prestarted TPU %s is being used.',
+      parameters.get('name'))
+    return False
   try:
     base_cmd = 'gcloud compute tpus execution-groups create'
     args = [
@@ -437,7 +442,12 @@ def cleanup_tpu(parameters):
   Returns:
     True if an error occurs during cleanup.
   """
-  
+  # Skip cleaning up the tpu if using a prestarted tpu.
+  if parameters.get('using_prestarted_tpu') == 'true':
+    logging.info('Skip cleaning up TPU since the prestarted TPU %s is being used.',
+      parameters.get('name'))
+    return False
+
   base_cmd = 'gcloud compute tpus execution-groups delete'
 
   args = [
