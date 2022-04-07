@@ -65,7 +65,7 @@ def _configure_tpu_version(tpu_name, version_label, new_version_id):
     tpu_client.wait_for_healthy()
     logging.info('TPU healthy after version reset.')
   else:
-    logging.info('Using the default tpu version id.')
+    logging.info('Using the default or pre-started tpu version id.')
 
   workers = tpu_client.network_endpoints()
   if workers:
