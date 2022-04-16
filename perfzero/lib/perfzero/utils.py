@@ -496,6 +496,8 @@ def instantiate_benchmark_class(
     benchmark_class_type=None):
   """Return initialized benchmark class."""
   module_import_path, class_name = benchmark_class.rsplit('.', 1)
+  logging.info('module_import_path: %s\n')
+  logging.info('class_name: %s \n')
   module = importlib.import_module(module_import_path)
   class_ = getattr(module, class_name)
   if benchmark_class_type == 'tf_benchmark':
