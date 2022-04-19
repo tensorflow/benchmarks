@@ -52,11 +52,11 @@ def _get_version_info(url, version_label):
 
 
 
-def _configure_tpu_version(tpu_name, version_label, new_version_id):
+def _configure_tpu_version(tpu_name, tpu_zone, tpu_project, version_label, new_version_id):
   """Returns the current tpu version after resetting to an optional version."""
   # The tpu_name is arbitrary / user chosen unique string for this tpu.
   logging.info('Trying to connect to tpu %s', tpu_name)
-  tpu_client = client.Client(tpu=tpu_name)
+  tpu_client = client.Client(tpu=tpu_name, zone=tpu_zone, project=tpu_project)
   tpu_client.wait_for_healthy()
 
   if new_version_id:
@@ -84,6 +84,8 @@ def _configure_tpu_version(tpu_name, version_label, new_version_id):
 
 def configure_tpu(tpu_params):
   return _configure_tpu_version(
-      tpu_params.get('name'),
+      tpu_name=tpu_params.get('name'),
+      tpu_zone=tpu_params.get('zone'),
+      tpu_project=tpu_params.get('project'),
       version_label=tpu_params.get('version'),
       new_version_id=tpu_params.get('version_id'))
