@@ -69,8 +69,15 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
   else:
     model_output_dir = output_dir
   utils.make_dir_if_not_exist(output_dir)
-  benchmark_class, benchmark_method_name = benchmark_method.rsplit('.', 1)
+  if ':' in benchmark_method:
+    benchmark_class, benchmark_method_name = benchmark_method.rsplit(':', 1)
+  else:
+    benchmark_class, benchmark_method_name = benchmark_method.rsplit('.', 1)
   benchmark_class_name = benchmark_class.rsplit('.', 1)[1]
+        
+  logging.info('benchmark_class: %s\n', benchmark_class)
+  logging.info('benchmark_method_name: %s\n', benchmark_method_name)
+  logging.info('benchmark_class_name: %s\n', benchmark_class_name)
 
   tensorflow_profiler = TensorFlowProfiler(
       config.profiler_enabled_time_str, output_dir)
