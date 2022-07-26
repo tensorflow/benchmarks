@@ -18,6 +18,7 @@ from __future__ import print_function
 import importlib
 import json
 import logging
+import os
 import perfzero.utils as utils
 import psutil
 import socket
@@ -211,7 +212,9 @@ def build_execution_summary(execution_timestamp, execution_id,
     system_info['platform_name'] = platform_name
   if system_name:
     system_info['system_name'] = system_name
-  if not is_tpu_benchmark:
+  if os.environ['TPUVM_MODE']:
+    system_info['accelerator_model'] = 'tpuvm'
+  elif not is_tpu_benchmark:
     gpu_info = utils.get_gpu_info()
     if gpu_info:
       system_info['accelerator_driver_version'] = gpu_info['gpu_driver_version']
