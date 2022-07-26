@@ -212,7 +212,7 @@ def build_execution_summary(execution_timestamp, execution_id,
     system_info['platform_name'] = platform_name
   if system_name:
     system_info['system_name'] = system_name
-  if os.environ['TPUVM_MODE']:
+  if os.getenv('TPUVM_MODE'):
     system_info['accelerator_model'] = 'tpuvm'
   elif not is_tpu_benchmark:
     gpu_info = utils.get_gpu_info()
