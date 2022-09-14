@@ -78,7 +78,10 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
   logging.info('benchmark_class: %s\n', benchmark_class)
   logging.info('benchmark_method_name: %s\n', benchmark_method_name)
   logging.info('benchmark_class_name: %s\n', benchmark_class_name)
-
+  dir_path = '/workspace/benchmarks/perfzero/workspace/site-packages/models/official/benchmark'
+  # base_benchmark.py should be in the above directory
+  logging.info('listing contents of %s:', dir_path)
+  logging.info('%s', os.listdir(dir_path))
   tensorflow_profiler = TensorFlowProfiler(
       config.profiler_enabled_time_str, output_dir)
   process_info_tracker = ProcessInfoTracker(output_dir)
