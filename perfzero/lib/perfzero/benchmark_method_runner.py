@@ -103,6 +103,9 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
       constructor_args = json.loads(config.perfzero_constructor_args)
     else:
       constructor_args = {}
+    logging.info('Constructor args: ')
+    for k, v in constructor_args.items():
+        logging.info('%s: %s', k, v)
     class_instance = utils.instantiate_benchmark_class(
         benchmark_class=benchmark_class,
         output_dir=model_output_dir,
