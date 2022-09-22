@@ -310,6 +310,8 @@ class PerfZeroConfig(object):
       self.execution_id = flags.execution_id
       self.result_upload_methods = flags.result_upload_methods
       self.perfzero_constructor_args = flags.perfzero_constructor_args
+      logging.info('Got args: %s', self.perfzero_constructor_args)
+      logging.info('length: %d', len(self.perfzero_constructor_args))
       self.benchmark_num_trials = flags.benchmark_num_trials
       if flags.tpu_parameters:
         self.tpu_parameters = json.loads(flags.tpu_parameters)
