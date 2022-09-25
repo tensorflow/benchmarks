@@ -266,7 +266,6 @@ def add_benchmark_parser_arguments(parser):
       ''')
   parser.add_argument(
       '--perfzero_constructor_args',
-      nargs='*',
       default='',
       type=str,
       help='''A json dictionary of additional args to pass to the perfzero
