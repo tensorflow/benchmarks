@@ -75,13 +75,6 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
     benchmark_class, benchmark_method_name = benchmark_method.rsplit('.', 1)
   benchmark_class_name = benchmark_class.rsplit('.', 1)[1]
         
-  logging.info('benchmark_class: %s\n', benchmark_class)
-  logging.info('benchmark_method_name: %s\n', benchmark_method_name)
-  logging.info('benchmark_class_name: %s\n', benchmark_class_name)
-  dir_path = '/workspace/benchmarks/perfzero/workspace/site-packages/models/official/benchmark'
-  # base_benchmark.py should be in the above directory
-  logging.info('listing contents of %s:', dir_path)
-  logging.info('%s', os.listdir(dir_path))
   tensorflow_profiler = TensorFlowProfiler(
       config.profiler_enabled_time_str, output_dir)
   process_info_tracker = ProcessInfoTracker(output_dir)
@@ -99,15 +92,10 @@ def _run_internal(benchmark_method, harness_info, site_package_info,
       tpu = config.tpu_parameters.get('name')
     else:
       tpu = None
-    logging.info('Passed constructor_args:')
-    logging.info(config.perfzero_constructor_args)
     if config.perfzero_constructor_args:
       constructor_args = json.loads(config.perfzero_constructor_args)
     else:
       constructor_args = {}
-    logging.info('Constructor args: ')
-    for k, v in constructor_args.items():
-        logging.info('%s: %s', k, v)
     class_instance = utils.instantiate_benchmark_class(
         benchmark_class=benchmark_class,
         output_dir=model_output_dir,
