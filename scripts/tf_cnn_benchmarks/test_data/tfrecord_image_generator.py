@@ -45,15 +45,11 @@ serialized Example proto. The Example proto contains the following fields:
     layer. The label ranges from [1, 1000] where 0 is not used. Note this is
     always identical to the image label.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 import random
 
 import numpy as np
-import six
 import tensorflow.compat.v1 as tf
 
 
@@ -74,6 +70,12 @@ def _float_feature(value):
 def _bytes_feature(value):
   """Wrapper for inserting bytes features into Example proto."""
   return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+
+
+def _ensure_binary(s):
+  if isinstance(s, str):
+    s = s.encode()
+  return s
 
 
 def _convert_to_example(filename, image_buffer, label, synset, human, bbox,
@@ -108,23 +110,33 @@ def _convert_to_example(filename, image_buffer, label, synset, human, bbox,
   channels = 3
   image_format = b'JPEG'
 
-  example = tf.train.Example(features=tf.train.Features(feature={
-      'image/height': _int64_feature(height),
-      'image/width': _int64_feature(width),
-      'image/colorspace': _bytes_feature(colorspace),
-      'image/channels': _int64_feature(channels),
-      'image/class/label': _int64_feature(label),
-      'image/class/synset': _bytes_feature(six.ensure_binary(synset)),
-      'image/class/text': _bytes_feature(six.ensure_binary(human)),
-      'image/object/bbox/xmin': _float_feature(xmin),
-      'image/object/bbox/xmax': _float_feature(xmax),
-      'image/object/bbox/ymin': _float_feature(ymin),
-      'image/object/bbox/ymax': _float_feature(ymax),
-      'image/object/bbox/label': _int64_feature([label] * len(xmin)),
-      'image/format': _bytes_feature(image_format),
-      'image/filename': _bytes_feature(os.path.basename(six.ensure_binary(
-          filename))),
-      'image/encoded': _bytes_feature(image_buffer)}))
+  example = tf.train.Example(
+      features=tf.train.Features(
+          feature={
+              'image/height': _int64_feature(height),
+              'image/width': _int64_feature(width),
+              'image/colorspace': _bytes_feature(colorspace),
+              'image/channels': _int64_feature(channels),
+              'image/class/label': _int64_feature(label),
+              'image/class/synset': _bytes_feature(
+                  _ensure_binary(synset)
+              ),
+              'image/class/text': _bytes_feature(
+                  _ensure_binary(human)
+              ),
+              'image/object/bbox/xmin': _float_feature(xmin),
+              'image/object/bbox/xmax': _float_feature(xmax),
+              'image/object/bbox/ymin': _float_feature(ymin),
+              'image/object/bbox/ymax': _float_feature(ymax),
+              'image/object/bbox/label': _int64_feature([label] * len(xmin)),
+              'image/format': _bytes_feature(image_format),
+              'image/filename': _bytes_feature(
+                  os.path.basename(_ensure_binary(filename))
+              ),
+              'image/encoded': _bytes_feature(image_buffer),
+          }
+      )
+  )
   return example
 
 

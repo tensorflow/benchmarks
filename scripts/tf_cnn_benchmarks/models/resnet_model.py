@@ -30,12 +30,8 @@ References:
   Atrous Convolution, and Fully Connected CRFs
   arXiv:1606.00915 (2016)
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow.compat.v1 as tf
 import datasets
 import mlperf
@@ -307,15 +303,15 @@ class ResnetModel(model_lib.CNNModel):
     cnn.batch_norm_config = {'decay': 0.9, 'epsilon': 1e-5, 'scale': True}
     cnn.conv(64, 7, 7, 2, 2, mode='SAME_RESNET', use_batch_norm=True)
     cnn.mpool(3, 3, 2, 2, mode='SAME')
-    for _ in xrange(self.layer_counts[0]):
+    for _ in range(self.layer_counts[0]):
       bottleneck_block(cnn, 256, 64, 1, self.version)
-    for i in xrange(self.layer_counts[1]):
+    for i in range(self.layer_counts[1]):
       stride = 2 if i == 0 else 1
       bottleneck_block(cnn, 512, 128, stride, self.version)
-    for i in xrange(self.layer_counts[2]):
+    for i in range(self.layer_counts[2]):
       stride = 2 if i == 0 else 1
       bottleneck_block(cnn, 1024, 256, stride, self.version)
-    for i in xrange(self.layer_counts[3]):
+    for i in range(self.layer_counts[3]):
       stride = 2 if i == 0 else 1
       bottleneck_block(cnn, 2048, 512, stride, self.version)
     if self.version == 'v2':
@@ -414,15 +410,15 @@ class ResnetCifar10Model(model_lib.CNNModel):
       cnn.conv(16, 3, 3, 1, 1, use_batch_norm=True)
     else:
       cnn.conv(16, 3, 3, 1, 1, activation=None, use_batch_norm=True)
-    for i in xrange(self.layer_counts[0]):
+    for i in range(self.layer_counts[0]):
       # reshape to batch_size x 16 x 32 x 32
       residual_block(cnn, 16, 1, self.version)
-    for i in xrange(self.layer_counts[1]):
+    for i in range(self.layer_counts[1]):
       # Subsampling is performed at the first convolution with a stride of 2
       stride = 2 if i == 0 else 1
       # reshape to batch_size x 32 x 16 x 16
       residual_block(cnn, 32, stride, self.version)
-    for i in xrange(self.layer_counts[2]):
+    for i in range(self.layer_counts[2]):
       stride = 2 if i == 0 else 1
       # reshape to batch_size x 64 x 8 x 8
       residual_block(cnn, 64, stride, self.version)

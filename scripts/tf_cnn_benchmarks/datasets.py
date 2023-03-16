@@ -15,17 +15,11 @@
 """Benchmark dataset utilities.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from abc import abstractmethod
 import os
+import pickle
 
 import numpy as np
-import six
-from six.moves import cPickle
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow.compat.v1 as tf
 
 from tensorflow.python.platform import gfile
@@ -159,7 +153,7 @@ class Cifar10Dataset(ImageDataset):
     if subset == 'train':
       filenames = [
           os.path.join(self.data_dir, 'data_batch_%d' % i)
-          for i in xrange(1, 6)
+          for i in range(1, 6)
       ]
     elif subset == 'validation':
       filenames = [os.path.join(self.data_dir, 'test_batch')]
@@ -170,8 +164,8 @@ class Cifar10Dataset(ImageDataset):
     for filename in filenames:
       with gfile.Open(filename, 'rb') as f:
         # python2 does not have the encoding parameter
-        encoding = {} if six.PY2 else {'encoding': 'bytes'}
-        inputs.append(cPickle.load(f, **encoding))
+        encoding = {'encoding': 'bytes'}
+        inputs.append(pickle.load(f, **encoding))
     # See http://www.cs.toronto.edu/~kriz/cifar.html for a description of the
     # input format.
     all_images = np.concatenate(

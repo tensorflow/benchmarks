@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Mobilenet Base Class, branched from slim for fp16 performance study."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 import collections
 import contextlib
 import copy

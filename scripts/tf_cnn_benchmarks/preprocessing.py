@@ -16,12 +16,7 @@
 """Image pre-processing utilities.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow.compat.v1 as tf
 
 # pylint: disable=g-direct-tensorflow-import
@@ -757,7 +752,7 @@ class RecordInputImagePreprocessor(BaseImagePreprocessor):
             datasets_parallel_interleave_prefetch=(
                 params.datasets_parallel_interleave_prefetch))
         ds_iterator = self.create_iterator(ds)
-        for d in xrange(self.num_splits):
+        for d in range(self.num_splits):
           images[d], labels[d] = ds_iterator.get_next()
 
       # TODO(laigd): consider removing the --use_datasets option, it should
@@ -774,14 +769,14 @@ class RecordInputImagePreprocessor(BaseImagePreprocessor):
         records = record_input.get_yield_op()
         records = tf.split(records, self.batch_size, 0)
         records = [tf.reshape(record, []) for record in records]
-        for idx in xrange(self.batch_size):
+        for idx in range(self.batch_size):
           value = records[idx]
           (image, label) = self.parse_and_preprocess(value, idx)
           split_index = idx % self.num_splits
           labels[split_index].append(label)
           images[split_index].append(image)
 
-      for split_index in xrange(self.num_splits):
+      for split_index in range(self.num_splits):
         if not params.use_datasets:
           images[split_index] = tf.parallel_stack(images[split_index])
           labels[split_index] = tf.concat(labels[split_index], 0)
@@ -894,7 +889,7 @@ class Cifar10ImagePreprocessor(BaseImagePreprocessor):
       # same image via a strided_slice op, but would be slower.
       raw_images = tf.unstack(raw_images, axis=0)
       raw_labels = tf.unstack(raw_labels, axis=0)
-      for i in xrange(self.batch_size):
+      for i in range(self.batch_size):
         split_index = i % self.num_splits
         # The raw image read from data has the format [depth, height, width]
         # reshape to the format returned by minibatch.
@@ -906,7 +901,7 @@ class Cifar10ImagePreprocessor(BaseImagePreprocessor):
 
         labels[split_index].append(raw_labels[i])
 
-      for split_index in xrange(self.num_splits):
+      for split_index in range(self.num_splits):
         images[split_index] = tf.parallel_stack(images[split_index])
         labels[split_index] = tf.parallel_stack(labels[split_index])
       return images, labels
@@ -946,7 +941,7 @@ class COCOPreprocessor(BaseImagePreprocessor):
       input_len = 4 if subset == 'train' else 5
       input_lists = [[None for _ in range(self.num_splits)]
                      for _ in range(input_len)]
-      for d in xrange(self.num_splits):
+      for d in range(self.num_splits):
         input_list = ds_iterator.get_next()
         for i in range(input_len):
           input_lists[i][d] = input_list[i]
@@ -1173,12 +1168,12 @@ class TestImagePreprocessor(BaseImagePreprocessor):
           name='image_batch')
       images = [[] for _ in range(self.num_splits)]
       labels = [[] for _ in range(self.num_splits)]
-      for i in xrange(self.batch_size):
+      for i in range(self.batch_size):
         split_index = i % self.num_splits
         raw_image = tf.cast(raw_images[i], self.dtype)
         images[split_index].append(raw_image)
         labels[split_index].append(raw_labels[i])
-      for split_index in xrange(self.num_splits):
+      for split_index in range(self.num_splits):
         images[split_index] = tf.parallel_stack(images[split_index])
         labels[split_index] = tf.parallel_stack(labels[split_index])
 
@@ -1289,7 +1284,7 @@ class LibrispeechPreprocessor(InputPreprocessor):
       # The four lists are: input spectrogram feature, labels, input lengths,
       # label lengths
       input_lists = [[None for _ in range(self.num_splits)] for _ in range(4)]
-      for d in xrange(self.num_splits):
+      for d in range(self.num_splits):
         input_list = ds_iterator.get_next()
         for i in range(4):
           input_lists[i][d] = input_list[i]

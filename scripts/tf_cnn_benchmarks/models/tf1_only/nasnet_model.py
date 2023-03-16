@@ -16,9 +16,6 @@
 
 Paper: https://arxiv.org/abs/1707.07012
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import tensorflow.compat.v1 as tf
 

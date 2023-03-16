@@ -19,12 +19,7 @@ References:
   "Densely Connected Convolutional Networks": https://arxiv.org/pdf/1608.06993
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow.compat.v1 as tf
 from models import model as model_lib
 
@@ -63,15 +58,15 @@ class DensenetCifar10Model(model_lib.CNNModel):
 
     cnn.conv(16, 3, 3, 1, 1, activation=None)
     # Block 1
-    for _ in xrange(self.layer_counts[0]):
+    for _ in range(self.layer_counts[0]):
       self.dense_block(cnn, self.growth_rate)
     self.transition_layer(cnn)
     # Block 2
-    for _ in xrange(self.layer_counts[1]):
+    for _ in range(self.layer_counts[1]):
       self.dense_block(cnn, self.growth_rate)
     self.transition_layer(cnn)
     # Block 3
-    for _ in xrange(self.layer_counts[2]):
+    for _ in range(self.layer_counts[2]):
       self.dense_block(cnn, self.growth_rate)
     cnn.batch_norm(**self.batch_norm_config)
     cnn.top_layer = tf.nn.relu(cnn.top_layer)

@@ -18,10 +18,6 @@
 See the README for more information.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl import app
 from absl import flags as absl_flags
 import tensorflow.compat.v1 as tf
@@ -37,7 +33,7 @@ flags.define_flags()
 for name in flags.param_specs.keys():
   absl_flags.declare_key_flag(name)
 
-absl_flags.DEFINE_boolean(
+_ML_PERF_COMPLIANCE_LOGGING = absl_flags.DEFINE_boolean(
     'ml_perf_compliance_logging', False,
     'Print logs required to be compliant with MLPerf. If set, must clone the '
     'MLPerf training repo https://github.com/mlperf/training and add '
@@ -56,8 +52,7 @@ def main(positional_arguments):
                      % positional_arguments[1:])
 
   params = benchmark_cnn.make_params_from_flags()
-  with mlperf.mlperf_logger(absl_flags.FLAGS.ml_perf_compliance_logging,
-                            params.model):
+  with mlperf.mlperf_logger(_ML_PERF_COMPLIANCE_LOGGING.value, params.model):
     params = benchmark_cnn.setup(params)
     bench = benchmark_cnn.BenchmarkCNN(params)
 

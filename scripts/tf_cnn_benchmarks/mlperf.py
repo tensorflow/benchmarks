@@ -28,11 +28,6 @@ https://github.com/mlperf/training/tree/master/compliance is required. If
 the logger is not enabled, the library is not needed.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-
 from collections import namedtuple
 import contextlib
 import os

@@ -19,14 +19,9 @@ References:
   Deep Speech 2: End-to-End Speech Recognition in English and Mandarin
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow.compat.v1 as tf
 import constants
 from cnn_util import log_fn
@@ -350,7 +345,7 @@ class DeepSpeech2Model(model_lib.Model):
 
     # RNN layers.
     rnn_cell = DeepSpeech2Model.SUPPORTED_RNNS[self.rnn_type]
-    for layer_counter in xrange(self.num_rnn_layers):
+    for layer_counter in range(self.num_rnn_layers):
       # No batch normalization on the first layer.
       use_batch_norm = (layer_counter != 0)
       inputs = self._rnn_layer(inputs, rnn_cell, self.rnn_hidden_size,

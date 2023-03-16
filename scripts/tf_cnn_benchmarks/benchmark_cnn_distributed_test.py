@@ -20,10 +20,6 @@ benchmark_cnn_distributed_test_runner.py.
 The output for each process is written to disk and can be viewed to debug tests.
 See get_test_output_dir() in platforms/default/util.py for more info.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from collections import namedtuple
 import os
 import subprocess
@@ -32,7 +28,6 @@ import unittest
 
 from absl import flags as absl_flags
 import portpicker
-import six
 import tensorflow.compat.v1 as tf
 import flags
 import test_util
@@ -55,7 +50,8 @@ def _convert_params_to_flags_list(params):
     A list of flags.
   """
   return [
-      '--%s=%s' % (k, str(v)) for k, v in six.iteritems(params._asdict())
+      '--%s=%s' % (k, str(v))
+      for k, v in params._asdict().items()
       if v != flags.param_specs[k].default_value
   ]
 

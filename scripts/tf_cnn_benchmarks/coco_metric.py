@@ -19,20 +19,14 @@ Forked from reference model implementation.
 COCO API: github.com/cocodataset/cocoapi/
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import atexit
 import tempfile
 
 from absl import flags
-
 import numpy as np
+import pycocotools.coco
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
-import six
-
 import tensorflow.compat.v1 as tf
 
 import mlperf
@@ -42,9 +36,8 @@ FLAGS = flags.FLAGS
 
 
 # https://github.com/cocodataset/cocoapi/issues/49
-if six.PY3:
-  import pycocotools.coco
-  pycocotools.coco.unicode = str
+
+pycocotools.coco.unicode = str
 
 
 def async_eval_runner(queue_predictions, queue_results, val_json_file):

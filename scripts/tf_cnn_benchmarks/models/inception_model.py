@@ -37,11 +37,6 @@ References:
   Inception v4 and Resnet V2 architectures: http://arxiv.org/abs/1602.07261
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from six.moves import xrange  # pylint: disable=redefined-builtin
 from models import model
 
 
@@ -201,13 +196,13 @@ class Inceptionv4Model(model.CNNModel):
     inception_v4_sa(cnn)
     inception_v4_sb(cnn)
     inception_v4_sc(cnn)
-    for _ in xrange(4):
+    for _ in range(4):
       inception_v4_a(cnn)
     inception_v4_ra(cnn, 192, 224, 256, 384)
-    for _ in xrange(7):
+    for _ in range(7):
       inception_v4_b(cnn)
     inception_v4_rb(cnn)
-    for _ in xrange(3):
+    for _ in range(3):
       inception_v4_c(cnn)
     cnn.spatial_mean()
     cnn.dropout(0.8)

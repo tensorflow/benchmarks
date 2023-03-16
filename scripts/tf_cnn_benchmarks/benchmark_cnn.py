@@ -17,10 +17,6 @@
 See the README for more information.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 from collections import namedtuple
 import contextlib
@@ -34,9 +30,6 @@ import traceback
 
 from absl import flags as absl_flags
 import numpy as np
-
-import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow.compat.v1 as tf
 
 # pylint: disable=g-direct-tensorflow-import
@@ -54,7 +47,7 @@ from google.protobuf import text_format
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import debug as tf_debug
 from tensorflow.python.client import timeline
-from tensorflow.python.framework import graph_util
+from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import graph_util_impl
 from tensorflow.python.framework import importer
 from tensorflow.python.ops import data_flow_ops
@@ -1526,7 +1519,7 @@ class BenchmarkCNN(object):
     # compute device, and never on a parameter server device.
     self.raw_devices = [
         '%s/%s:%i' % (worker_prefix, self.params.device, i)
-        for i in xrange(self.num_gpus)
+        for i in range(self.num_gpus)
     ]
 
     subset = 'validation' if params.eval else 'train'
@@ -1747,7 +1740,7 @@ class BenchmarkCNN(object):
     self.cpu_device = '%s/cpu:0' % worker_prefix
     self.raw_devices = [
         '%s/%s:%i' % (worker_prefix, self.params.device, i)
-        for i in xrange(self.num_gpus)
+        for i in range(self.num_gpus)
     ]
     self.devices = self.variable_mgr.get_devices()
 
@@ -1759,8 +1752,8 @@ class BenchmarkCNN(object):
     else:
       return [
           'job:worker/replica:0/task%s/%s:%i' % (t, self.params.device, i)
-          for t in xrange(self.num_workers)
-          for i in xrange(self.num_gpus)
+          for t in range(self.num_workers)
+          for i in range(self.num_gpus)
       ]
 
   def print_info(self):
@@ -1985,7 +1978,7 @@ class BenchmarkCNN(object):
             self.params.use_python32_barrier)
         image_producer.start()
       if enqueue_ops:
-        for i in xrange(len(enqueue_ops)):
+        for i in range(len(enqueue_ops)):
           sess.run(enqueue_ops[:(i + 1)])
           if image_producer is not None:
             image_producer.notify_image_consumption()
@@ -2003,7 +1996,7 @@ class BenchmarkCNN(object):
       top_1_accuracy_sum = 0.0
       top_5_accuracy_sum = 0.0
       total_eval_count = self.num_batches * self.batch_size
-      for step in xrange(self.num_batches):
+      for step in range(self.num_batches):
         if (summary_writer and self.params.save_summaries_steps > 0 and
             (step + 1) % self.params.save_summaries_steps == 0):
           results, summary_str = sess.run([fetches, summary_op])
@@ -2339,7 +2332,7 @@ class BenchmarkCNN(object):
           self.params.use_python32_barrier)
       image_producer.start()
     if graph_info.enqueue_ops:
-      for i in xrange(len(graph_info.enqueue_ops)):
+      for i in range(len(graph_info.enqueue_ops)):
         sess.run(graph_info.enqueue_ops[:(i + 1)])
         if image_producer is not None:
           image_producer.notify_image_consumption()
@@ -2617,7 +2610,7 @@ class BenchmarkCNN(object):
       with tf.Session(config=create_config_proto(self.params)) as sess:
         sess.run(tf.global_variables_initializer())
         sess.run(tf.local_variables_initializer())
-        graphdef = graph_util.convert_variables_to_constants(
+        graphdef = convert_to_constants.convert_variables_to_constants(
             sess,
             graphdef,
             output_node_names,
@@ -2749,7 +2742,7 @@ class BenchmarkCNN(object):
             shared_name='input_producer_staging_area_%d_eval_%s' %
             (device_num, self._doing_eval))
         input_producer_stages.append(staging_area)
-        for group_index in xrange(self.batch_group_size):
+        for group_index in range(self.batch_group_size):
           batch_index = group_index + device_num * self.batch_group_size
           put_op = staging_area.put(
               [parts[batch_index] for parts in input_list])
@@ -2868,7 +2861,8 @@ class BenchmarkCNN(object):
       if self.variable_mgr.supports_staged_vars():
         for staging_ops in self.variable_mgr.staging_vars_on_devices:
           gpu_compute_stage_ops.extend(
-              [put_op for _, (put_op, _) in six.iteritems(staging_ops)])
+              [put_op for _, (put_op, _) in staging_ops.items()]
+          )
       enqueue_ops.append(tf.group(*gpu_compute_stage_ops,
                                   name='gpu_compute_stage_ops_group'))
       if gpu_grad_stage_ops:

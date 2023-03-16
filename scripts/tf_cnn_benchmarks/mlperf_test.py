@@ -17,15 +17,11 @@
 Note this test only passes if the MLPerf compliance library is installed.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import Counter
+import io
 import logging
 import re
 
-import six
 import tensorflow.compat.v1 as tf
 import benchmark_cnn
 import datasets
@@ -141,7 +137,7 @@ class MlPerfComplianceTest(tf.test.TestCase):
                                   k, v in EXPECTED_LOG_REGEXES.items()})
 
   def testMlPerfCompliance(self):
-    string_io = six.StringIO()
+    string_io = io.StringIO()
     handler = logging.StreamHandler(string_io)
     data_dir = test_util.create_black_and_white_images()
     try:

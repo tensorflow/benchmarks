@@ -21,10 +21,6 @@ such as being able to inject custom images during training. So instead, this
 file is spawned as a Python process, which supports the added functionality.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl import flags as absl_flags
 import numpy as np
 import tensorflow.compat.v1 as tf
@@ -34,8 +30,8 @@ import preprocessing
 import test_util
 
 
-absl_flags.DEFINE_string('fake_input', 'none',
-                         """What fake input to inject into benchmark_cnn. This
+_FAKE_INPUT = absl_flags.DEFINE_string(
+    'fake_input', 'none', """What fake input to inject into benchmark_cnn. This
                             is ignored if --model=test_model.
                             Options are:
                             none: Do not inject any fake input.
@@ -44,7 +40,6 @@ absl_flags.DEFINE_string('fake_input', 'none',
                             label of 1.""")
 
 flags.define_flags()
-FLAGS = flags.FLAGS
 
 
 def get_test_image_preprocessor(batch_size, params):
@@ -60,9 +55,9 @@ def get_test_image_preprocessor(batch_size, params):
   Raises:
     ValueError: Flag --fake_input is an invalid value.
   """
-  if FLAGS.fake_input == 'none':
+  if _FAKE_INPUT.value == 'none':
     return None
-  elif FLAGS.fake_input == 'zeros_and_ones':
+  elif _FAKE_INPUT.value == 'zeros_and_ones':
     half_batch_size = batch_size // 2
     images = np.zeros((batch_size, 227, 227, 3), dtype=np.float32)
     images[half_batch_size:, :, :, :] = 1
@@ -75,7 +70,7 @@ def get_test_image_preprocessor(batch_size, params):
     preprocessor.expected_subset = 'validation' if params.eval else 'train'
     return preprocessor
   else:
-    raise ValueError('Invalid --fake_input: %s' % FLAGS.fake_input)
+    raise ValueError('Invalid --fake_input: %s' % _FAKE_INPUT.value)
 
 
 def run_with_real_model(params):

@@ -23,18 +23,9 @@ tf_cnn_benchmarks as a library. When using it as a library, we don't want to
 define any flags, but instead pass parameters to the BenchmarkCNN constructor.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import namedtuple
 
 from absl import flags as absl_flags
-import six
-
-
-FLAGS = absl_flags.FLAGS
-
 
 # ParamSpec describes one of benchmark_cnn.BenchmarkCNN's parameters.
 ParamSpec = namedtuple('_ParamSpec',
@@ -84,7 +75,7 @@ def define_flags(specs=None):
       'enum': absl_flags.DEFINE_enum,
       'list': absl_flags.DEFINE_list
   }
-  for name, param_spec in six.iteritems(specs):
+  for name, param_spec in specs.items():
     if param_spec.flag_type not in define_flag:
       raise ValueError('Unknown flag_type %s' % param_spec.flag_type)
     else:

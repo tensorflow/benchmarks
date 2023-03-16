@@ -19,10 +19,6 @@ to ensure the various variable_update options have not regressing. Not all
 options are tested.  The tests focus on the most viable options.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ctypes
 import logging
 import os
@@ -34,8 +30,8 @@ import tensorflow.compat.v1 as tf  # pylint: disable=g-bad-import-order
 import benchmark_cnn
 from platforms import util as platforms_util
 
-flags.DEFINE_integer('num_batches', None,
-                     'number of batches to run, excluding warmup')
+_NUM_BATCHES = flags.DEFINE_integer(
+    'num_batches', None, 'number of batches to run, excluding warmup')
 
 
 class BenchmarkBase(tf.test.Benchmark):
@@ -93,8 +89,8 @@ class BenchmarkBase(tf.test.Benchmark):
   def _shared_params(self):
     """Returns shared parameters for all benchmarks in this file."""
     params = {}
-    if flags.FLAGS.num_batches is not None:
-      params['num_batches'] = flags.FLAGS.num_batches
+    if _NUM_BATCHES.value is not None:
+      params['num_batches'] = _NUM_BATCHES.value
     if self.output_dir is not None:
       params['benchmark_log_dir'] = self.output_dir
     return benchmark_cnn.make_params(**params)

@@ -20,10 +20,6 @@ References:
   Advances in Neural Information Processing Systems. 2012
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow.compat.v1 as tf
 from models import model
 

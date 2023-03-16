@@ -24,11 +24,6 @@ the model specified by the --model flag.
 TODO(reedwm): Allow custom sizes to be specified.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-
 import os
 import time
 
@@ -43,14 +38,14 @@ import flags
 from cnn_util import log_fn
 
 
-absl_flags.DEFINE_integer('iters_per_step', 5,
-                          'Number of iterations to run all-reduce for, per '
-                          'step. Every step, a session will be run on a Graph '
-                          'that contains this many copies of the all-reduce. '
-                          'The copies are run sequentially. Setting this above '
-                          '1 is useful to lower the overhead of starting the '
-                          'session run, running the VariableV2 ops at the '
-                          'start of the step, etc.')
+_ITERS_PER_STEP = absl_flags.DEFINE_integer(
+    'iters_per_step', 5, 'Number of iterations to run all-reduce for, per '
+    'step. Every step, a session will be run on a Graph '
+    'that contains this many copies of the all-reduce. '
+    'The copies are run sequentially. Setting this above '
+    '1 is useful to lower the overhead of starting the '
+    'session run, running the VariableV2 ops at the '
+    'start of the step, etc.')
 
 
 flags.define_flags()
@@ -283,7 +278,7 @@ def main(positional_arguments):
   tfversion = cnn_util.tensorflow_version_tuple()
   log_fn('TensorFlow:  %i.%i' % (tfversion[0], tfversion[1]))
 
-  run_benchmark(bench, absl_flags.FLAGS.iters_per_step)
+  run_benchmark(bench, _ITERS_PER_STEP.value)
 
 if __name__ == '__main__':
   tf.disable_v2_behavior()

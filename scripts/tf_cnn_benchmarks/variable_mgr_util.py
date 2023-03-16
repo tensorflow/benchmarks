@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utilities for VariableMgr."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections as pycoll
 import operator
 
@@ -25,7 +21,9 @@ import numpy as np
 import tensorflow.compat.v1 as tf
 
 # pylint: disable=g-direct-tensorflow-import
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
@@ -314,7 +312,7 @@ class StagedModelVariable(object):
       return self._value()
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     StagedModelVariable, StagedModelVariable._TensorConversionFunction)  # pylint: disable=protected-access
 
 
@@ -509,15 +507,14 @@ def aggregate_gradients_using_copy(tower_grads, use_mean, check_inf_nan):
 # tensorflow/python/eager/backprop.py. We do not directly use them as they are
 # not exported and subject to change at any time.
 def flatten_nested_indexed_slices(grad):
-  assert isinstance(grad, ops.IndexedSlices)
+  assert isinstance(grad, indexed_slices.IndexedSlices)
   if isinstance(grad.values, ops.Tensor):
     return grad
   else:
-    assert isinstance(grad.values, ops.IndexedSlices)
+    assert isinstance(grad.values, indexed_slices.IndexedSlices)
     g = flatten_nested_indexed_slices(grad.values)
-    return ops.IndexedSlices(g.values, array_ops.gather(grad.indices,
-                                                        g.indices),
-                             g.dense_shape)
+    return indexed_slices.IndexedSlices(
+        g.values, array_ops.gather(grad.indices, g.indices), g.dense_shape)
 
 
 def aggregate_indexed_slices_gradients(grads):
@@ -540,7 +537,7 @@ def aggregate_indexed_slices_gradients(grads):
 
     grads = [flatten_nested_indexed_slices(x) for x in grads]
     # Form IndexedSlices out of the concatenated values and indices.
-    concat_grad = ops.IndexedSlices(
+    concat_grad = indexed_slices.IndexedSlices(
         array_ops.concat([x.values for x in grads], axis=0),
         array_ops.concat([x.indices for x in grads], axis=0),
         grads[0].dense_shape)

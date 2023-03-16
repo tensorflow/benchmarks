@@ -24,10 +24,6 @@ all-reduce, care is taken to evenly distribute the reduction computations
 across devices and inter-device tensor transfers across device links.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # TODO(reedwm): Support distributed all-reduces in this file.
 # TODO(reedwm): Merge this code with allreduce.py, which contains some batch
 # all-reduce code that this file calls. allreduce.py also supports distributed
@@ -35,7 +31,6 @@ from __future__ import print_function
 
 import abc
 
-import six
 import tensorflow.compat.v1 as tf
 
 from tensorflow.python.ops import data_flow_ops
@@ -60,8 +55,7 @@ def _all_reduce_using_copy(tensors_across_devices, use_mean):
   return reduced_tensor
 
 
-@six.add_metaclass(abc.ABCMeta)
-class BatchAllReduceAlgorithm(object):
+class BatchAllReduceAlgorithm(metaclass=abc.ABCMeta):
   """Represents an algorithm for performing a batch all-reduce operation."""
 
   def batch_all_reduce(self,

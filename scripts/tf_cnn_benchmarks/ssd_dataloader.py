@@ -14,10 +14,6 @@
 # ==============================================================================
 """Data loader and processing."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools as it
 import math
 
