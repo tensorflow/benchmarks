@@ -41,7 +41,7 @@ from cnn_util import log_fn
 from models import model as model_lib
 from models import resnet_model
 from tensorflow.contrib import layers as contrib_layers
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 
 BACKBONE_MODEL_SCOPE_NAME = 'resnet34_backbone'
 
@@ -663,9 +663,11 @@ class SSD300Model(model_lib.CNNModel):
     """Generating synthetic data matching real data shape and type."""
     inputs = tf.random_uniform(
         self.get_input_shapes('train')[0], dtype=self.data_type)
-    inputs = variables.VariableV1(inputs, trainable=False,
-                                  collections=[tf.GraphKeys.LOCAL_VARIABLES],
-                                  name=input_name)
+    inputs = variable_v1.VariableV1(
+        inputs,
+        trainable=False,
+        collections=[tf.GraphKeys.LOCAL_VARIABLES],
+        name=input_name)
     boxes = tf.random_uniform(
         [self.batch_size, ssd_constants.NUM_SSD_BOXES, 4], dtype=tf.float32)
     classes = tf.random_uniform(
