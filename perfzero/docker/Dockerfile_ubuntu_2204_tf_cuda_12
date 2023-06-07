@@ -29,7 +29,7 @@ COPY ${local_tensorflow_pip_spec} /${local_tensorflow_pip_spec}
 ENV DEBIAN_FRONTEND noninteractive
 
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get -y update && apt-get install -y --no-install-recommends \
         libfreetype6-dev \
         libhdf5-serial-dev \
         libzmq3-dev \
@@ -45,7 +45,7 @@ RUN add-apt-repository ppa:deadsnakes/ppa
 
 
 # Install / update Python and Python3
-RUN apt-get install -y --no-install-recommends \
+RUN apt-get -y update && apt-get install -y --no-install-recommends \
       python3.10 \
       python3-pip \
       python3.10-dev \
@@ -68,17 +68,16 @@ ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda-12.1/lib6
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 
 # Add google-cloud-sdk to the source list
-RUN echo "deb http://packages.cloud.google.com/apt cloud-sdk-$(lsb_release -c -s) main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+RUN curl -sSL https://sdk.cloud.google.com | bash
 
+ENV PATH $PATH:/root/google-cloud-sdk/bin
 # Install extras needed by most models
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get -y update && apt-get install -y --no-install-recommends  \
       git \
       ca-certificates \
       wget \
       htop \
-      zip \
-      google-cloud-sdk
+      zip
 
 RUN ${PIP_CMD} install --upgrade pyyaml
 RUN ${PIP_CMD} install --upgrade google-api-python-client==2.88.0
