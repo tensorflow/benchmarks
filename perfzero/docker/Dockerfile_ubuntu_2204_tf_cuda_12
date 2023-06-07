@@ -38,7 +38,8 @@ RUN apt-get -y update && apt-get install -y --no-install-recommends \
         software-properties-common \
         unzip \
         lsb-core \
-        curl
+        curl \
+        vim
 
 # Python 3.10 related deps in this ppa.
 RUN add-apt-repository ppa:deadsnakes/ppa
