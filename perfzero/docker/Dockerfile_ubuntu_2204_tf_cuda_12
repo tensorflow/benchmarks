@@ -94,7 +94,7 @@ RUN ${PIP_CMD} install -U scikit-learn
 # Install dependnecies needed for tf.distribute test utils
 RUN ${PIP_CMD} install dill tblib portpicker
 
-RUN curl https://raw.githubusercontent.com/tensorflow/models/master/official/nightly_requirements.txt > /tmp/requirements.txt
+RUN curl https://raw.githubusercontent.com/johnnynunez/models/master/official/nightly_requirements.txt > /tmp/requirements.txt
 RUN ${PIP_CMD} install -r /tmp/requirements.txt
 
 RUN ${PIP_CMD} install tf-estimator-nightly
