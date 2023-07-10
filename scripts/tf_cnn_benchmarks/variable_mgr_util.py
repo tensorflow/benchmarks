@@ -508,7 +508,7 @@ def aggregate_gradients_using_copy(tower_grads, use_mean, check_inf_nan):
 # not exported and subject to change at any time.
 def flatten_nested_indexed_slices(grad):
   assert isinstance(grad, indexed_slices.IndexedSlices)
-  if isinstance(grad.values, ops.Tensor):
+  if isinstance(grad.values, tf.Tensor):
     return grad
   else:
     assert isinstance(grad.values, indexed_slices.IndexedSlices)
@@ -527,7 +527,7 @@ def aggregate_indexed_slices_gradients(grads):
     grads = [g for g in grads if g is not None]
     # If any gradient is a `Tensor`, sum them up and return a dense tensor
     # object.
-    if any(isinstance(g, ops.Tensor) for g in grads):
+    if any(isinstance(g, tf.Tensor) for g in grads):
       return math_ops.add_n(grads)
 
     # The following `_as_indexed_slices_list` casts ids of IndexedSlices into
