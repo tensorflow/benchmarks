@@ -25,7 +25,6 @@ import tensorflow.compat.v1 as tf
 import mlperf
 from tensorflow.python.layers import convolutional as conv_layers
 from tensorflow.python.layers import core as core_layers
-from tensorflow.python.layers import normalization as normalization_layers
 from tensorflow.python.layers import pooling as pooling_layers
 from tensorflow.python.training import moving_averages
 
@@ -462,7 +461,7 @@ class ConvNetBuilder(object):
     center = True
     with tf.variable_scope(name) as scope:
       if self.use_tf_layers:
-        layer_obj = normalization_layers.BatchNormalization(
+        layer_obj = tf.layers.BatchNormalization(
             momentum=decay,
             scale=scale,
             epsilon=epsilon,
