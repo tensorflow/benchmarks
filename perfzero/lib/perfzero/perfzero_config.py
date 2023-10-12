@@ -97,6 +97,23 @@ def add_setup_parser_arguments(parser):
       --build-arg arg0 --build-arg arg1=value1 --build-arg "arg2=value with space" --build-arg arg3=300
       '''
       )
+  parser.add_argument(
+      '--docker_pull',
+      action='store_true',
+      dest='docker_pull',
+      help='''Set to check remote repositories for updated images. This is the
+      default. Use --no-docker_pull for the opposite.
+      '''
+      )
+  parser.add_argument(
+      '--no-docker_pull',
+      action='store_false',
+      dest='docker_pull',
+      help='''Set to skip checking remote repositories for updated images. This
+      is useful if the base image has been created locally.
+      '''
+      )
+  parser.set_defaults(docker_pull=True)
 
 
 def add_benchmark_parser_arguments(parser):
@@ -342,7 +359,7 @@ class PerfZeroConfig(object):
       if value is not None:
         not_none_flags[key] = value
     return not_none_flags
-  
+
   def get_git_repos(self, site_packages_dir):
     """Parse git repository string."""
     git_repos = []

@@ -114,7 +114,9 @@ def _create_docker_image(FLAGS, project_dir, workspace_dir,
     # dockerfile_path does not exist
     dockerfile_path = os.path.join(project_dir, FLAGS.dockerfile_path)
   extra_pip_specs = (FLAGS.extra_pip_specs or '').replace(';', '')
-  docker_base_cmd = 'docker build --no-cache --pull'
+  docker_base_cmd = 'docker build --no-cache'
+  if FLAGS.docker_pull:
+    docker_base_cmd = docker_base_cmd + ' --pull'
   # FLAGS.extra_docker_build_args will be a list of strings (e.g. ['a', 'b=c']).
   # We treat the strings directly as build-args: --build-arg a --build-arg b=c
   # Empty strings are ignored.
